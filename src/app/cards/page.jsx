@@ -1,0 +1,18 @@
+'use client';
+
+import { useApp } from '@/context/AppContext';
+import CardsView from '@/components/views/CardsView';
+
+export default function CardsPage() {
+  const app = useApp();
+
+  return (
+    <CardsView
+      cards={app.cards}
+      adAccounts={app.adAccounts}
+      onUpdateCard={app.updateCard}
+      onAddCard={app.addCard}
+      onToggleCardStatus={app.handleToggleCardStatus}
+    />
+  );
+}

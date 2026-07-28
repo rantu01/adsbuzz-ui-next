@@ -1,0 +1,1379 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Helvetica Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Helvetica Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "Helvetica Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* Brand: Blue (3 shades used as primary text + interactive surfaces) */
+  --color-brand-blue-deep: #0c4275;     /* text on light surfaces, primary heading/body */
+  --color-brand-blue: #1F5E98;          /* mid blue, primary interactive surface */
+  --color-brand-blue-dark: #154A7D;     /* dark blue, table header + sidebar accents */
+
+  /* Brand: Orange (primary action color + its hover) */
+  --color-brand-orange: #F68B2D;        /* primary action / accent */
+  --color-brand-orange-dark: #e07920;   /* primary action hover */
+
+  /* Status text (deep green used for "paid/active" text on light surfaces) */
+  --color-status-green-deep: #0a5c3a;
+
+  /* Surface tints (light pastel backgrounds for stat cards and panels) */
+  --color-surface: #FCFEFF;             /* generic near-white surface */
+  --color-surface-blue: #F0F7FF;        /* blue stat/panel surface */
+  --color-surface-blue-light: #F7FBFF;  /* lighter blue surface (reports) */
+  --color-surface-green: #F1FBF5;       /* green stat/panel surface */
+  --color-surface-orange: #FFF7ED;      /* orange stat/panel surface */
+  --color-surface-rose: #FFF1F2;        /* rose stat/panel surface */
+  --color-surface-yellow: #FFFBE6;      /* yellow stat/panel surface */
+
+  /* Border tints (match surface tints for stat card outlines) */
+  --color-border-blue: #CFE1F5;         /* blue surface border */
+  --color-border-blue-light: #D8E6F3;   /* lighter blue surface border */
+  --color-border-green: #CFEBDD;        /* green surface border */
+  --color-border-orange: #FBD9B9;       /* orange surface border */
+  --color-border-rose: #F8D6DC;         /* rose surface border */
+  --color-border-yellow: #FDE68A;       /* yellow surface border */
+
+  /* App-level background */
+  --color-app-bg: #F8F5F0;              /* main app canvas */
+
+  /* Sidebar/nav dark navy (used for the dark theme container) */
+  --color-sidebar-navy: #131926;
+}
+
+/* ==========================================
+   Global Typography & Font-Weight Reset to Helvetica Light
+   ========================================== */
+*,
+*::before,
+*::after,
+html,
+body, 
+#root, 
+#app-root-container, 
+div, 
+p, 
+span, 
+td, 
+th, 
+label, 
+li, 
+a, 
+small, 
+strong, 
+select, 
+input, 
+textarea, 
+option, 
+button,
+b,
+h1, h1 *,
+h2, h2 *,
+h3, h3 *,
+h4, h4 *,
+h5, h5 *,
+h6, h6 *,
+.heading-bold,
+.heading-bold *,
+.font-mono, 
+.font-mono *, 
+code, 
+pre {
+  font-family: "Helvetica Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+/* Base text weight is 400 */
+body,
+#root,
+#app-root-container,
+p,
+span,
+label,
+li,
+a,
+small,
+select,
+input,
+textarea,
+option {
+  font-weight: 400;
+}
+
+/* Remove bold styling from table content and general body text, keeping them strictly normal (400) */
+td, 
+td *, 
+.table-cell, 
+.table-cell *, 
+table tbody td, 
+table tbody td * {
+  font-weight: 400 !important;
+}
+
+/* Headings, section titles, card titles, and bold markers are slightly bold (600) for clean visual hierarchy */
+h1, h1 *,
+h2, h2 *,
+h3, h3 *,
+h4, h4 *,
+h5, h5 *,
+h6, h6 *,
+th, th *,
+.font-semibold,
+.font-semibold *,
+.font-bold,
+.font-bold *,
+.heading-bold,
+.heading-bold *,
+.section-title,
+.card-title {
+  font-weight: 600 !important;
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom Scrollbars for ERP tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dark theme overrides for select elements */
+.dark select, 
+.dark input {
+  color-scheme: dark;
+}
+
+/* ==========================================
+   Premium Brand Gradient Design Theme
+   Replacing old slate-900 (#0F172B) and blue-950 (#152352)
+   For both Light and Dark Modes
+   ========================================== */
+
+/* 1. Global App & Page Layout Backgrounds */
+#root,
+#app-root-container,
+body,
+.bg-slate-950,
+.bg-\[\#F8F5F0\],
+.dark,
+.dark #app-root-container,
+.dark .bg-slate-950,
+.dark .dark\:bg-slate-950 {
+  background-image: none !important;
+  background-color: #F8F5F0 !important;
+  color: #1e293b !important;
+}
+
+#app-root-container > .flex-1,
+#app-root-container main {
+  background-color: #F8F5F0 !important;
+}
+
+/* 2. Card Containers, Header, Table Headers & Bento elements */
+.bg-slate-900,
+.dark\:bg-slate-900,
+.dark .bg-slate-900,
+.dark .dark\:bg-slate-900,
+.bg-white,
+.bg-white\/5 {
+  background: #ffffff !important;
+  background-image: none !important;
+  backdrop-filter: blur(12px);
+  color: #1e293b !important;
+  border-color: rgba(31, 95, 152, 0.2) !important;
+  box-shadow: 0 10px 25px -5px rgba(31, 95, 152, 0.08), 0 8px 10px -6px rgba(31, 95, 152, 0.08) !important;
+}
+
+/* Apply header-specific white styling only on desktop (xl: 1280px+) — mobile top bar uses #131926 to match the sidebar */
+@media (min-width: 1280px) {
+  header {
+    background: #ffffff !important;
+    background-image: none !important;
+    backdrop-filter: blur(12px);
+    color: #1e293b !important;
+    border-color: rgba(31, 95, 152, 0.2) !important;
+    box-shadow: 0 10px 25px -5px rgba(31, 95, 152, 0.08), 0 8px 10px -6px rgba(31, 95, 152, 0.08) !important;
+  }
+}
+
+/* 3. Global borders & divider updates */
+.border-slate-800,
+.dark\:border-slate-800,
+.border-slate-700,
+.dark\:border-slate-700,
+.divide-slate-800,
+.divide-slate-50,
+.dark .border-slate-800,
+.dark .dark\:border-slate-800 {
+  border-color: rgba(31, 95, 152, 0.15) !important;
+}
+
+/* 4. Dropdowns, inputs, tables and search components */
+select,
+input,
+select option,
+.bg-slate-50,
+.absolute.right-0.mt-3.bg-white,
+table,
+.dark select,
+.dark input,
+.dark select option,
+.dark .bg-slate-50,
+.dark table {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: rgba(31, 95, 152, 0.2) !important;
+}
+
+input::placeholder,
+.dark input::placeholder {
+  color: #718096 !important;
+}
+
+/* 5 & 6. Core Text Color: scoped to the main app pane so sidebar keeps its own contrast system. */
+#main-content-pane {
+  color: #0c4275;
+}
+
+
+/* 7. REVERT/RETAIN SPECIFIC TEXT COLORS FOR BADGES, BUTTONS AND STATUSES */
+/* This ensures status labels (green, red, amber) and primary buttons (orange, blue) retain their highly legible text colors */
+.bg-\[\#F68B2D\],
+.bg-\[\#F68B2D\] *,
+.bg-\[\#1F5F98\],
+.bg-\[\#1F5F98\] *,
+.bg-emerald-500,
+.bg-emerald-500 *,
+.bg-red-500,
+.bg-red-500 *,
+.bg-amber-500,
+.bg-amber-500 *,
+.bg-blue-500,
+.bg-blue-500 *,
+button.bg-\[\#F68B2D\],
+button.bg-\[\#F68B2D\] *,
+button.bg-\[\#1F5F98\],
+button.bg-\[\#1F5F98\] *,
+.text-emerald-400,
+.text-emerald-400 *,
+.dark\:text-emerald-400,
+.dark\:text-emerald-400 *,
+.text-emerald-600,
+.text-emerald-600 *,
+.text-red-400,
+.text-red-400 *,
+.dark\:text-red-400,
+.dark\:text-red-400 *,
+.text-red-600,
+.text-red-600 *,
+.text-amber-400,
+.text-amber-400 *,
+.dark\:text-amber-400,
+.dark\:text-amber-400 *,
+.text-amber-600,
+.text-amber-600 * {
+  color: inherit !important;
+}
+
+/* Ensure white color rules still force white */
+.text-white,
+.text-white *,
+[class*="text-white"],
+[class*="text-white"] * {
+  color: #ffffff !important;
+}
+
+/* Custom Header Contrast Helper Classes for Insights Tables
+   Only the table column-header <th> cells are forced to navy; the
+   gradient banner titles use their own per-card classes and stay free. */
+#channel-analytics-panel th {
+  background-color: #154A7D !important;
+  color: #ffffff !important;
+}
+
+.bg-gold-header,
+.bg-gold-header *,
+.dark .bg-gold-header,
+.dark .bg-gold-header * {
+  background-color: #FFC83D !important;
+  color: #0c4275 !important;
+}
+
+/* 8. Sidebar link & icon alignments */
+\.bg-\[\#154a7c\],
+.dark \.bg-\[\#154a7c\] {
+  background-color: rgba(31, 95, 152, 0.12) !important;
+  color: #1F5F98 !important;
+}
+
+.text-blue-200,
+.dark .text-blue-200 {
+  color: rgba(31, 95, 152, 0.7) !important;
+}
+
+.hover\:bg-slate-800\/50:hover,
+.dark\:hover\:bg-slate-800\/50:hover,
+.dark .hover\:bg-slate-800\/50:hover {
+  background-color: rgba(31, 95, 152, 0.05) !important;
+}
+
+/* 9. Live Checkout Invoice Custom Premium Style - now uses White Background */
+#checkout-invoice-card {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08) !important;
+}
+
+#checkout-invoice-card,
+#checkout-invoice-card *,
+#checkout-invoice-card div,
+#checkout-invoice-card p,
+#checkout-invoice-card span,
+#checkout-invoice-card h3,
+#checkout-invoice-card h4,
+#checkout-invoice-card svg {
+  color: #0f172a !important;
+}
+
+/* Sub-sections inside the card */
+#checkout-invoice-card .bg-white,
+#checkout-invoice-card .dark\:bg-slate-900 {
+  background-color: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+#checkout-invoice-card .text-\[10px\].bg-slate-200,
+#checkout-invoice-card .bg-blue-50,
+#checkout-invoice-card .dark\:bg-blue-900\/20,
+#checkout-invoice-card .bg-slate-200,
+#checkout-invoice-card .dark\:bg-slate-800 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+#checkout-invoice-card .font-bold,
+#checkout-invoice-card .font-semibold,
+#checkout-invoice-card .text-red-500,
+#checkout-invoice-card .text-emerald-500,
+#checkout-invoice-card .text-emerald-600 {
+  color: #0f172a !important;
+}
+
+/* Form steps customer mode container button styling to eliminate black backgrounds */
+#sales-view .flex.bg-slate-100,
+#sales-view .flex.dark\:bg-slate-800 {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+#sales-view .flex.bg-slate-100 button,
+#sales-view .flex.dark\:bg-slate-800 button {
+  color: #475569 !important;
+}
+
+#sales-view .flex.bg-slate-100 button.bg-white,
+#sales-view .flex.dark\:bg-slate-800 button.dark\:bg-slate-700 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 9.1 Series Registry Table Custom Premium Style */
+#series-registry-card {
+  background-color: #ffffff !important;
+  border-color: rgba(31, 95, 152, 0.2) !important;
+}
+
+#series-registry-card thead {
+  background-color: #CFE1F5 !important;
+}
+
+#series-registry-card thead th {
+  color: #0c4275 !important;
+  border-bottom: 1px solid rgba(12, 66, 117, 0.1) !important;
+}
+
+#series-registry-card tbody td {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+#series-registry-card tbody td * {
+  color: #000000 !important;
+}
+
+#series-registry-card tr {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+#series-registry-card tr:last-child {
+  border-bottom: none !important;
+}
+
+#series-registry-card .status-badge {
+  padding: 0.25rem 0.65rem !important;
+  border-radius: 9999px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+}
+
+#series-registry-card .status-active {
+  background-color: #D1FAE5 !important;
+  color: #065F46 !important;
+}
+
+#series-registry-card .status-active * {
+  color: #065F46 !important;
+}
+
+#series-registry-card .status-inactive {
+  background-color: #FEE2E2 !important;
+  color: #991B1B !important;
+}
+
+#series-registry-card .status-inactive * {
+  color: #991B1B !important;
+}
+
+#series-registry-card .status-pending {
+  background-color: #FEF3C7 !important;
+  color: #92400E !important;
+}
+
+#series-registry-card .status-pending * {
+  color: #92400E !important;
+}
+
+/* 9.2 Vendor List Card Custom Premium Style */
+#vendor-list-card {
+  background-color: #ffffff !important;
+  border-color: rgba(31, 95, 152, 0.2) !important;
+}
+
+#vendor-list-card input {
+  background-color: #ffffff !important;
+  border-color: rgba(31, 95, 152, 0.2) !important;
+  color: #000000 !important;
+}
+
+#vendor-list-card input::placeholder {
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
+#vendor-list-card h4 {
+  color: #000000 !important;
+}
+
+#vendor-list-card p {
+  color: #000000 !important;
+}
+
+#vendor-list-card .text-right p:first-child {
+  color: #000000 !important;
+}
+
+#vendor-list-card .divide-y > * + * {
+  border-color: rgba(31, 95, 152, 0.1) !important;
+}
+
+#vendor-list-card .bg-blue-50\/50 {
+  background-color: rgba(31, 95, 152, 0.05) !important;
+  border-left-color: #F68B2D !important;
+}
+
+#vendor-list-card .hover\:bg-slate-50:hover {
+  background-color: rgba(31, 95, 152, 0.03) !important;
+}
+
+#vendor-list-card .status-badge {
+  padding: 0.2rem 0.55rem !important;
+  border-radius: 9999px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+}
+
+#vendor-list-card .status-active {
+  background-color: #D1FAE5 !important;
+  color: #065F46 !important;
+}
+
+#vendor-list-card .status-active * {
+  color: #065F46 !important;
+}
+
+#vendor-list-card .status-inactive {
+  background-color: #FEE2E2 !important;
+  color: #991B1B !important;
+}
+
+#vendor-list-card .status-inactive * {
+  color: #991B1B !important;
+}
+
+#vendor-list-card .status-pending {
+  background-color: #FEF3C7 !important;
+  color: #92400E !important;
+}
+
+#vendor-list-card .status-pending * {
+  color: #92400E !important;
+}
+
+/* 9.3 Global Button Hover Transform */
+#main-content-pane button {
+  transform-origin: center;
+  transition: transform 0.2s ease-in-out, opacity 0.2s ease-in-out, box-shadow 0.2s ease-in-out !important;
+}
+
+/* 9.4 Header Profile & Notification Icon Controls */
+header .header-icon-action {
+  background-color: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  color: #64748b !important;
+  transform: scale(1) !important;
+  transition: transform 0.2s ease-in-out, color 0.2s ease-in-out !important;
+}
+
+header .header-icon-action:hover,
+header .header-icon-action:focus,
+header .header-icon-action:active {
+  background-color: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  color: #334155 !important;
+  transform: scale(1.12) !important;
+}
+
+header .header-icon-action:hover *,
+header .header-icon-action:focus *,
+header .header-icon-action:active * {
+  color: inherit !important;
+}
+
+header .header-icon-action svg {
+  color: #64748b !important;
+}
+
+header .header-icon-action:hover svg,
+header .header-icon-action:focus svg,
+header .header-icon-action:active svg {
+  color: #334155 !important;
+}
+
+header .header-profile-avatar {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+.dark header .header-icon-action {
+  color: #94a3b8 !important;
+}
+
+.dark header .header-icon-action:hover,
+.dark header .header-icon-action:focus,
+.dark header .header-icon-action:active {
+  color: #e2e8f0 !important;
+}
+
+.dark header .header-icon-action svg {
+  color: #94a3b8 !important;
+}
+
+.dark header .header-icon-action:hover svg,
+.dark header .header-icon-action:focus svg,
+.dark header .header-icon-action:active svg {
+  color: #e2e8f0 !important;
+}
+
+.dark header .header-profile-avatar {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #cbd5e1 !important;
+}
+
+header .header-profile-menu-item {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+header .header-profile-menu-item-blue,
+header .header-profile-menu-item-blue *,
+header .header-profile-menu-item-blue:hover,
+header .header-profile-menu-item-blue:hover *,
+header .header-profile-menu-item-blue:focus,
+header .header-profile-menu-item-blue:focus * {
+  color: #1F5F98 !important;
+}
+
+header .header-profile-menu-item-blue:hover,
+header .header-profile-menu-item-blue:focus {
+  background-color: rgba(31, 95, 152, 0.08) !important;
+  border-color: transparent !important;
+}
+
+header .header-profile-menu-item-red,
+header .header-profile-menu-item-red *,
+header .header-profile-menu-item-red:hover,
+header .header-profile-menu-item-red:hover *,
+header .header-profile-menu-item-red:focus,
+header .header-profile-menu-item-red:focus * {
+  color: #dc2626 !important;
+}
+
+header .header-profile-menu-item-red:hover,
+header .header-profile-menu-item-red:focus {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+  border-color: transparent !important;
+}
+
+/* 10. Mobile Zoom-Out Optimization Styling */
+@media (max-width: 768px) {
+  html, body {
+    font-size: 13.5px !important;
+  }
+
+  /* Compact spacing for cards and grids on mobile devices */
+  .p-6, .md\:p-6 {
+    padding: 0.85rem !important;
+  }
+  .p-5 {
+    padding: 0.75rem !important;
+  }
+  .p-4 {
+    padding: 0.6rem !important;
+  }
+  .gap-6, .md\:gap-6 {
+    gap: 0.85rem !important;
+  }
+  .gap-4 {
+    gap: 0.6rem !important;
+  }
+
+  /* Compact roundness to match tighter mobile containers */
+  .rounded-2xl {
+    border-radius: 0.75rem !important;
+  }
+  .rounded-xl {
+    border-radius: 0.5rem !important;
+  }
+}
+
+/* ==========================================
+   11. Unified, Theme-Aware Modal & Pop-up Dialog Styling
+   ========================================== */
+
+/* Modal Backdrop */
+.custom-modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.65) !important;
+  background-image: none !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Modal Card Container - LIGHT mode (Default) */
+.custom-modal-card {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid rgba(31, 95, 152, 0.2) !important;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25) !important;
+}
+
+/* Modal Card Inner Elements - LIGHT mode */
+.custom-modal-card div,
+.custom-modal-card p,
+.custom-modal-card span,
+.custom-modal-card label,
+.custom-modal-card h3,
+.custom-modal-card h4,
+.custom-modal-card button {
+  color: #000000 !important;
+}
+
+/* Form input, select and placeholder elements in LIGHT mode */
+.custom-modal-card input,
+.custom-modal-card select,
+.custom-modal-card textarea {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid rgba(31, 95, 152, 0.2) !important;
+}
+
+.custom-modal-card input::placeholder {
+  color: #718096 !important;
+}
+
+/* Modal header/footer bands in LIGHT mode */
+.custom-modal-header {
+  background-color: #f8fafc !important;
+  border-bottom: 1px solid rgba(31, 95, 152, 0.15) !important;
+}
+
+.custom-modal-footer {
+  border-top: 1px solid rgba(31, 95, 152, 0.15) !important;
+}
+
+/* Modal Card Container - DARK mode Override */
+.dark .custom-modal-card {
+  background-color: #0f172a !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Modal Card Inner Elements - DARK mode */
+.dark .custom-modal-card div,
+.dark .custom-modal-card p,
+.dark .custom-modal-card span,
+.dark .custom-modal-card label,
+.dark .custom-modal-card h3,
+.dark .custom-modal-card h4,
+.dark .custom-modal-card button {
+  color: #ffffff !important;
+}
+
+.dark .custom-modal-card p.text-slate-500,
+.dark .custom-modal-card p.text-xs,
+.dark .custom-modal-card label {
+  color: #94a3b8 !important;
+}
+
+/* Form input, select and placeholder elements in DARK mode */
+.dark .custom-modal-card input,
+.dark .custom-modal-card select,
+.dark .custom-modal-card textarea {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.dark .custom-modal-card select option {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+.dark .custom-modal-card input::placeholder {
+  color: #64748b !important;
+}
+
+/* Modal header/footer bands in DARK mode */
+.dark .custom-modal-header {
+  background-color: #1e293b !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .custom-modal-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Retain white/orange/blue text helper styles inside the modal */
+.custom-modal-card .text-white,
+.dark .custom-modal-card .text-white {
+  color: #ffffff !important;
+}
+
+.custom-modal-card button.bg-\[\#F68B2D\],
+.dark .custom-modal-card button.bg-\[\#F68B2D\],
+.custom-modal-card button.bg-\[\#F68B2D\] * {
+  background-color: #F68B2D !important;
+  color: #ffffff !important;
+}
+
+.custom-modal-card button.bg-\[\#F68B2D\]:hover,
+.dark .custom-modal-card button.bg-\[\#F68B2D\]:hover {
+  background-color: #e07920 !important;
+}
+
+/* ==========================================
+   12. Premium Brand-Blue SaaS Tooltip, Badge & Hover Background Custom Rules
+   ========================================== */
+
+/* 12.1 Compact, SaaS-Style Tooltips (Both CSS attribute-based and Recharts) */
+.recharts-tooltip-wrapper,
+.recharts-default-tooltip,
+.tooltip,
+.tooltip-content,
+[data-tooltip] {
+  position: relative;
+}
+
+/* Custom CSS Data Tooltip implementation for general hover items */
+[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translate(-50%, 4px) scale(0.95);
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  padding: 5px 10px !important;
+  border-radius: 8px !important;
+  border: 1px solid #cbd5e1 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 6px -4px rgba(0, 0, 0, 0.08) !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 100;
+}
+
+[data-tooltip]:hover::before {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+/* Recharts compact, white tooltips */
+.recharts-tooltip-wrapper {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #cbd5e1 !important;
+  padding: 0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 6px -4px rgba(0, 0, 0, 0.08) !important;
+}
+
+.recharts-default-tooltip {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border: none !important;
+  padding: 8px 12px !important;
+  color: #0f172a !important;
+}
+
+.recharts-default-tooltip .recharts-tooltip-item,
+.recharts-default-tooltip span,
+.recharts-default-tooltip p,
+.recharts-tooltip-label {
+  color: #0f172a !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+/* 12.3 Data Row Hover & Scale-Up Styles */
+table tbody tr {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease !important;
+  position: relative;
+}
+
+table tbody tr:hover {
+  transform: scale(1.012) translateY(-1px) !important;
+  box-shadow: 0 8px 24px -2px rgba(31, 95, 152, 0.18) !important;
+  z-index: 20 !important;
+  background-color: rgba(31, 95, 152, 0.08) !important;
+}
+
+.dark table tbody tr:hover {
+  background-color: rgba(31, 95, 152, 0.25) !important;
+  box-shadow: 0 8px 24px -2px rgba(0, 0, 0, 0.5) !important;
+}
+
+table tbody tr:hover td {
+  background-color: transparent !important;
+}
+
+table tbody tr:hover [class*="text-emerald-"],
+table tbody tr:hover .text-emerald-600,
+table tbody tr:hover .text-emerald-500,
+table tbody tr:hover .text-emerald-400 {
+  color: #059669 !important;
+}
+
+table tbody tr:hover [class*="text-amber-"],
+table tbody tr:hover .text-amber-600,
+table tbody tr:hover .text-amber-500,
+table tbody tr:hover .text-amber-400 {
+  color: #d97706 !important;
+}
+
+table tbody tr:hover [class*="text-rose-"],
+table tbody tr:hover .text-rose-600,
+table tbody tr:hover .text-rose-500,
+table tbody tr:hover .text-rose-400 {
+  color: #e11d48 !important;
+}
+
+table tbody tr:hover [class*="text-red-"],
+table tbody tr:hover .text-red-600,
+table tbody tr:hover .text-red-500,
+table tbody tr:hover .text-red-400 {
+  color: #dc2626 !important;
+}
+
+table tbody tr:hover .text-\[\#F68B2D\] {
+  color: #F68B2D !important;
+}
+
+table tbody tr:hover .text-\[\#1F5E98\] {
+  color: #1F5E98 !important;
+}
+
+/* ==========================================
+   12.4 Table Header & Column Name Hover Styles
+   ========================================== */
+table thead {
+  background-color: #CFE1F5 !important;
+}
+
+table thead th,
+table thead th * {
+  color: #0c4275 !important;
+  background-color: #CFE1F5 !important;
+  font-weight: 700 !important;
+  transition: color 0.15s ease, background-color 0.15s ease !important;
+}
+
+table thead th:hover,
+table thead th:hover * {
+  color: #154A7D !important;
+  background-color: #B8D2EE !important;
+}
+
+/* ==========================================
+   13. Global Premium SaaS Focus, Click Highlight & Interactive Element Reset
+   ========================================== */
+
+/* 13.1 Universal Reset of Browser Default Focus Outlines, Borders & Tap Highlights */
+*,
+*::before,
+*::after,
+a,
+button,
+input,
+select,
+textarea,
+[role="button"],
+[tabindex],
+svg,
+path,
+rect,
+g,
+.recharts-wrapper,
+.recharts-surface,
+.recharts-responsive-container,
+.recharts-legend-item,
+.recharts-tooltip-cursor,
+.recharts-sector {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  user-select: none;
+}
+
+/* Re-enable text selection ONLY for standard readable content elements so users can copy text if needed */
+p,
+span,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+td,
+th,
+strong,
+em,
+b,
+i,
+code,
+pre,
+input,
+textarea {
+  user-select: text !important;
+}
+
+/* 13.2 Replace default active, click, and tap state borders and shadows with seamless design system integration */
+a:focus,
+button:focus,
+[role="button"]:focus,
+[tabindex]:focus,
+.recharts-wrapper:focus,
+svg:focus {
+  outline: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 13.3 Inputs, selects, and textareas premium focus state: beautiful, ultra-subtle brand-blue shadow */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none !important;
+  border-color: rgba(31, 95, 152, 0.4) !important;
+  box-shadow: 0 0 0 3px rgba(31, 95, 152, 0.12) !important;
+}
+
+/* 13.4 Click/Active feedback for cards, charts, and interactive widgets: subtle elevation or glowing effect instead of outlines */
+.interactive-card:focus-within,
+.interactive-widget:focus-within,
+#top-10-ad-accounts-container:focus-within,
+#chart-executive-highlights:focus-within {
+  outline: none !important;
+  box-shadow: 0 10px 25px -5px rgba(31, 95, 152, 0.08), 0 8px 10px -6px rgba(31, 95, 152, 0.08) !important;
+}
+
+/* 13.5 Prevent focus outlines on outer Recharts elements */
+.recharts-wrapper *,
+.recharts-surface *,
+.recharts-responsive-container * {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Ensure no border lines appear around SVG plots or charts on hover or click */
+svg line,
+svg rect,
+svg path {
+  outline: none !important;
+}
+
+/* ==========================================
+   14. Main Content Text Color Outside Sidebar
+   ========================================== */
+#main-content-pane,
+#main-content-pane :where(div, p, span, td, th, label, li, h1, h2, h3, h4, h5, h6, a, small, strong, select, input, textarea, option) {
+  color: #0c4275 !important;
+}
+
+/* 14.0 Brand-colored badges must keep their inline color over the global blue text rule */
+#main-content-pane #sales-records-total-badge,
+#main-content-pane #sales-records-total-badge *,
+#main-content-pane #sales-records-total-badge span {
+  color: #ffffff !important;
+}
+
+#main-content-pane #sales-records-total-badge > span {
+  color: #F68B2D !important;
+  background-color: #ffffff !important;
+}
+
+/* 14.0c Insights card gradient headers: keep white text over colored gradient backgrounds */
+#main-content-pane .insight-card-header,
+#main-content-pane .insight-card-header * {
+  color: #ffffff !important;
+}
+
+/* 14.0d Insights ledger entries badge: orange pill with white text */
+#main-content-pane .insight-entries-badge,
+#main-content-pane .insight-entries-badge * {
+  background-color: #F68B2D !important;
+  color: #ffffff !important;
+}
+#main-content-pane .insight-qty-chip {
+  background-color: #f1f5f9 !important;
+  color: #0c4275 !important;
+}
+
+.dark #main-content-pane .insight-qty-chip {
+  background-color: #1e293b !important;
+  color: #cbd5e1 !important;
+}
+
+#main-content-pane .insight-paid-qty-chip {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+.dark #main-content-pane .insight-paid-qty-chip {
+  background-color: rgba(6, 78, 59, 0.4) !important;
+  color: #6ee7b7 !important;
+}
+
+#main-content-pane .insight-status-chip {
+  background-color: #ffffff !important;
+  color: #0c4275 !important;
+  border-color: rgba(12, 66, 117, 0.18) !important;
+}
+
+#main-content-pane .insight-status-chip-paid {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: rgba(4, 120, 87, 0.25) !important;
+}
+
+#main-content-pane .insight-status-chip-amber {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: rgba(180, 83, 9, 0.25) !important;
+}
+
+#main-content-pane .insight-status-chip-rose {
+  background-color: #fff1f2 !important;
+  color: #be123c !important;
+  border-color: rgba(190, 18, 60, 0.25) !important;
+}
+#main-content-pane #checkout-steps-indicator button > div.h-6.w-6.rounded-full,
+#main-content-pane #checkout-steps-indicator button > div.h-6.w-6.rounded-full * {
+  color: #ffffff !important;
+}
+
+#main-content-pane #checkout-steps-indicator button > div.h-6.w-6.rounded-full.bg-slate-100,
+#main-content-pane #checkout-steps-indicator button > div.h-6.w-6.rounded-full.dark\:bg-slate-800 {
+  color: #64748b !important;
+}
+
+/* 14.1 Readable table headers outside the sidebar */
+#main-content-pane table thead,
+#main-content-pane table thead tr,
+#main-content-pane table thead th {
+  background-color: #CFE1F5 !important;
+  color: #0c4275 !important;
+  border-color: rgba(12, 66, 117, 0.18) !important;
+}
+
+#main-content-pane table thead th *,
+#main-content-pane table thead th span,
+#main-content-pane table thead th label,
+#main-content-pane table thead th svg {
+  color: #0c4275 !important;
+  stroke: #0c4275 !important;
+}
+
+#main-content-pane table thead th:hover,
+#main-content-pane table thead th:hover * {
+  background-color: #B8D2EE !important;
+  color: #154A7D !important;
+}
+
+/* 14.2 Danger account statuses must stay red over global blue text */
+#main-content-pane #ad-accounts-view .account-status-danger,
+#main-content-pane #ad-accounts-view .account-status-danger * {
+  color: #dc2626 !important;
+}
+
+/* 14.3 Sold and available account statuses must stay green over global blue text */
+#main-content-pane #ad-accounts-view .account-status-success,
+#main-content-pane #ad-accounts-view .account-status-success * {
+  color: #16a34a !important;
+}
+
+/* ==========================================
+   15. Two-Color Button System Outside Sidebar
+   ========================================== */
+#main-content-pane {
+  --brand-button-primary: #F68B2D;
+  --brand-button-secondary: #154A7D;
+}
+
+#main-content-pane button,
+#main-content-pane button * {
+  font-weight: 500 !important;
+}
+
+#main-content-pane button:not(.header-icon-action) {
+  border-color: rgba(21, 74, 125, 0.45) !important;
+  color: var(--brand-button-secondary) !important;
+}
+
+#main-content-pane button:not(.header-icon-action)[class^="bg-"],
+#main-content-pane button:not(.header-icon-action)[class*=" bg-"] {
+  background-color: var(--brand-button-secondary) !important;
+  border-color: var(--brand-button-secondary) !important;
+  color: #ffffff !important;
+}
+
+#main-content-pane button:not(.header-icon-action)[class^="bg-"] *,
+#main-content-pane button:not(.header-icon-action)[class*=" bg-"] * {
+  color: #ffffff !important;
+}
+
+#main-content-pane button:not(.header-icon-action):is(
+  [type="submit"],
+  [id*="add"],
+  [id*="submit"],
+  [id*="reject"],
+  [id*="delete"],
+  [id*="remove"],
+  [class^="bg-amber"],
+  [class*=" bg-amber"],
+  [class^="bg-red"],
+  [class*=" bg-red"],
+  [class^="bg-rose"],
+  [class*=" bg-rose"],
+  [class^="bg-[#F68B2D]"],
+  [class*=" bg-[#F68B2D]"],
+  [class*=" ring-1"],
+  [class*=" ring-2"]
+) {
+  background-color: var(--brand-button-primary) !important;
+  border-color: var(--brand-button-primary) !important;
+  color: #ffffff !important;
+}
+
+#main-content-pane button:not(.header-icon-action):is(
+  [type="submit"],
+  [id*="add"],
+  [id*="submit"],
+  [id*="reject"],
+  [id*="delete"],
+  [id*="remove"],
+  [class^="bg-amber"],
+  [class*=" bg-amber"],
+  [class^="bg-red"],
+  [class*=" bg-red"],
+  [class^="bg-rose"],
+  [class*=" bg-rose"],
+  [class^="bg-[#F68B2D]"],
+  [class*=" bg-[#F68B2D]"],
+  [class*=" ring-1"],
+  [class*=" ring-2"]
+) * {
+  color: #ffffff !important;
+}
+
+#main-content-pane button:not(.header-icon-action):not([class^="bg-"]):not([class*=" bg-"]):is(
+  [id*="delete"],
+  [id*="remove"],
+  [class*="text-red"],
+  [class*="hover:text-red"],
+  [class*="text-rose"],
+  [class*="hover:text-rose"]
+) {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  color: var(--brand-button-primary) !important;
+}
+
+#main-content-pane button:not(.header-icon-action):not([class^="bg-"]):not([class*=" bg-"]):is(
+  [id*="delete"],
+  [id*="remove"],
+  [class*="text-red"],
+  [class*="hover:text-red"],
+  [class*="text-rose"],
+  [class*="hover:text-rose"]
+) * {
+  color: var(--brand-button-primary) !important;
+}
+
+#main-content-pane header .header-profile-menu-item-blue,
+#main-content-pane header .header-profile-menu-item-blue * {
+  color: var(--brand-button-secondary) !important;
+}
+
+#main-content-pane header .header-profile-menu-item-red,
+#main-content-pane header .header-profile-menu-item-red * {
+  color: var(--brand-button-primary) !important;
+}
+
+/* ==========================================
+   16. Scale-Only Button Hover Outside Sidebar
+   ========================================== */
+#main-content-pane button:not(:disabled):hover {
+  transform: scale(1.045);
+}
+
+#main-content-pane button:disabled:hover {
+  transform: none;
+}
+
+/* ==========================================
+   17. Global Helvetica Light Typography
+   ========================================== */
+html,
+body,
+#root,
+#app-root-container,
+#app-root-container *,
+.font-sans,
+.font-display,
+.font-mono,
+.font-medium,
+.font-semibold,
+.font-bold,
+.font-extrabold,
+.font-black,
+strong,
+b,
+th,
+button,
+input,
+select,
+textarea,
+option {
+  font-family: "Helvetica Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+  font-weight: 400 !important;
+}
+
+/* ==========================================
+   18. Universal Full White Tooltip Master Rule (No Overrides)
+   ========================================== */
+.recharts-tooltip-wrapper,
+.recharts-default-tooltip,
+.tooltip,
+.tooltip-content,
+[data-tooltip]::before,
+#main-content-pane .recharts-tooltip-wrapper,
+#main-content-pane .recharts-default-tooltip,
+#main-content-pane .tooltip,
+#main-content-pane .tooltip-content,
+#main-content-pane [data-tooltip]::before,
+.dark .recharts-tooltip-wrapper,
+.dark .recharts-default-tooltip,
+.dark .tooltip,
+.dark .tooltip-content,
+.dark [data-tooltip]::before {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 12px !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 6px -4px rgba(0, 0, 0, 0.08) !important;
+}
+
+.recharts-tooltip-wrapper *,
+.recharts-default-tooltip *,
+.tooltip *,
+.tooltip-content *,
+[data-tooltip]::before,
+#main-content-pane .recharts-tooltip-wrapper *,
+#main-content-pane .recharts-default-tooltip *,
+#main-content-pane .tooltip *,
+#main-content-pane .tooltip-content *,
+#main-content-pane [data-tooltip]::before,
+.dark .recharts-tooltip-wrapper *,
+.dark .recharts-default-tooltip *,
+.dark .tooltip *,
+.dark .tooltip-content *,
+.dark [data-tooltip]::before {
+  color: #0f172a !important;
+}
