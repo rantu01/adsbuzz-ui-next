@@ -40,6 +40,10 @@ function AdAccountsView({
   // Selection state for Bulk actions
   const [selectedAccountIds, setSelectedAccountIds] = useState([]);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
+
   // Add Account Modal
   const [showAddModal, setShowAddModal] = useState(autoOpenAddModal);
   const [newAccountId, setNewAccountId] = useState('');
@@ -103,9 +107,34 @@ function AdAccountsView({
     return matchesSearch && matchesPlatform && matchesStatus && matchesAssignment && matchesSeries;
   });
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, platformFilter, statusFilter, assignmentFilter, seriesFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedAccounts = filteredAccounts.slice(
+    (safeCurrentPage - 1) * ITEMS_PER_PAGE,
+    safeCurrentPage * ITEMS_PER_PAGE,
+  );
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    setSelectedAccountIds([]);
+  };
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    const start = Math.max(1, safeCurrentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    for (let i = start; i <= end; i += 1) pages.push(i);
+    return pages;
+  };
+
   const handleSelectAll = (checked) => {
     if (checked) {
-      setSelectedAccountIds(filteredAccounts.map(acc => acc.adAccountId));
+      setSelectedAccountIds(pagedAccounts.map(acc => acc.adAccountId));
     } else {
       setSelectedAccountIds([]);
     }
@@ -377,7 +406,7 @@ function AdAccountsView({
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider w-10 pl-4">
                   <input
                     type="checkbox"
-                    checked={filteredAccounts.length > 0 && selectedAccountIds.length === filteredAccounts.length}
+                    checked={pagedAccounts.length > 0 && selectedAccountIds.length === pagedAccounts.length}
                     onChange={(e) => handleSelectAll(e.target.checked)}
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
@@ -395,7 +424,7 @@ function AdAccountsView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-              {filteredAccounts.map((acc) => {
+              {pagedAccounts.map((acc) => {
                 const isChecked = selectedAccountIds.includes(acc.adAccountId);
                 const effectiveStatus = getEffectiveAccountStatus(acc);
                 return (
@@ -508,6 +537,50 @@ function AdAccountsView({
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredAccounts.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1 pt-1 pb-4">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Showing {(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1}–
+            {Math.min(safeCurrentPage * ITEMS_PER_PAGE, filteredAccounts.length)} of{' '}
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{filteredAccounts.length}</span>{' '}
+            ad accounts
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handlePageChange(safeCurrentPage - 1)}
+              disabled={safeCurrentPage === 1}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              Prev
+            </button>
+            {getPageNumbers().map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => handlePageChange(page)}
+                className={`min-w-[32px] px-2 py-1.5 rounded-lg text-xs font-bold transition ${
+                  page === safeCurrentPage
+                    ? 'bg-brand-orange text-white shadow-md shadow-orange-500/20'
+                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => handlePageChange(safeCurrentPage + 1)}
+              disabled={safeCurrentPage === totalPages}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Account Loading Drawer/Modal */}
       <Modal

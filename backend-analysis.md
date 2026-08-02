@@ -456,7 +456,9 @@ Options:
 > Because the new UI has no login page and old project uses Firebase, recommend option 1 for consistency with existing production users, OR option 2 if a clean internal-only tool is preferred. **Decision deferred until instructed.**
 
 ### D4. Module build order (dependency-aware, from docs/todo.md)
-1. Settings (no deps) → 2. Series → 3. Cards → 4. Customers → 5. Ad Accounts (deps: Cards, Series, Customers) → 6. Vendors → 7. Sale Setups (deps: Ad Accounts) → 8. Invoices (deps: Customers, Ad Accounts) → 9. Topups (approve/reject/sync; deps: Invoices) → 10. Insights/Reports/Reports-export (deps: Invoices) → 11. Activities → 12. Dashboard aggregation → 13. Auth/RBAC (can be earlier).
+1. Settings (no deps) → 2. Series ✅ → 3. Cards ✅ → 4. Customers ✅ → 5. Ad Accounts ✅ (deps: Cards, Series, Customers) → 6. Vendors ✅ (list/create/update; pay pending) → 7. Invoices ⏳ (list done; write flow pending) → 8. Sale Setups (deps: Ad Accounts) → 9. Topups (approve/reject/sync; deps: Invoices) → 10. Insights/Reports/Reports-export (deps: Invoices) → 11. Activities → 12. Dashboard aggregation → 13. Auth/RBAC (✅ earlier).
+
+> **2026-08-02 status:** Series, Cards, Customers, Ad Accounts, Vendors CRUD + Invoices-list implemented. Front-end wired for these. Remaining: Settings, Sale Setups, Invoices write flow, Topups, Insights, Reports/export, Activities, Dashboard.
 
 ### D5. Recommended API surface (mirrors docs/api_list.md)
 See `api-status.md` for the full endpoint matrix.
@@ -465,12 +467,12 @@ See `api-status.md` for the full endpoint matrix.
 
 ## PART E — OPEN QUESTIONS (to confirm with owner before/while coding)
 
-1. **DB name** — use `MONGODB_DB_NAME` value from old `.env` (shared prod DB)? Confirm it is safe to read live data.
-2. **Auth** — Firebase (reuse) or JWT (new)? New UI has no login page.
-3. **Customers** — new dedicated `customers` collection vs extending old `users`? (recommend dedicated `customers` + keep `users` for auth; only if no data-loss risk).
-4. **Invoices** — new `invoices` collection OK?
-5. **Historical data** — should Customers/AdAccounts/Invoices pages show real old production records on first launch, or start empty and populate going forward? (Master rule: use same collections; but "customers" are a new concept vs old `users`.)
-6. **Roles/permissions** — old roles (admin/staff/customer) vs new roles (Admin/Sales Manager/Operations Manager/Finance Auditor). Which drives RBAC?
-7. **Export** — CSV only, or real XLSX/PDF?
+1. **DB name** — `MONGODB_DB_NAME=ad_buzz` — ✅ resolved & verified (2026-08-02). Live read is safe.
+2. **Auth** — ✅ RESOLVED: Firebase (reuse old). Phase 2 complete.
+3. **Customers** — ✅ resolved: dedicated `customers` collection, synced from old `users` (`syncCustomersFromUsers`).
+4. **Invoices** — new `invoices` collection ✅ created; legacy data synced via `syncLegacyInvoices`.
+5. **Historical data** — ✅ resolved: live production data is read (412 ad accounts, synced customers/invoices).
+6. **Roles/permissions** — backend uses old roles (admin/staff/customer) as prod `users` store them; new-UI roles open.
+7. **Remaining open:** export format (CSV vs XLSX/PDF); login UI (none yet — client-side Firebase + Bearer during Phase 5); topups/insights/reports/settings/saleSetups endpoints pending.
 
 > All decisions are recorded here and must be re-confirmed only if implementation is blocked.

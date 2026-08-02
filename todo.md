@@ -1,7 +1,7 @@
 # Todo List — AdsBuzz ERP Backend
 
 > Living checklist. Completed tasks are never deleted — only marked complete.
-> Last updated: 2026-08-01
+> Last updated: 2026-08-02
 
 ---
 
@@ -84,51 +84,51 @@
 - [ ] Wire useSettings → API
 - [ ] Testing + docs update
 
-### Series (no deps)
-- [ ] GET/POST /api/series
-- [ ] PUT /api/series/[id]
-- [ ] Wire useSeries → API
-- [ ] Testing + docs update
+### Series (no deps) ✅
+- [x] GET/POST /api/series
+- [x] PUT /api/series/[id]
+- [x] Wire useSeries → API
+- [x] Testing + docs update
 
-### Cards (no deps)
-- [ ] GET/POST /api/cards
-- [ ] PUT /api/cards/[id]
-- [ ] PATCH /api/cards/[id]/toggle
-- [ ] PATCH /api/cards/[id]/load (applyCardLoad)
-- [ ] Wire useCards → API
-- [ ] Testing + docs update
+### Cards (no deps) ✅
+- [x] GET/POST /api/cards
+- [x] PUT /api/cards/[id]
+- [x] PATCH /api/cards/[id]/toggle (via [id] PATCH statusOnly)
+- [x] PATCH /api/cards/load (applyCardLoad)
+- [x] Wire useCards → API
+- [x] Testing + docs update
 
-### Customers (no deps) — recommended reference pattern
-- [ ] GET /api/customers (list + search + status/favorite filters + pagination)
-- [ ] POST /api/customers (CUST-* id generation)
-- [ ] GET /api/customers/[id]
-- [ ] PUT /api/customers/[id]
-- [ ] PATCH /api/customers/[id]/favorite
-- [ ] PATCH /api/customers/[id]/notes
-- [ ] Customer ↔ AdAccount linkage (assignedCustomer / userGroupCode)
-- [ ] Customer ↔ Invoice linkage (customerId / groupId)
-- [ ] Validation
-- [ ] Auth + authorization
-- [ ] Loading + error handling
-- [ ] Wire useCustomers → API
-- [ ] Testing + docs update
+### Customers (no deps) — reference pattern ✅
+- [x] GET /api/customers (list + search + status/favorite filters + pagination)
+- [x] POST /api/customers (CUST-* id generation)
+- [x] GET /api/customers/[id]
+- [x] PUT /api/customers/[id]
+- [x] PATCH /api/customers/[id]/favorite
+- [x] PATCH /api/customers/[id]/notes
+- [x] Customer ↔ AdAccount linkage (assignedCustomer / groupId)
+- [x] Customer ↔ Invoice linkage (customerId / groupId)
+- [x] Validation
+- [x] Auth + authorization
+- [x] Loading + error handling
+- [x] Wire useCustomers → API
+- [x] Testing + docs update
 
-### Ad Accounts (deps: Cards, Series, Customers)
-- [ ] GET /api/ad-accounts (search/platform/status/assignment/series filters + pagination)
-- [ ] POST /api/ad-accounts
-- [ ] PUT /api/ad-accounts/[id]
-- [ ] PATCH /api/ad-accounts/[id]/status
-- [ ] PATCH /api/ad-accounts/bulk-status
-- [ ] Derived Sold status logic (getEffectiveAccountStatus)
-- [ ] Wire useAdAccounts → API
-- [ ] Testing + docs update
+### Ad Accounts (deps: Cards, Series, Customers) ✅
+- [x] GET /api/ad-accounts (search/platform/status/assignment/series filters + pagination)
+- [x] POST /api/ad-accounts
+- [x] PUT /api/ad-accounts/[id]
+- [x] PATCH /api/ad-accounts/[id]/status
+- [x] PATCH /api/ad-accounts/bulk-status
+- [x] Derived Sold status logic (getEffectiveAccountStatus)
+- [x] Wire useAdAccounts → API
+- [x] Testing + docs update
 
-### Vendors (no deps)
-- [ ] GET/POST /api/vendors
-- [ ] PUT /api/vendors/[id]
+### Vendors (no deps) ✅ (partial)
+- [x] GET/POST /api/vendors
+- [x] PUT /api/vendors/[id]
 - [ ] POST /api/vendors/[id]/pay (paymentHistory)
-- [ ] Wire useVendors → API
-- [ ] Testing + docs update
+- [x] Wire useVendors → API
+- [x] Testing + docs update
 
 ### Sale Setups (deps: Ad Accounts)
 - [ ] GET/POST /api/sale-setups
@@ -136,15 +136,15 @@
 - [ ] Wire useSaleSetups → API
 - [ ] Testing + docs update
 
-### Invoices (deps: Customers, Ad Accounts)
-- [ ] GET /api/invoices (list + search + paymentStatus filter)
+### Invoices (deps: Customers, Ad Accounts) ⏳ (partial)
+- [x] GET /api/invoices (list + search + paymentStatus filter + legacy sync)
 - [ ] POST /api/invoices (create sale — full transactional flow)
 - [ ] GET /api/invoices/[id]
 - [ ] PUT /api/invoices/[id]
 - [ ] PATCH /api/invoices/[id]/approve
 - [ ] PATCH /api/invoices/[id]/reject
 - [ ] PATCH /api/invoices/[id]/sync-topup
-- [ ] Wire useInvoices → API
+- [x] Wire useInvoices → API (list only)
 - [ ] Testing + docs update
 
 ---
@@ -182,10 +182,13 @@
 
 ---
 
-## Phase 5 — Frontend Integration
+## Phase 5 — Frontend Integration ⏳ (in progress)
 
-- [ ] Replace all seed-data hooks with API calls (AppContext)
-- [ ] Add loading states to all views
+- [x] Wire seed-data hooks → API (Customers, AdAccounts, Invoices-list, Cards, Vendors, Series)
+- [x] Add loading states to Customers view
+- [x] Add pagination to Reports + Invoices tables
+- [x] Fix infinite re-fetch loop in AppContext (stabilize triggerToast)
+- [x] Fix Modal typing/focus bug (apply to all modals)
 - [ ] Add error handling for API failures
 - [ ] Add optimistic updates
 - [ ] Implement payment screenshot upload flow

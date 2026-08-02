@@ -1,7 +1,9 @@
 # AdsBuzz ERP — Project Overview
 
-> Status: **Phase 0 (Analysis) COMPLETE — awaiting instruction to start Phase 1**
-> Last updated: 2026-08-01
+# AdsBuzz ERP — Project Overview
+
+> Status: **Phases 0–2 ✅ + Phase 3 (CRUD) 🟩 mostly complete. Phase 4 pending, Phase 5 in progress.**
+> Last updated: 2026-08-02
 
 ---
 
@@ -91,11 +93,16 @@ docs/                              # Planning docs (api_list, database_schema, b
 
 ## 5. Current State of the New Project
 
-- **Fully client-side SPA.** All data comes from `src/data/seedData.js` (mock data) via 9 hooks, all state is centralized in `AppContext.jsx`.
-- **Zero `fetch()` calls anywhere.** Every "CRUD" operation mutates React state locally.
-- The 5 `src/app/api/*` routes are **stubs** that return placeholder JSON.
-- The UI is complete and matches the original React design (docs/ audit confirms 100% similarity, 21 static pages, 0 build errors, 0 lint warnings).
-- **Next step (when instructed):** replace hooks' local state with backend API calls, page-by-page, keeping the UI byte-for-byte identical.
+- **Backend + DB live for core modules.** MongoDB connected; real data loaded:
+  - **Ad Accounts** — 412 accounts read from the production DB, mapped legacy→UI shape.
+  - **Series, Cards, Vendors** — CRUD + seeding against new collections.
+  - **Customers** — CRUD + notes + favourite + sync from old `users`.
+  - **Invoices** — live list + legacy-invoice sync.
+- **Frontend wired to APIs** via hooks (Customers, AdAccounts, Invoices-list, Cards, Vendors, Series).
+- **Fixed bugs:** infinite re-fetch loop (AppContext) and Modal focus/typing bug (all modals).
+- **Pagination** added to Reports & Invoices tables.
+- **Remaining:** Invoices write flow, Settings, Sale Setups, Topups, Insights, Reports/export, Activities, Dashboard, then full Phase 5/6 polish.
+- **Next step:** finish Phase 3/4 endpoints, complete Phase 5 wiring, Phase 6 polish.
 
 ---
 
@@ -191,10 +198,11 @@ src/
 
 ## 12. Phase Gate
 
-**Phase 0 is complete.** All analysis is in:
+**Phases 0–2 complete; Phase 3 (CRUD) mostly complete; Phase 4 & Phase 5 in progress.** Analysis is in:
 - `backend-analysis.md` — full old-project analysis + new-UI contract + schema mapping
-- `api-status.md` — API endpoint inventory + build status matrix
+- `api-status.md` — API endpoint inventory + build status matrix (live)
 - `progress.md` — running progress log
 - `todo.md` — living checklist
+- `report.md` — client-facing summary of uncommitted work
 
-**Do NOT start implementation until explicitly instructed** (e.g. "Start Phase 1", "Work on Customers").
+**Phase 3 shows Marginal ask.** Remaining CRUD: Invoices write flow, Sale Setups, Settings, Vendors pay.

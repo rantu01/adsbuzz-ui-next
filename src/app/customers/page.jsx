@@ -16,6 +16,7 @@ function CustomersPageInner() {
   return (
     <CustomersView
       customers={app.customers}
+      loading={app.customersLoading}
       adAccounts={app.adAccounts}
       invoices={app.invoices}
       onAddCustomer={app.handleAddCustomer}

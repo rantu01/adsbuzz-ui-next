@@ -1,6 +1,6 @@
 'use client';
-import { memo, useState } from 'react';
-import { BarChart2, TrendingUp, Calendar, Check, CreditCard, Download, DollarSign } from 'lucide-react';
+import { memo, useEffect, useState } from 'react';
+import { BarChart2, ChevronLeft, ChevronRight, TrendingUp, Calendar, Check, CreditCard, Download, DollarSign } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import SearchBar from '@/components/ui/SearchBar';
 import Badge from '@/components/ui/Badge';
@@ -9,6 +9,8 @@ function ReportsView({ invoices, onTriggerExport }) {
   const [platform, setPlatform] = useState('All');
   const [search, setSearch] = useState('');
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const monthFilteredInvoices = invoices.filter(inv => {
     if (!inv.date) return false;
@@ -71,6 +73,28 @@ function ReportsView({ invoices, onTriggerExport }) {
                           inv.adAccountName.toLowerCase().includes(search.toLowerCase());
     return matchesPlatform && matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const pageWindow = (() => {
+    const pages = [];
+    const max = totalPages;
+    const current = safePage;
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    for (let p = Math.max(2, current - 1); p <= Math.min(max - 1, current + 1); p++) {
+      pages.push(p);
+    }
+    if (current < max - 2) pages.push('...');
+    if (max > 1) pages.push(max);
+    return pages;
+  })();
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [platform, search]);
 
   const formatUSD = (value) => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatBDT = (value) => `BDT ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -404,7 +428,7 @@ function ReportsView({ invoices, onTriggerExport }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-              {filtered.map(inv => {
+              {paginated.map(inv => {
                 const displayGroupCode = inv.groupId || inv.invoiceNo;
                 const recordStatus = inv.status || inv.paymentStatus;
                 return (
@@ -436,6 +460,50 @@ function ReportsView({ invoices, onTriggerExport }) {
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} records
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={13} /> Prev
+              </button>
+              {pageWindow.map((p, idx) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      p === safePage
+                        ? 'bg-brand-blue text-white shadow-xs'
+                        : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

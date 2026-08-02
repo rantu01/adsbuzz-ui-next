@@ -13,21 +13,21 @@
 | **Foundation (Phase 1)** | — | — | 🟩 config, db, logger, http, errorHandler, validate |
 | **Auth (Phase 2)** | ✅ Firebase | ⬜ no login UI yet | 🟩 Firebase client+admin, sync-user, me, RBAC |
 | Dashboard | ✅ `/api/user/dashboard` | ✅ `/` aggregates | 🟦 |
-| Customers | ⚠️ `users` only | ✅ full CRM | 🟦 (Phase 1 candidate) |
-| Ad Accounts | ✅ full | ✅ full | 🟦 |
-| Invoices/Sales | ⚠️ deposits+balanceLogs | ✅ full | 🟦 |
+| Customers | ⚠️ `users` only | ✅ full CRM | 🟩 CRUD+notes+favorite+sync |
+| Ad Accounts | ✅ full | ✅ full | 🟩 CRUD+bulk-status+legacy map |
+| Invoices/Sales | ⚠️ deposits+balanceLogs | ✅ full | 🟨 list+sync done; write flow pending |
 | Topups | ⚠️ deposits approval | ✅ approve/reject/sync | 🟦 |
-| Cards | ⚠️ paymentMethods | ✅ full | 🟦 |
-| Vendors | ❌ none | ✅ full | 🟦 (new collection) |
-| Series | ❌ none | ✅ full | 🟦 (new collection) |
-| Sale Setups | ❌ none | ✅ full | 🟦 (new collection) |
-| Reports | ✅ reportService | ✅ 6-metric report + export | 🟦 |
+| Cards | ⚠️ paymentMethods | ✅ full | 🟩 CRUD + toggle + load |
+| Vendors | ❌ none | ✅ full | 🟩 CRUD (list/create/update) |
+| Series | ❌ none | ✅ full | 🟩 CRUD + seed |
+| Sale Setups | ❌ none | ✅ full | 🟦 |
+| Reports | ✅ reportService | ✅ 6-metric report + export | 🟦 (UI uses client data + pagination) |
 | Insights | ⚠️ top-up-insights | ✅ charts/analyzer | 🟦 |
 | Settings | ✅ site_settings | ✅ company/payment/roles | 🟦 |
 | Activities | ⚠️ logs | ✅ feed | 🟦 (new collection) |
 | Upload | ❌ none | ✅ screenshot | 🟦 |
 
-**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. No business endpoints built yet.**
+**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) mostly complete: Series, Cards, Customers, Ad Accounts, Vendors (list) + Invoices (list). Phase 4 + remaining Phase 3 write flow pending.**
 
 ### Phase 1 foundation files (🟩 Complete)
 
@@ -61,29 +61,29 @@
 ### Customers
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/customers` | List all customers (search/filter/pagination) | 🟦 |
-| POST | `/api/customers` | Create customer (generate CUST-* id) | 🟦 |
-| GET | `/api/customers/[id]` | Get customer by id | 🟦 |
-| PUT | `/api/customers/[id]` | Update customer | 🟦 |
-| PATCH | `/api/customers/[id]/favorite` | Toggle favorite | 🟦 |
-| PATCH | `/api/customers/[id]/notes` | Update notes | 🟦 |
+| GET | `/api/customers` | List all customers (search/filter/pagination) | 🟩 |
+| POST | `/api/customers` | Create customer (generate CUST-* id) | 🟩 |
+| GET | `/api/customers/[id]` | Get customer by id | 🟩 |
+| PUT | `/api/customers/[id]` | Update customer | 🟩 |
+| PATCH | `/api/customers/[id]/favorite` | Toggle favorite | 🟩 |
+| PATCH | `/api/customers/[id]/notes` | Update notes | 🟩 |
 
 ### Ad Accounts
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/ad-accounts` | List (search/platform/status/assignment/series filters) | 🟦 |
-| POST | `/api/ad-accounts` | Create ad account | 🟦 |
-| PUT | `/api/ad-accounts/[id]` | Update | 🟦 |
-| PATCH | `/api/ad-accounts/[id]/status` | Update status (sold/available/etc.) | 🟦 |
-| PATCH | `/api/ad-accounts/bulk-status` | Bulk update status | 🟦 |
+| GET | `/api/ad-accounts` | List (search/platform/status/assignment/series filters) | 🟩 |
+| POST | `/api/ad-accounts` | Create ad account | 🟩 |
+| PUT | `/api/ad-accounts/[id]` | Update | 🟩 |
+| PATCH | `/api/ad-accounts/[id]` | Update status (statusOnly) | 🟩 |
+| PATCH | `/api/ad-accounts/bulk-status` | Bulk update status | 🟩 |
 
 ### Invoices
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/invoices` | List all invoices | 🟦 |
+| GET | `/api/invoices` | List all invoices | 🟩 (list + legacy sync) |
 | POST | `/api/invoices` | Create invoice (sale) — full sales flow | 🟦 |
 | GET | `/api/invoices/[id]` | Get invoice | 🟦 |
-| PUT | `/api/invoices/[id]` | Update invoice (edit modal) | 🟦 |
+| PUT | `/api/invoices/[id]` | Update invoice (edit modal) | 🟩 (see [id]) |
 | PATCH | `/api/invoices/[id]/approve` | Approve → Approved + Paid | 🟦 |
 | PATCH | `/api/invoices/[id]/reject` | Reject → Rejected + Due | 🟦 |
 | PATCH | `/api/invoices/[id]/sync-topup` | Sync topup status | 🟦 |
@@ -91,26 +91,26 @@
 ### Cards
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/cards` | List all cards | 🟦 |
-| POST | `/api/cards` | Create card | 🟦 |
-| PUT | `/api/cards/[id]` | Update card | 🟦 |
-| PATCH | `/api/cards/[id]/toggle` | Toggle Active/Disable | 🟦 |
-| PATCH | `/api/cards/[id]/load` | Apply card load (usageCount+1, totalLoadedUSD+amt) | 🟦 |
+| GET | `/api/cards` | List all cards | 🟩 |
+| POST | `/api/cards` | Create card | 🟩 |
+| PUT | `/api/cards/[id]` | Update card | 🟩 |
+| PATCH | `/api/cards/[id]` | Toggle Active/Disable (statusOnly) | 🟩 |
+| POST | `/api/cards/load` | Apply card load (usageCount+1, totalLoadedUSD+amt) | 🟩 |
 
 ### Vendors
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/vendors` | List vendors | 🟦 |
-| POST | `/api/vendors` | Create vendor (VEND-* id) | 🟦 |
-| PUT | `/api/vendors/[id]` | Update vendor | 🟦 |
+| GET | `/api/vendors` | List vendors | 🟩 |
+| POST | `/api/vendors` | Create vendor (VEND-* id) | 🟩 |
+| PUT | `/api/vendors/[id]` | Update vendor | 🟩 |
 | POST | `/api/vendors/[id]/pay` | Record payment (paymentHistory push) | 🟦 |
 
 ### Series
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/series` | List series | 🟦 |
-| POST | `/api/series` | Create series | 🟦 |
-| PUT | `/api/series/[id]` | Update series (status etc.) | 🟦 |
+| GET | `/api/series` | List series | 🟩 |
+| POST | `/api/series` | Create series | 🟩 |
+| PUT | `/api/series/[id]` | Update series (status etc.) | 🟩 |
 
 ### Sale Setups
 | Method | Endpoint | Description | Status |
@@ -176,7 +176,7 @@
 
 | Stub | Will be replaced by |
 |---|---|
-| `src/app/api/users/route.js` | `/api/customers` (Phase 1) |
+| `src/app/api/users/route.js` | `/api/customers` (already superseded by live customer endpoints) |
 | `src/app/api/admin/route.js` | admin-only aggregate endpoints |
 | `src/app/api/auth/route.js` | `/api/auth/*` when auth decided |
 | `src/app/api/tasks/route.js` | `/api/topups/*` or `/api/activities` |

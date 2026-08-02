@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Filter,
@@ -24,8 +24,77 @@ import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 
+const CustomerRow = memo(function CustomerRow({ cust, isSelected, stats, onSelect }) {
+  return (
+    <div
+      id={`customer-item-${cust.id}`}
+      onClick={() => onSelect(cust.id)}
+      className={`p-3 flex items-center justify-between cursor-pointer transition-all ${
+        isSelected
+          ? 'bg-[#f8fafc] dark:bg-slate-100 border-l-4 border-brand-blue shadow-xs text-slate-950'
+          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-4 border-transparent'
+      }`}
+    >
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="h-6 w-6 rounded-md bg-brand-orange text-white font-black text-[9px] flex items-center justify-center flex-shrink-0 shadow-xs">
+          {cust.avatar || cust.name.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1">
+            <h3 className={`text-xs font-bold truncate ${isSelected ? 'text-slate-950' : 'text-slate-900 dark:text-white'}`}>{cust.name}</h3>
+            {cust.favorite && <Star size={9} className="text-amber-500 fill-amber-500" />}
+          </div>
+          <p className={`text-[10px] font-mono font-bold mt-0.5 ${isSelected ? 'text-brand-blue' : 'text-brand-blue dark:text-blue-400'}`}>
+            Group ID: {cust.groupId || 'GC-GENERIC'}
+          </p>
+          <p className={`text-[10px] truncate mt-0.5 ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>{cust.companyName}</p>
+        </div>
+      </div>
+      <div className="text-right flex-shrink-0 pl-2">
+        <p className={`text-xs font-black ${isSelected ? 'text-slate-950' : 'text-slate-800 dark:text-slate-200'}`}>
+          ${stats?.totalUSD?.toLocaleString() || '0'} USD
+        </p>
+        <p className={`text-[10px] font-bold mt-0.5 ${isSelected ? 'text-slate-700' : 'text-slate-500 dark:text-slate-400'}`}>
+          ৳{stats?.totalBDT?.toLocaleString() || '0'} BDT
+        </p>
+        <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">{stats?.activeAccounts || 0} active acc.</p>
+      </div>
+    </div>
+  );
+});
+
+const Pagination = memo(function Pagination({ page, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-100 dark:border-slate-800">
+      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+        Page {page} of {totalPages}
+      </span>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          Prev
+        </button>
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="text-[10px] font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+});
+
 function CustomersView({
   customers,
+  loading = false,
   adAccounts,
   invoices,
   onAddCustomer,
@@ -60,36 +129,89 @@ function CustomersView({
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState('');
 
+  // Pagination
+  const LIST_PAGE_SIZE = 10;
+  const INVOICE_PAGE_SIZE = 10;
+  const [customerPage, setCustomerPage] = useState(1);
+  const [invoicePage, setInvoicePage] = useState(1);
+
+  // Reset list page when filters change
+  useEffect(() => {
+    setCustomerPage(1);
+  }, [searchTerm, statusFilter, favoriteFilter]);
+
+  // Reset ledger page when the selected customer or active tab changes
+  useEffect(() => {
+    setInvoicePage(1);
+  }, [selectedCustomerId, activeTab]);
+
   // Selected customer data
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId) || customers[0];
 
-  const filteredCustomers = customers.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (c.groupId && c.groupId.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStatus = statusFilter === 'All' ? true : c.status === statusFilter;
-    const matchesFav = favoriteFilter ? c.favorite === true : true;
-    return matchesSearch && matchesStatus && matchesFav;
-  });
+  // Precompute per-customer aggregates once so filtering/rendering avoids repeated
+  // O(n) scans of adAccounts/invoices and customers on every render.
+  const customerStats = useMemo(() => {
+    const map = {};
+    for (const cust of customers) {
+      const id = cust.id;
+      const gid = cust.groupId;
+      const accounts = adAccounts.filter(a => a.assignedCustomer === id || (a.userGroupCode && gid === a.userGroupCode));
+      const invs = invoices.filter(inv => inv.customerId === id || (inv.groupId && gid === inv.groupId));
+      map[id] = {
+        accounts,
+        activeAccounts: accounts.filter(a => a.accountStatus === 'Active').length,
+        invoices: invs,
+        totalUSD: invs.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0),
+        totalBDT: invs.reduce((sum, inv) => sum + (inv.paidAmountBDT || 0), 0),
+      };
+    }
+    return map;
+  }, [customers, adAccounts, invoices]);
 
-  const getCustomerAccounts = (custId) => {
-    return adAccounts.filter(acc => acc.assignedCustomer === custId || (acc.userGroupCode && customers.find(c => c.id === custId)?.groupId === acc.userGroupCode));
-  };
+  const getCustomerStats = useCallback(
+    (custId) => {
+      const s = customerStats[custId];
+      return s || { accounts: [], activeAccounts: 0, invoices: [], totalUSD: 0, totalBDT: 0 };
+    },
+    [customerStats],
+  );
 
-  const getCustomerInvoices = (custId) => {
-    return invoices.filter(inv => inv.customerId === custId || (inv.groupId && customers.find(c => c.id === custId)?.groupId === inv.groupId));
-  };
+  const getCustomerAccounts = useCallback((custId) => getCustomerStats(custId).accounts, [getCustomerStats]);
+  const getCustomerInvoices = useCallback((custId) => getCustomerStats(custId).invoices, [getCustomerStats]);
+  const getCustomerTotalTopupUSD = useCallback((custId) => getCustomerStats(custId).totalUSD, [getCustomerStats]);
+  const getCustomerTotalTopupBDT = useCallback((custId) => getCustomerStats(custId).totalBDT, [getCustomerStats]);
 
-  const getCustomerTotalTopupUSD = (custId) => {
-    const invs = getCustomerInvoices(custId);
-    return invs.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  };
+  const filteredCustomers = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    return customers.filter(c => {
+      const matchesSearch = !q ||
+                            c.name.toLowerCase().includes(q) ||
+                            (c.companyName || '').toLowerCase().includes(q) ||
+                            (c.email || '').toLowerCase().includes(q) ||
+                            (c.groupId && c.groupId.toLowerCase().includes(q));
+      const matchesStatus = statusFilter === 'All' ? true : c.status === statusFilter;
+      const matchesFav = favoriteFilter ? c.favorite === true : true;
+      return matchesSearch && matchesStatus && matchesFav;
+    });
+  }, [customers, searchTerm, statusFilter, favoriteFilter]);
 
-  const getCustomerTotalTopupBDT = (custId) => {
-    const invs = getCustomerInvoices(custId);
-    return invs.reduce((sum, inv) => sum + (inv.paidAmountBDT || 0), 0);
-  };
+  const customerTotalPages = Math.max(1, Math.ceil(filteredCustomers.length / LIST_PAGE_SIZE));
+  const pagedCustomers = useMemo(
+    () => filteredCustomers.slice((customerPage - 1) * LIST_PAGE_SIZE, customerPage * LIST_PAGE_SIZE),
+    [filteredCustomers, customerPage, LIST_PAGE_SIZE],
+  );
+
+  const allSelectedInvoices = selectedCustomer ? getCustomerInvoices(selectedCustomer.id) : [];
+  const invoiceTotalPages = Math.max(1, Math.ceil(allSelectedInvoices.length / INVOICE_PAGE_SIZE));
+  const pagedInvoices = useMemo(
+    () => allSelectedInvoices.slice((invoicePage - 1) * INVOICE_PAGE_SIZE, invoicePage * INVOICE_PAGE_SIZE),
+    [allSelectedInvoices, invoicePage, INVOICE_PAGE_SIZE],
+  );
+
+  const handleSelectCustomer = useCallback((custId) => {
+    setSelectedCustomerId(custId);
+    setEditingNotes(false);
+  }, []);
 
   const handleNotesEditStart = () => {
     setNotesText(selectedCustomer?.notes || '');
@@ -217,65 +339,76 @@ function CustomersView({
 
           {/* List items */}
           <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[540px] overflow-y-auto" id="customers-list-box">
-            {filteredCustomers.length === 0 ? (
+            {loading && filteredCustomers.length === 0 ? (
+              Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="p-3 flex items-center justify-between animate-pulse">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="h-6 w-6 rounded-md bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
+                    <div className="space-y-1.5">
+                      <div className="h-2.5 w-28 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-2 w-16 rounded bg-slate-100 dark:bg-slate-800" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-right">
+                    <div className="h-2.5 w-20 rounded bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-2 w-14 rounded bg-slate-100 dark:bg-slate-800 ml-auto" />
+                  </div>
+                </div>
+              ))
+            ) : filteredCustomers.length === 0 ? (
               <div className="p-8 text-center text-slate-400 dark:text-slate-500">
                 <Filter size={20} className="mx-auto mb-2 opacity-50" />
                 <p className="text-xs">No matching customers found.</p>
               </div>
             ) : (
-              filteredCustomers.map((cust) => {
+              pagedCustomers.map((cust) => {
                 const isSelected = selectedCustomer?.id === cust.id;
-                const activeAccountsCount = getCustomerAccounts(cust.id).filter(a => a.accountStatus === 'Active').length;
-                const totalUSD = getCustomerTotalTopupUSD(cust.id);
-                const totalBDT = getCustomerTotalTopupBDT(cust.id);
-
                 return (
-                  <div
+                  <CustomerRow
                     key={cust.id}
-                    id={`customer-item-${cust.id}`}
-                    onClick={() => {
-                      setSelectedCustomerId(cust.id);
-                      setEditingNotes(false);
-                    }}
-                    className={`p-3 flex items-center justify-between cursor-pointer transition-all ${
-                      isSelected 
-                        ? 'bg-[#f8fafc] dark:bg-slate-100 border-l-4 border-brand-blue shadow-xs text-slate-950' 
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-4 border-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="h-6 w-6 rounded-md bg-brand-orange text-white font-black text-[9px] flex items-center justify-center flex-shrink-0 shadow-xs">
-                        {cust.avatar || cust.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1">
-                          <h3 className={`text-xs font-bold truncate ${isSelected ? 'text-slate-950' : 'text-slate-900 dark:text-white'}`}>{cust.name}</h3>
-                          {cust.favorite && <Star size={9} className="text-amber-500 fill-amber-500" />}
-                        </div>
-                        <p className={`text-[10px] font-mono font-bold mt-0.5 ${isSelected ? 'text-brand-blue' : 'text-brand-blue dark:text-blue-400'}`}>
-                          Group ID: {cust.groupId || 'GC-GENERIC'}
-                        </p>
-                        <p className={`text-[10px] truncate mt-0.5 ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>{cust.companyName}</p>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0 pl-2">
-                      <p className={`text-xs font-black ${isSelected ? 'text-slate-950' : 'text-slate-800 dark:text-slate-200'}`}>
-                        ${totalUSD.toLocaleString()} USD
-                      </p>
-                      <p className={`text-[10px] font-bold mt-0.5 ${isSelected ? 'text-slate-700' : 'text-slate-500 dark:text-slate-400'}`}>
-                        ৳{totalBDT.toLocaleString()} BDT
-                      </p>
-                      <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">{activeAccountsCount} active acc.</p>
-                    </div>
-                  </div>
+                    cust={cust}
+                    isSelected={isSelected}
+                    stats={getCustomerStats(cust.id)}
+                    onSelect={handleSelectCustomer}
+                  />
                 );
               })
             )}
+            <Pagination page={customerPage} totalPages={customerTotalPages} onPageChange={setCustomerPage} />
           </div>
         </div>
 
         {/* Right column: Detailed Profile view (span 7) */}
-        {selectedCustomer ? (
+        {(!selectedCustomer && loading) ? (
+          <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden animate-pulse">
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <div className="h-3 w-40 rounded bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-2 w-24 rounded bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="h-6 w-14 rounded-md bg-slate-200 dark:bg-slate-700" />
+                  <div className="h-6 w-16 rounded-md bg-slate-200 dark:bg-slate-700" />
+                  <div className="h-6 w-24 rounded-md bg-slate-200 dark:bg-slate-700" />
+                </div>
+              </div>
+              <div className="mt-4 p-3.5 sm:p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
+                <div className="grid grid-cols-3 gap-3">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-2 w-20 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-3 w-24 rounded bg-slate-300 dark:bg-slate-600" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : selectedCustomer ? (
           <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden" id="customer-details-pane">
             
             {/* Header info */}
@@ -472,7 +605,7 @@ function CustomersView({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                          {getCustomerInvoices(selectedCustomer.id).map((inv) => (
+                          {pagedInvoices.map((inv) => (
                             <tr key={inv.invoiceNo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                               <td className="py-2 px-1.5 sm:px-2.5 font-bold text-slate-900 dark:text-white font-mono text-[10px] sm:text-xs truncate" title={inv.invoiceNo}>{inv.invoiceNo}</td>
                               <td className="py-2 px-1.5 sm:px-2.5 text-slate-600 dark:text-slate-400 font-medium text-[10px] sm:text-xs truncate">{inv.date}</td>
@@ -491,6 +624,7 @@ function CustomersView({
                           ))}
                         </tbody>
                       </table>
+                      <Pagination page={invoicePage} totalPages={invoiceTotalPages} onPageChange={setInvoicePage} />
                     </div>
                   )}
                 </div>

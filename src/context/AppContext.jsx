@@ -1,13 +1,12 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   INITIAL_SETTINGS,
   INITIAL_SERIES,
   INITIAL_CARDS,
   INITIAL_CUSTOMERS,
-  INITIAL_AD_ACCOUNTS,
   INITIAL_INVOICES,
   INITIAL_VENDORS,
   INITIAL_SETUPS,
@@ -40,17 +39,17 @@ export function AppProvider({ children }) {
   const [pendingInitialCustomerId, setPendingInitialCustomerId] = useState(null);
   const [pendingInitialSalesCustomerId, setPendingInitialSalesCustomerId] = useState(null);
 
-  const triggerToast = (type, title, description) => {
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const triggerToast = useCallback((type, title, description) => {
     const id = Date.now().toString();
     setToasts(prev => [...prev, { id, type, title, description }]);
     setTimeout(() => {
       removeToast(id);
     }, 4000);
-  };
-
-  const removeToast = (id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, [removeToast]);
 
   const toggleTheme = () => {
     setDarkMode(!darkMode);
@@ -59,6 +58,7 @@ export function AppProvider({ children }) {
 
   const {
     customers,
+    loading: customersLoading,
     addCustomer,
     updateCustomer: handleUpdateCustomer,
     updateCustomerNotes: handleUpdateCustomerNotes,
@@ -319,6 +319,7 @@ export function AppProvider({ children }) {
     pendingInitialSalesCustomerId,
 
     customers,
+    customersLoading,
     adAccounts,
     invoices,
     cards,

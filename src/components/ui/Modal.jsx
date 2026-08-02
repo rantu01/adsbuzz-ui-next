@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { X } from 'lucide-react';
 
 const SIZE_CLASS = {
@@ -43,26 +43,35 @@ export function Modal({
   const descriptionId = useId();
   const panelRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
 
     previouslyFocusedRef.current = document.activeElement;
 
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const focusContainer = panelRef.current;
     if (focusContainer) {
       const focusables = getFocusable(focusContainer);
       if (focusables.length > 0) {
-        focusables[0].focus();
+        focusables[0].focus({ preventScroll: true });
       } else {
-        focusContainer.focus();
+        focusContainer.focus({ preventScroll: true });
       }
+      focusContainer.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab' && panelRef.current) {
@@ -93,30 +102,32 @@ export function Modal({
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = overflow;
       const prev = previouslyFocusedRef.current;
       if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
-        prev.focus();
+        prev.focus({ preventScroll: true });
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const backdropClasses = scrollable
     ? 'custom-modal-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto'
-    : 'custom-modal-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4';
+    : 'custom-modal-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto overscroll-contain';
 
   const cardClasses = `custom-modal-card bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl ${SIZE_CLASS[size]} w-full`;
 
   const renderCard = () => {
     if (variant === 'animated') {
       const animatedCardClasses = scrollable
-        ? `${cardClasses} overflow-hidden my-8`
-        : `${cardClasses} overflow-hidden`;
+        ? `${cardClasses} my-8`
+        : `${cardClasses} max-h-full`;
       return (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, scale: 0.95, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.16, ease: 'easeOut' }}
           className={animatedCardClasses}
           ref={panelRef}
           role="dialog"
@@ -145,14 +156,14 @@ export function Modal({
               </button>
             )}
           </div>
-          {children}
+          <div className="max-h-[70vh] overflow-y-auto overscroll-contain">{children}</div>
         </motion.div>
       );
     }
 
     return (
       <div
-        className={`${cardClasses} p-6 space-y-4`}
+        className={`${cardClasses} p-6 space-y-4 max-h-full`}
         ref={panelRef}
         role="dialog"
         aria-modal="true"
@@ -179,16 +190,14 @@ export function Modal({
   };
 
   return (
-    <AnimatePresence>
-      <div
-        className={backdropClasses}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
-        {renderCard()}
-      </div>
-    </AnimatePresence>
+    <div
+      className={backdropClasses}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {renderCard()}
+    </div>
   );
 }
 

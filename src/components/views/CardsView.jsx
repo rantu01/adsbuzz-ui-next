@@ -74,6 +74,30 @@ function CardsView({
   const [selectedCardId, setSelectedCardId] = useState(cards[0]?.id || '');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 6;
+
+  const totalPages = Math.max(1, Math.ceil(cards.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedCards = cards.slice(
+    (safeCurrentPage - 1) * ITEMS_PER_PAGE,
+    safeCurrentPage * ITEMS_PER_PAGE,
+  );
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    const start = Math.max(1, safeCurrentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    for (let i = start; i <= end; i += 1) pages.push(i);
+    return pages;
+  };
   
   // Create Card State
   const [newCardName, setNewCardName] = useState('');
@@ -185,7 +209,7 @@ function CardsView({
         <div className="lg:col-span-5 space-y-4">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Wallet Cards</p>
           <div className="space-y-4" id="cards-list-box">
-            {cards.map((card) => {
+            {pagedCards.map((card) => {
               const isSelected = selectedCardId === card.id;
               return (
                 <div
@@ -250,6 +274,50 @@ function CardsView({
               );
             })}
           </div>
+
+          {/* Pagination Controls */}
+          {cards.length > ITEMS_PER_PAGE && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Showing {(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1}–
+                {Math.min(safeCurrentPage * ITEMS_PER_PAGE, cards.length)} of{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{cards.length}</span>{' '}
+                funding cards
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(safeCurrentPage - 1)}
+                  disabled={safeCurrentPage === 1}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Prev
+                </button>
+                {getPageNumbers().map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => handlePageChange(page)}
+                    className={`min-w-[32px] px-2 py-1.5 rounded-lg text-xs font-bold transition ${
+                      page === safeCurrentPage
+                        ? 'bg-brand-orange text-white shadow-md shadow-orange-500/20'
+                        : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(safeCurrentPage + 1)}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Side: Card Details (span 7) */}
@@ -444,7 +512,7 @@ function CardsView({
           </div>
 
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
             <Button type="submit">Register Card</Button>
           </div>
         </form>
@@ -526,7 +594,7 @@ function CardsView({
           </div>
 
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Button>
             <Button type="submit">Save Changes</Button>
           </div>
         </form>

@@ -1,7 +1,7 @@
 # Progress Report — AdsBuzz ERP Backend
 
 > Last updated: 2026-08-02
-> Current phase: **Phase 2 (Auth & RBAC) — COMPLETE. Next: Phase 3 (CRUD APIs) — awaiting instruction.**
+> Current phase: **Phase 3 (CRUD APIs) — MOSTLY COMPLETE. Phase 4/5 in progress. Next: finish Invoices write flow, remaining Phase 4 business APIs.**
 
 ---
 
@@ -12,9 +12,9 @@
 | Phase 0 | Analysis of old project + new UI + mapping + docs | ✅ Complete |
 | Phase 1 | Foundation (DB connection, config, folder structure) | ✅ Complete |
 | Phase 2 | Auth & RBAC | ✅ Complete |
-| Phase 3 | CRUD APIs (Settings→Series→Cards→Customers→Ad Accounts→Vendors→Sale Setups→Invoices) | ⬜ Not started |
+| Phase 3 | CRUD APIs (Series, Cards, Customers, Ad Accounts, Vendors) | ✅ Mostly complete |
 | Phase 4 | Business APIs (Topups, Insights, Reports, Export, Activities, Dashboard) | ⬜ Not started |
-| Phase 5 | Frontend integration (swap seed data → API calls) | ⬜ Not started |
+| Phase 5 | Frontend integration (swap seed data → API calls) | 🔶 In progress |
 | Phase 6 | Polish & testing | ⬜ Not started |
 | Phase 7 | Deployment | ⬜ Not started |
 
@@ -69,15 +69,33 @@
 
 > **Note**: New UI has no login page yet — client must implement Firebase Auth (signInWithEmailAndPassword / Google) and send the ID token as `Authorization: Bearer`. `login/logout` are handled client-side by the Firebase SDK; `/api/auth/sync-user` + `/api/auth/me` are the server entry points. The old-vs-new roles question (old 6 roles vs new UI's 4 roles) remains documented in `backend-analysis.md` — backend uses old roles today since prod `users` store those values.
 
+### Phase 3 — CRUD APIs (2026-08-02)
+
+- [x] **Series** — `src/models/seriesModel.js`, `/api/series`, `/api/series/[id]`; seed-on-list; CRUD. `useSeries` wired.
+- [x] **Cards** — `src/models/cardModel.js`, `/api/cards`, `/api/cards/[id]`, `/api/cards/load`; seed; CRUD + toggle + load (usageCount++ / totalLoadedUSD). `useCards` wired.
+- [x] **Customers** — `src/models/customerModel.js`, `/api/customers`, `/api/customers/[id]`, `/favorite`, `/notes`; sync from old `users` + legacy invoices; CUST-* ids; linkage to adAccounts & invoices. `useCustomers` wired.
+- [x] **Ad Accounts** — `src/models/adAccountModel.js`, `/api/ad-accounts`, `/api/ad-accounts/[id]`, `/bulk-status`; maps legacy `act_`/status schema → UI shape; Sold logic; live list (412 records). `useAdAccounts` wired.
+- [x] **Vendors** — `src/models/vendorModel.js`, `/api/vendors`, `/api/vendors/[id]`; seed; CRUD (payment `/pay` endpoint still pending).
+- [x] **Invoices (list)** — `src/models/invoiceModel.js`, `/api/invoices` GET; legacy-invoice sync from old deposits. `useInvoices` list wired. (Write/approve/reject/sync-topup still pending.)
+- [x] Live smoke tests on `/api/cards`, `/api/vendors`, `/api/series`, `/api/ad-accounts`, `/api/customers`, `/api/invoices`.
+
+### Phase 5 — Frontend Integration (2026-08-02, in progress)
+
+- [x] Connected Customers / AdAccounts / Invoices-list / Cards / Vendors / Series hooks to backend APIs.
+- [x] Added loading state to Customers page/view.
+- [x] Added pagination (10/page, Prev/Next + page window) to **Reports** (`/reports`) and **Invoices** (`/invoices`).
+- [x] Fixed **infinite re-fetch loop** — stabilized `triggerToast`/`removeToast` via `useCallback` in `AppContext.jsx` (was causing Cards/Vendors/Series to refetch every render).
+- [x] Fixed **Modal focus/typing bug** — `Modal.jsx` effect now depends only on `isOpen` (was refocusing the first input on every keystroke, breaking typing in all Add/Edit modals). Auto-focus now runs only on open.
+
 ---
 
 ## Known Issues / Decisions Pending
 
 1. ~~**Auth approach** — Firebase (reuse old) vs JWT.~~ **RESOLVED: Firebase (reuse old).** Phase 2 complete.
 2. **Database confirmed** — `MONGODB_DB_NAME=ad_buzz` (shared prod DB) verified reachable. Live data read is safe.
-3. **Customers** — new `customers` collection vs extending old `users`.
-4. **Invoices/cards/vendors/series/setups/activities** — need new collections (old has no equivalents).
-5. **Historical data** — show old production records on first launch vs start fresh.
+3. **Customers** — ✅ resolved: dedicated `customers` collection + `syncCustomersFromUsers` (from old `users`).
+4. **Invoices/cards/vendors/series/setups/activities** — ✅ new collections created: `invoices`, `cards`, `vendors`, `series` (+ legacy invoice sync). `saleSetups`, `activities` still pending.
+5. **Historical data** — ✅ resolved: live production data read (412 ad accounts, synced customers/invoices).
 6. **Roles** — backend uses old roles (admin/staff/customer) since prod `users` store those; new UI roles (Admin/Sales Manager/Operations Manager/Finance Auditor) still open — see `backend-analysis.md`.
 7. **Export format** — CSV only vs XLSX/PDF.
 8. **Login UI** — new project has no login page yet; client-side Firebase Auth + Bearer token needed during Phase 5.
@@ -86,4 +104,11 @@
 
 ## Current Focus
 
-**Next task (awaits explicit instruction):** Phase 3 — CRUD APIs. Suggested entry point (from docs/todo.md note): implement **Customers** page end-to-end first as the reference pattern, since it has no dependencies.
+**Next tasks:** Finish remaining Phase 3/4 work (Invoices write flow, Vendors pay, Settings, Sale Setups, Topups, Insights, Reports/export, Activities, Dashboard), then complete Phase 5 frontend wiring + Phase 6 polish.
+
+### Completed this session
+- Live MongoDB integration for **Series, Cards, Customers, Vendors, Ad Accounts** (list Invoices).
+- Customers view rewrite with loading state.
+- Pagination on **Reports** & **Invoices** pages.
+- Bug fixes: infinite re-fetch loop; Modal typing/focus bug (all modals).
+- Uncommitted changes summarized in `report.md`.

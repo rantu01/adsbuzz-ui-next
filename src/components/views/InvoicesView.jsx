@@ -1,6 +1,6 @@
 'use client';
-import { memo, useState } from 'react';
-import { Calendar, Clock, FileEdit } from 'lucide-react';
+import { memo, useEffect, useState } from 'react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, FileEdit } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import SearchBar from '@/components/ui/SearchBar';
@@ -10,6 +10,8 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const getCustName = (id) => {
     return customers.find(c => c.id === id)?.name || "Cash Client";
@@ -25,6 +27,28 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
     const matchesStatus = statusFilter === 'All' ? true : inv.paymentStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const pageWindow = (() => {
+    const pages = [];
+    const max = totalPages;
+    const current = safePage;
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    for (let p = Math.max(2, current - 1); p <= Math.min(max - 1, current + 1); p++) {
+      pages.push(p);
+    }
+    if (current < max - 2) pages.push('...');
+    if (max > 1) pages.push(max);
+    return pages;
+  })();
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
 
   // Date metrics calculations for Overview Cards
   const todayStr = new Date().toISOString().split('T')[0];
@@ -189,7 +213,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-              {filtered.map(inv => {
+              {paginated.map(inv => {
                 const displayGroupId = inv.groupId || 'N/A';
                 const adAccountOrService = inv.serviceType === 'Others'
                   ? (inv.serviceDetails || inv.adAccountName || 'Other Service')
@@ -252,6 +276,49 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} invoices
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={13} /> Prev
+              </button>
+              {pageWindow.map((p, idx) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      p === safePage
+                        ? 'bg-brand-blue text-white shadow-xs'
+                        : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Edit Invoice Modal */}
