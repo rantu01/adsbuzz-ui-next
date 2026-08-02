@@ -1,74 +1,117 @@
-import { useCallback, useState } from 'react';
-import { INITIAL_CUSTOMERS } from '@/data/seedData';
+import { useCallback, useEffect, useState } from 'react';
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.message || `Request failed (${res.status})`);
+  }
+  return data;
+}
 
 export function useCustomers(triggerToast) {
-  const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/customers');
+      setCustomers(data.customers || []);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const addCustomer = useCallback(
-    (customerData) => {
-      let generatedId = '';
-      const today = new Date().toISOString().split('T')[0];
-
-      setCustomers(prev => {
-        const id = `CUST-${(prev.length + 101)}`;
-        generatedId = id;
-        const newCustomer = {
-          ...customerData,
-          id,
-          createdAt: today,
-          balanceBDT: 0,
-          balanceUSD: 0,
-        };
-        return [newCustomer, ...prev];
-      });
-
-      const newCustomer = {
-        ...customerData,
-        id: generatedId,
-        createdAt: today,
-        balanceBDT: 0,
-        balanceUSD: 0,
-      };
-      triggerToast('success', 'Customer Onboarded', `${customerData.name} added with ID ${generatedId}`);
-      return newCustomer;
+    async (customerData) => {
+      try {
+        const data = await apiFetch('/api/customers', {
+          method: 'POST',
+          body: JSON.stringify(customerData),
+        });
+        const newCustomer = data.customer;
+        setCustomers(prev => [newCustomer, ...prev]);
+        triggerToast('success', 'Customer Onboarded', `${newCustomer.name} added with ID ${newCustomer.id}`);
+        return newCustomer;
+      } catch (err) {
+        triggerToast('error', 'Customer Onboarding Failed', err.message);
+        throw err;
+      }
     },
     [triggerToast],
   );
 
   const updateCustomer = useCallback(
-    (updatedCust) => {
-      setCustomers(prev => prev.map(c => (c.id === updatedCust.id ? updatedCust : c)));
-      triggerToast('success', 'Customer Updated', `Profile updated for ${updatedCust.name}`);
+    async (updatedCust) => {
+      try {
+        const data = await apiFetch(`/api/customers/${encodeURIComponent(updatedCust.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(updatedCust),
+        });
+        const saved = data.customer;
+        setCustomers(prev => prev.map(c => (c.id === saved.id ? saved : c)));
+        triggerToast('success', 'Customer Updated', `Profile updated for ${saved.name}`);
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Customer Update Failed', err.message);
+        throw err;
+      }
     },
     [triggerToast],
   );
 
   const updateCustomerNotes = useCallback(
-    (customerId, notes) => {
-      setCustomers(prev => prev.map(c => (c.id === customerId ? { ...c, notes } : c)));
-      triggerToast('success', 'CRM Notes Updated', 'Customer relationship records synchronized.');
+    async (customerId, notes) => {
+      try {
+        const data = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/notes`, {
+          method: 'PATCH',
+          body: JSON.stringify({ notes }),
+        });
+        const saved = data.customer;
+        setCustomers(prev => prev.map(c => (c.id === saved.id ? saved : c)));
+        triggerToast('success', 'CRM Notes Updated', 'Customer relationship records synchronized.');
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Notes Update Failed', err.message);
+        throw err;
+      }
     },
     [triggerToast],
   );
 
   const toggleFavorite = useCallback(
-    (customerId) => {
-      setCustomers(prev => {
-        const target = prev.find(c => c.id === customerId);
-        if (target) {
-          const nextState = !target.favorite;
-          triggerToast(
-            'info',
-            nextState ? 'Added to Favorites' : 'Removed from Favorites',
-            `${target.name} bookmarks toggled.`,
-          );
-        }
-        return prev.map(c =>
-          c.id === customerId ? { ...c, favorite: !c.favorite } : c,
+    async (customerId) => {
+      try {
+        const data = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/favorite`, {
+          method: 'PATCH',
+        });
+        const saved = data.customer;
+        const wasFavorite = customers.find(c => c.id === customerId)?.favorite;
+        const nextState = !Boolean(wasFavorite);
+        setCustomers(prev => prev.map(c => (c.id === saved.id ? saved : c)));
+        triggerToast(
+          'info',
+          nextState ? 'Added to Favorites' : 'Removed from Favorites',
+          `${saved.name} bookmarks toggled.`,
         );
-      });
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Favorite Update Failed', err.message);
+        throw err;
+      }
     },
-    [triggerToast],
+    [customers, triggerToast],
   );
 
   const applySaleCredit = useCallback(
@@ -84,12 +127,20 @@ export function useCustomers(triggerToast) {
     [],
   );
 
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchCustomers();
+  }, [fetchCustomers]);
+
   return {
     customers,
+    loading,
+    error,
     addCustomer,
     updateCustomer,
     updateCustomerNotes,
     toggleFavorite,
     applySaleCredit,
+    refetch,
   };
 }
