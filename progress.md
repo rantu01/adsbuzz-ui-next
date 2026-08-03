@@ -1,7 +1,7 @@
 # Progress Report — AdsBuzz ERP Backend
 
-> Last updated: 2026-08-02
-> Current phase: **Phase 3 (CRUD APIs) — MOSTLY COMPLETE. Phase 4/5 in progress. Next: finish Invoices write flow, remaining Phase 4 business APIs.**
+> Last updated: 2026-08-03
+> Current phase: **Phase 4 (Business APIs) COMPLETE — Topups, Insights, Reports + Export, Activities, Dashboard all live and wired to UI. Next: Phase 5 frontend polish (error handling, optimistic updates, upload flow).**
 
 ---
 
@@ -12,8 +12,8 @@
 | Phase 0 | Analysis of old project + new UI + mapping + docs | ✅ Complete |
 | Phase 1 | Foundation (DB connection, config, folder structure) | ✅ Complete |
 | Phase 2 | Auth & RBAC | ✅ Complete |
-| Phase 3 | CRUD APIs (Series, Cards, Customers, Ad Accounts, Vendors) | ✅ Mostly complete |
-| Phase 4 | Business APIs (Topups, Insights, Reports, Export, Activities, Dashboard) | ⬜ Not started |
+| Phase 3 | CRUD APIs (Series, Cards, Customers, Ad Accounts, Vendors) | ✅ Complete |
+| Phase 4 | Business APIs (Topups, Insights, Reports, Export, Activities, Dashboard) | ✅ Complete |
 | Phase 5 | Frontend integration (swap seed data → API calls) | 🔶 In progress |
 | Phase 6 | Polish & testing | ⬜ Not started |
 | Phase 7 | Deployment | ⬜ Not started |
@@ -87,6 +87,15 @@
 - [x] Fixed **infinite re-fetch loop** — stabilized `triggerToast`/`removeToast` via `useCallback` in `AppContext.jsx` (was causing Cards/Vendors/Series to refetch every render).
 - [x] Fixed **Modal focus/typing bug** — `Modal.jsx` effect now depends only on `isOpen` (was refocusing the first input on every keystroke, breaking typing in all Add/Edit modals). Auto-focus now runs only on open.
 
+### Phase 4 — Business APIs (2026-08-03)
+
+- [x] **Activities** — `src/models/activityModel.js` (seed + list + create), `/api/activities` GET/POST; `useActivities` rewired to `/api/activities`; `AppContext` now logs every mutation (customer, ad-account, invoice approve/reject/sync/update, card, vendor, series, setup, base-rate, payment-method) into the activity feed via wrapped handlers.
+- [x] **Topups** — `listPendingTopups` in `invoiceModel.js`; `/api/topups` (GET pending list with search), `/api/topups/[id]/approve`, `/api/topups/[id]/reject`, `/api/topups/[id]/sync`; new `useTopups` hook; `src/app/topups/page.jsx` rewired.
+- [x] **Insights** — `src/models/insightsModel.js` (overall/platformSpend/channelBreakdown/dailyBreakdown/approval/payment/accountLedger/avgRate), `/api/insights`.
+- [x] **Reports** — `src/models/reportModel.js` (`getMonthlyReport`, `getExportRows`, `renderCSV`/`renderXLSXHtml`/`renderPDFHtml`), `/api/reports?month=`, `/api/reports/export?format=csv|xlsx|pdf`; `handleTriggerExport` in `AppContext` downloads real files (blob + content-disposition filename).
+- [x] **Dashboard** — `src/models/dashboardModel.js` (`getDashboardStats` → todaySales/monthlySales/pendingTopups/pendingApprovals/activeCustomers/activeAccounts/assignedAccounts/vendorDue + recent invoices/activities), `/api/dashboard`; `useDashboard` hook; `src/app/page.jsx` rewired (falls back to `app.stats`).
+- [x] `npm run build` ✅ (41 pages, 0 errors).
+
 ---
 
 ## Known Issues / Decisions Pending
@@ -97,18 +106,17 @@
 4. **Invoices/cards/vendors/series/setups/activities** — ✅ new collections created: `invoices`, `cards`, `vendors`, `series` (+ legacy invoice sync). `saleSetups`, `activities` still pending.
 5. **Historical data** — ✅ resolved: live production data read (412 ad accounts, synced customers/invoices).
 6. **Roles** — backend uses old roles (admin/staff/customer) since prod `users` store those; new UI roles (Admin/Sales Manager/Operations Manager/Finance Auditor) still open — see `backend-analysis.md`.
-7. **Export format** — CSV only vs XLSX/PDF.
+7. **Export format** — ✅ RESOLVED: CSV / XLSX (HTML table) / PDF (HTML) via `/api/reports/export?format=csv|xlsx|pdf`, wired to Reports page download buttons.
 8. **Login UI** — new project has no login page yet; client-side Firebase Auth + Bearer token needed during Phase 5.
 
 ---
 
 ## Current Focus
 
-**Next tasks:** Finish remaining Phase 3/4 work (Invoices write flow, Vendors pay, Settings, Sale Setups, Topups, Insights, Reports/export, Activities, Dashboard), then complete Phase 5 frontend wiring + Phase 6 polish.
+**Next tasks:** Phase 5 frontend polish — API error handling, optimistic updates, payment screenshot upload flow, full build+lint verification, end-to-end manual test of every page. Then Phase 6 polish (form validation, confirmation dialogs, tests).
 
 ### Completed this session
-- Live MongoDB integration for **Series, Cards, Customers, Vendors, Ad Accounts** (list Invoices).
-- Customers view rewrite with loading state.
-- Pagination on **Reports** & **Invoices** pages.
-- Bug fixes: infinite re-fetch loop; Modal typing/focus bug (all modals).
-- Uncommitted changes summarized in `report.md`.
+- Phase 4 business APIs (Activities, Topups, Insights, Reports + CSV/XLSX/PDF export, Dashboard) built and wired to UI.
+- AppContext mutation handlers now write to the activity feed (approve/reject/sync/update invoice, customer/ad-account/card/vendor/series/setup edits, base-rate & payment-method changes).
+- Reports export button downloads real files via `/api/reports/export`.
+- `npm run build` ✅ (41 pages, 0 errors).

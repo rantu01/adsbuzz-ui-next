@@ -111,7 +111,7 @@ function SearchableSelect({
   );
 }
 
-function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetup }) {
+function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetup, customersLoading, adAccountsLoading }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -126,6 +126,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
   const [formServiceDetails, setFormServiceDetails] = useState('');
   const [formServiceFee, setFormServiceFee] = useState(0);
   const [formStatus, setFormStatus] = useState('Active');
+  const [formErrors, setFormErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   const [editSetupData, setEditSetupData] = useState(null);
 
@@ -165,20 +167,29 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     setFormServiceDetails('');
     setFormServiceFee(0);
     setFormStatus('Active');
+    setFormErrors({});
+    setSubmitting(false);
+  };
+
+  const clearError = (key) => {
+    if (formErrors[key]) setFormErrors(prev => ({ ...prev, [key]: undefined }));
   };
 
   const handleGroupIdChange = (gid) => {
     setFormGroupId(gid);
+    clearError('groupId');
     const c = activeCustomers.find(x => x.groupId === gid);
     if (c) {
       setFormCustomerId(c.id);
       setFormAdAccountId('');
       setFormAdName('');
+      clearError('adAccountId');
     }
   };
 
   const handleAdAccountChange = (accId) => {
     setFormAdAccountId(accId);
+    clearError('adAccountId');
     const a = adAccounts.find(x => x.adAccountId === accId);
     if (a) setFormAdName(a.adAccountName);
   };
@@ -218,13 +229,35 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     }
   };
 
-  const handleSubmit = (e) => {
+  const validateAddForm = () => {
+    const errors = {};
+    if (!formGroupId) errors.groupId = 'Select a Group ID code.';
+    if (formServiceType === 'Ad Account Topup' && !formAdAccountId) errors.adAccountId = 'Select an ad account for this customer.';
+    if (formServiceType === 'Others' && !formServiceDetails.trim()) errors.serviceDetails = 'Enter service details.';
+    if (formServiceType === 'Others' && Number(formServiceFee) <= 0) errors.serviceFee = 'Enter a valid service fee.';
+    return errors;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateAddForm();
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     const payload = buildPayload();
     if (!payload) return;
-    onAddSetup(payload);
-    resetForm();
-    setShowModal(false);
+
+    setSubmitting(true);
+    try {
+      await onAddSetup(payload);
+      resetForm();
+      setShowModal(false);
+    } catch (err) {
+      // Failure toast is already shown by the hook — keep the modal open so the
+      // user can correct their input instead of losing it.
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleEditSubmit = (e) => {
@@ -303,13 +336,19 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                 className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 font-mono cursor-not-allowed"
               />
             ) : (
-              <SearchableSelect
-                options={groupIdOptions}
-                value={formGroupId}
-                onChange={handleGroupIdChange}
-                placeholder="Select Group ID..."
-                emptyText="No active clients with Group ID found"
-              />
+              <>
+                <SearchableSelect
+                  options={groupIdOptions}
+                  value={formGroupId}
+                  onChange={handleGroupIdChange}
+                  placeholder={customersLoading ? 'Loading group IDs...' : 'Select Group ID...'}
+                  emptyText={customersLoading ? 'Loading...' : 'No active clients with Group ID found'}
+                  disabled={customersLoading}
+                />
+                {formErrors.groupId && (
+                  <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.groupId}</p>
+                )}
+              </>
             )}
           </div>
           <div>
@@ -317,6 +356,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
             <div className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 font-semibold">
               {(() => {
                 const c = customers.find(x => x.groupId === eGroupId);
+                if (customersLoading) return <span className="text-slate-400 font-normal">Loading customers...</span>;
                 return c ? `${c.name} (${c.companyName})` : <span className="text-slate-400 font-normal">Select a Group ID first</span>;
               })()}
             </div>
@@ -372,14 +412,19 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                   emptyText="No ad accounts found for this customer"
                 />
               ) : (
-                <SearchableSelect
-                  options={adAccountOptions}
-                  value={formAdAccountId}
-                  onChange={handleAdAccountChange}
-                  placeholder={formCustomerId ? 'Select ad account...' : 'Select a customer first'}
-                  disabled={!formCustomerId}
-                  emptyText="No ad accounts found for this customer"
-                />
+                <div>
+                  <SearchableSelect
+                    options={adAccountOptions}
+                    value={formAdAccountId}
+                    onChange={handleAdAccountChange}
+                    placeholder={formCustomerId ? (adAccountsLoading ? 'Loading ad accounts...' : 'Select ad account...') : 'Select a customer first'}
+                    disabled={!formCustomerId || adAccountsLoading}
+                    emptyText="No ad accounts found for this customer"
+                  />
+                  {formErrors.adAccountId && (
+                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.adAccountId}</p>
+                  )}
+                </div>
               )}
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -429,14 +474,19 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                   className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
                 />
               ) : (
-                <input
-                  type="text"
-                  value={formServiceDetails}
-                  onChange={(e) => setFormServiceDetails(e.target.value)}
-                  required
-                  placeholder="e.g. Creative Design, Landing Page..."
-                  className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-                />
+                <div>
+                  <input
+                    type="text"
+                    value={formServiceDetails}
+                    onChange={(e) => { setFormServiceDetails(e.target.value); clearError('serviceDetails'); }}
+                    required
+                    placeholder="e.g. Creative Design, Landing Page..."
+                    className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+                  />
+                  {formErrors.serviceDetails && (
+                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.serviceDetails}</p>
+                  )}
+                </div>
               )}
             </div>
             <div>
@@ -451,14 +501,19 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                   className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
                 />
               ) : (
-                <input
-                  type="number"
-                  value={formServiceFee}
-                  onChange={(e) => setFormServiceFee(Number(e.target.value))}
-                  required
-                  placeholder="e.g. 5000"
-                  className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
-                />
+                <div>
+                  <input
+                    type="number"
+                    value={formServiceFee}
+                    onChange={(e) => { setFormServiceFee(Number(e.target.value)); clearError('serviceFee'); }}
+                    required
+                    placeholder="e.g. 5000"
+                    className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
+                  />
+                  {formErrors.serviceFee && (
+                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.serviceFee}</p>
+                  )}
+                </div>
               )}
             </div>
           </>
@@ -521,7 +576,9 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
           >
             Cancel
           </Button>
-          <Button type="submit">{isEdit ? 'Save Changes' : 'Create'}</Button>
+          <Button type="submit" disabled={!isEdit && submitting}>
+            {isEdit ? 'Save Changes' : (submitting ? 'Creating...' : 'Create')}
+          </Button>
         </div>
       </form>
     );

@@ -163,7 +163,7 @@ export function Modal({
 
     return (
       <div
-        className={`${cardClasses} p-6 space-y-4 max-h-full`}
+        className={`${cardClasses} max-h-full flex flex-col overflow-hidden`}
         ref={panelRef}
         role="dialog"
         aria-modal="true"
@@ -171,7 +171,7 @@ export function Modal({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
       >
-        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 p-6 pb-4 shrink-0">
           <h3 id={titleId} className="text-sm font-bold text-slate-900 dark:text-white">{title}</h3>
           {showCloseButton && (
             <button
@@ -184,7 +184,9 @@ export function Modal({
             </button>
           )}
         </div>
-        {children}
+        <div className="p-6 pt-4 space-y-4 overflow-y-auto overscroll-contain">
+          {children}
+        </div>
       </div>
     );
   };

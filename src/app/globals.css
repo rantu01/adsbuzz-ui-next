@@ -820,6 +820,60 @@ header .header-profile-menu-item-red:focus {
   background-color: #e07920 !important;
 }
 
+/* ---- Modal form readability overrides ----------------------------
+   The rules above force every modal child to black/white text, which
+   flattens form hierarchy (labels, hints, ghost buttons) and even makes
+   the primary "Create" button render black-on-orange. These scoped rules
+   restore the intended Tailwind colors without touching the rest of the
+   shared modal look. */
+
+/* Field labels (slate-400) keep their muted color in both themes */
+.custom-modal-card label.block,
+.custom-modal-card label.block *,
+.dark .custom-modal-card label.block,
+.dark .custom-modal-card label.block * {
+  color: #94a3b8 !important;
+}
+
+/* Muted hint text inside inputs/selects (e.g. "Select a Group ID first") */
+.custom-modal-card .text-slate-400,
+.custom-modal-card .text-slate-500,
+.dark .custom-modal-card .text-slate-400,
+.dark .custom-modal-card .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* Validation error messages stay red in both themes */
+.custom-modal-card p.text-red-600,
+.dark .custom-modal-card p.text-red-600,
+.custom-modal-card p.text-red-500,
+.dark .custom-modal-card p.text-red-500 {
+  color: #dc2626 !important;
+}
+.dark .custom-modal-card p.text-red-600,
+.dark .custom-modal-card p.text-red-500 {
+  color: #f87171 !important;
+}
+
+/* Primary action buttons keep white-on-orange text */
+.custom-modal-card button.bg-brand-orange,
+.dark .custom-modal-card button.bg-brand-orange,
+.custom-modal-card button.bg-brand-orange *,
+.dark .custom-modal-card button.bg-brand-orange * {
+  background-color: #F68B2D !important;
+  color: #ffffff !important;
+}
+.custom-modal-card button.bg-brand-orange:hover,
+.dark .custom-modal-card button.bg-brand-orange:hover {
+  background-color: #e07920 !important;
+}
+
+/* Ghost / outline buttons keep their muted slate text */
+.custom-modal-card button.text-slate-400,
+.dark .custom-modal-card button.text-slate-400 {
+  color: #94a3b8 !important;
+}
+
 /* ==========================================
    12. Premium Brand-Blue SaaS Tooltip, Badge & Hover Background Custom Rules
    ========================================== */

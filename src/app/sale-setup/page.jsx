@@ -11,6 +11,8 @@ export default function SaleSetupPage() {
       setups={app.setups}
       customers={app.customers}
       adAccounts={app.adAccounts}
+      customersLoading={app.customersLoading}
+      adAccountsLoading={app.adAccountsLoading}
       onUpdateSetup={app.handleUpdateSaleSetup}
       onAddSetup={app.addSetup}
     />

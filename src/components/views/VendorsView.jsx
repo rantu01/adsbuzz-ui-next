@@ -6,7 +6,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import SearchBar from '@/components/ui/SearchBar';
 
-function VendorsView({ vendors, onAddVendor, onUpdateVendor, paymentMethods }) {
+function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymentMethods }) {
   const [search, setSearch] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState(vendors[0]?.id || '');
   const [showModal, setShowModal] = useState(false);
@@ -79,21 +79,28 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, paymentMethods }) {
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return;
     if (!selectedChannel) return;
 
-    const newPaymentEntry = {
-      date: new Date().toISOString().slice(0, 10),
-      amountUSD: parsedAmount,
-      paymentMethod: selectedChannel,
-      transactionId: `PAY-${Date.now().toString().slice(-6)}`,
-    };
+    if (onPayVendor) {
+      onPayVendor(payVendorData.id, {
+        amountUSD: parsedAmount,
+        paymentMethod: selectedChannel,
+      });
+    } else {
+      const newPaymentEntry = {
+        date: new Date().toISOString().slice(0, 10),
+        amountUSD: parsedAmount,
+        paymentMethod: selectedChannel,
+        transactionId: `PAY-${Date.now().toString().slice(-6)}`,
+      };
 
-    const updatedVendor = {
-      ...payVendorData,
-      paymentHistory: [...payVendorData.paymentHistory, newPaymentEntry],
-      outstandingBalanceUSD: Math.max(0, payVendorData.outstandingBalanceUSD - parsedAmount),
-    };
+      const updatedVendor = {
+        ...payVendorData,
+        paymentHistory: [...payVendorData.paymentHistory, newPaymentEntry],
+        outstandingBalanceUSD: Math.max(0, payVendorData.outstandingBalanceUSD - parsedAmount),
+      };
 
-    if (onUpdateVendor) {
-      onUpdateVendor(updatedVendor);
+      if (onUpdateVendor) {
+        onUpdateVendor(updatedVendor);
+      }
     }
 
     setShowPayModal(false);

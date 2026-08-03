@@ -5,6 +5,25 @@ import { syncLegacyInvoices } from "@/models/invoiceModel";
 export const CUSTOMER_STATUS = ["Active", "Inactive", "Lost"];
 const DEFAULT_DOLLAR_RATE = 132;
 
+// Heavy one-time data migrations (users -> customers, legacy logs -> invoices).
+// They are expensive (full-collection scans + upserts) so they must NOT run on
+// every read. We run them lazily once per server process; subsequent reads are
+// served straight from the "customers" collection and stay fast.
+let initialSyncPromise = null;
+
+function ensureInitialSync() {
+  if (!initialSyncPromise) {
+    initialSyncPromise = (async () => {
+      await syncCustomersFromUsers();
+      await syncLegacyInvoices();
+    })().catch((error) => {
+      logger.error("Initial customer data sync failed.", error);
+      initialSyncPromise = null;
+    });
+  }
+  return initialSyncPromise;
+}
+
 function toDateString(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -125,8 +144,7 @@ export async function syncCustomersFromUsers() {
 }
 
 export async function listCustomers({ search = "", status = "", favorite = "" } = {}) {
-  await syncCustomersFromUsers();
-  await syncLegacyInvoices();
+  await ensureInitialSync();
   const collection = await getCollection("customers");
 
   const filter = {};
@@ -153,14 +171,8 @@ export async function listCustomers({ search = "", status = "", favorite = "" } 
 
 export async function getCustomerById(id) {
   if (!id) return null;
+  await ensureInitialSync();
   const collection = await getCollection("customers");
-  let customer = await collection.findOne({ id });
-  if (customer) {
-    await syncLegacyInvoices();
-    return collection.findOne({ id });
-  }
-  await syncCustomersFromUsers();
-  await syncLegacyInvoices();
   return collection.findOne({ id });
 }
 
@@ -253,4 +265,20 @@ export async function toggleCustomerFavorite(id) {
     { $set: { favorite: next, updatedAt: new Date() } }
   );
   return collection.findOne({ id });
+}
+
+export async function applyCustomerCredit(customerId, paidBDT, usd) {
+  if (!customerId) return null;
+  const collection = await getCollection("customers");
+  const existing = await collection.findOne({ id: customerId });
+  if (!existing) return null;
+
+  const nextBDT = Math.round((Number(existing.balanceBDT || 0) + Number(paidBDT || 0)) * 100) / 100;
+  const nextUSD = Math.round((Number(existing.balanceUSD || 0) + Number(usd || 0)) * 100) / 100;
+
+  await collection.updateOne(
+    { id: customerId },
+    { $set: { balanceBDT: nextBDT, balanceUSD: nextUSD, updatedAt: new Date() } }
+  );
+  return collection.findOne({ id: customerId });
 }

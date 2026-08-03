@@ -147,7 +147,7 @@ export async function updateVendor(id, data) {
   return { ...mapVendor(updated), _id: updated._id };
 }
 
-export async function recordVendorPayment(id, { amountUSD, paymentMethod, date } = {}) {
+export async function recordVendorPayment(id, { amountUSD, paymentMethod, date, transactionId } = {}) {
   const collection = await getCollection("vendors");
   const existing = await collection.findOne({ id });
   if (!existing) return null;
@@ -157,7 +157,7 @@ export async function recordVendorPayment(id, { amountUSD, paymentMethod, date }
     date: String(date || new Date().toISOString().slice(0, 10)),
     amountUSD: amount,
     paymentMethod: String(paymentMethod || "Wire Transfer").trim(),
-    transactionId: `PAY-${Date.now().toString().slice(-6)}`,
+    transactionId: String(transactionId || "").trim() || `PAY-${Date.now().toString().slice(-6)}`,
   };
 
   const nextBalance = Math.max(0, Number(existing.outstandingBalanceUSD || 0) - amount);

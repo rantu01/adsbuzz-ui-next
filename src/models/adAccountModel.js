@@ -41,7 +41,7 @@ export function toUiAccount(doc) {
   const legacyId = doc.accountId || doc.metaAccountId || "";
   const rate = Number(doc.dollarRate) > 0 ? Number(doc.dollarRate) : DEFAULT_DOLLAR_RATE;
   const mapped = mapStatusToUi(doc.status);
-  const assigned = Boolean(doc.uid) && !doc.unassignedAt;
+  const assigned = (Boolean(doc.uid) || Boolean(doc.assignedCustomer)) && !doc.unassignedAt;
 
   return {
     adAccountId: doc.adAccountId || stripActPrefix(legacyId) || String(doc._id),
@@ -75,6 +75,7 @@ export async function getAdAccountUiByIdentifier(identifier) {
 async function getAdAccountByIdentifier(identifier) {
   const collection = await getCollection("adAccounts");
   const striped = stripActPrefix(identifier);
+  const prefixed = `act_${striped}`;
   let doc = null;
 
   if (/^[a-f0-9]{24}$/i.test(identifier)) {
@@ -84,10 +85,13 @@ async function getAdAccountByIdentifier(identifier) {
     doc ||
     (await collection.findOne({ adAccountId: identifier })) ||
     (await collection.findOne({ adAccountId: striped })) ||
+    (await collection.findOne({ adAccountId: prefixed })) ||
     (await collection.findOne({ accountId: identifier })) ||
     (await collection.findOne({ accountId: striped })) ||
+    (await collection.findOne({ accountId: prefixed })) ||
     (await collection.findOne({ metaAccountId: identifier })) ||
-    (await collection.findOne({ metaAccountId: striped }));
+    (await collection.findOne({ metaAccountId: striped })) ||
+    (await collection.findOne({ metaAccountId: prefixed }));
   return doc;
 }
 
@@ -220,4 +224,25 @@ export async function bulkUpdateStatus(ids, uiStatus) {
     { $set: { accountStatus: uiStatus, status: mapStatusToLegacy(uiStatus), updatedAt: new Date() } }
   );
   return { matched: result.matchedCount, modified: result.modifiedCount };
+}
+
+export async function markAccountSold(identifier, customerId) {
+  const collection = await getCollection("adAccounts");
+  const doc = await getAdAccountByIdentifier(identifier);
+  if (!doc) return null;
+
+  await collection.updateOne(
+    { _id: doc._id },
+    {
+      $set: {
+        accountStatus: "Sold",
+        status: "active",
+        assignedCustomer: String(customerId || "") || doc.assignedCustomer || "",
+        assignedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }
+  );
+  const saved = await collection.findOne({ _id: doc._id });
+  return toUiAccount(saved);
 }

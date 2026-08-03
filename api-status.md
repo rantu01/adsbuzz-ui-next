@@ -2,7 +2,7 @@
 
 > Generated during **Phase 0**. Live status matrix for all backend endpoints.
 > Legend: 🟦 Planned (to build) · 🟨 Partial (needs review/port) · 🟩 Complete · ⬜ Not required
-> Last updated: 2026-08-02
+> Last updated: 2026-08-03
 
 ---
 
@@ -12,22 +12,22 @@
 |---|---|---|---|
 | **Foundation (Phase 1)** | — | — | 🟩 config, db, logger, http, errorHandler, validate |
 | **Auth (Phase 2)** | ✅ Firebase | ⬜ no login UI yet | 🟩 Firebase client+admin, sync-user, me, RBAC |
-| Dashboard | ✅ `/api/user/dashboard` | ✅ `/` aggregates | 🟦 |
+| Dashboard | ✅ `/api/user/dashboard` | ✅ `/` aggregates | 🟩 stats + recent invoices/activities |
 | Customers | ⚠️ `users` only | ✅ full CRM | 🟩 CRUD+notes+favorite+sync |
 | Ad Accounts | ✅ full | ✅ full | 🟩 CRUD+bulk-status+legacy map |
-| Invoices/Sales | ⚠️ deposits+balanceLogs | ✅ full | 🟨 list+sync done; write flow pending |
-| Topups | ⚠️ deposits approval | ✅ approve/reject/sync | 🟦 |
+| Invoices/Sales | ⚠️ deposits+balanceLogs | ✅ full | 🟩 CRUD + approve/reject/sync-topup + full sale flow |
+| Topups | ⚠️ deposits approval | ✅ approve/reject/sync | 🟩 pending list + approve/reject/sync |
 | Cards | ⚠️ paymentMethods | ✅ full | 🟩 CRUD + toggle + load |
-| Vendors | ❌ none | ✅ full | 🟩 CRUD (list/create/update) |
+| Vendors | ❌ none | ✅ full | 🟩 CRUD + pay (paymentHistory) |
 | Series | ❌ none | ✅ full | 🟩 CRUD + seed |
-| Sale Setups | ❌ none | ✅ full | 🟦 |
-| Reports | ✅ reportService | ✅ 6-metric report + export | 🟦 (UI uses client data + pagination) |
-| Insights | ⚠️ top-up-insights | ✅ charts/analyzer | 🟦 |
-| Settings | ✅ site_settings | ✅ company/payment/roles | 🟦 |
-| Activities | ⚠️ logs | ✅ feed | 🟦 (new collection) |
+| Sale Setups | ❌ none | ✅ full | 🟩 CRUD + seed |
+| Reports | ✅ reportService | ✅ 6-metric report + export | 🟩 monthly metrics + csv/xlsx/pdf export |
+| Insights | ⚠️ top-up-insights | ✅ charts/analyzer | 🟩 platform spend + account analyzer |
+| Settings | ✅ site_settings | ✅ company/payment/roles | 🟩 singleton doc + payment methods |
+| Activities | ⚠️ logs | ✅ feed | 🟩 list + create (wired into mutations) |
 | Upload | ❌ none | ✅ screenshot | 🟦 |
 
-**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) mostly complete: Series, Cards, Customers, Ad Accounts, Vendors (list) + Invoices (list). Phase 4 + remaining Phase 3 write flow pending.**
+**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) COMPLETE: Settings, Series, Cards, Customers, Ad Accounts, Vendors, Sale Setups, Invoices (full write flow). Phase 4 (Business APIs) COMPLETE: Topups, Insights, Reports + Export, Activities, Dashboard — all wired to the UI. Phase 5 (Frontend Integration) in progress.**
 
 ### Phase 1 foundation files (🟩 Complete)
 
@@ -81,12 +81,12 @@
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
 | GET | `/api/invoices` | List all invoices | 🟩 (list + legacy sync) |
-| POST | `/api/invoices` | Create invoice (sale) — full sales flow | 🟦 |
-| GET | `/api/invoices/[id]` | Get invoice | 🟦 |
-| PUT | `/api/invoices/[id]` | Update invoice (edit modal) | 🟩 (see [id]) |
-| PATCH | `/api/invoices/[id]/approve` | Approve → Approved + Paid | 🟦 |
-| PATCH | `/api/invoices/[id]/reject` | Reject → Rejected + Due | 🟦 |
-| PATCH | `/api/invoices/[id]/sync-topup` | Sync topup status | 🟦 |
+| POST | `/api/invoices` | Create invoice (sale) — full sales flow | 🟩 |
+| GET | `/api/invoices/[id]` | Get invoice | 🟩 |
+| PUT | `/api/invoices/[id]` | Update invoice (edit modal) | 🟩 |
+| PATCH | `/api/invoices/[id]/approve` | Approve → Approved + Paid | 🟩 |
+| PATCH | `/api/invoices/[id]/reject` | Reject → Rejected + Due | 🟩 |
+| PATCH | `/api/invoices/[id]/sync-topup` | Sync topup status | 🟩 |
 
 ### Cards
 | Method | Endpoint | Description | Status |
@@ -103,7 +103,7 @@
 | GET | `/api/vendors` | List vendors | 🟩 |
 | POST | `/api/vendors` | Create vendor (VEND-* id) | 🟩 |
 | PUT | `/api/vendors/[id]` | Update vendor | 🟩 |
-| POST | `/api/vendors/[id]/pay` | Record payment (paymentHistory push) | 🟦 |
+| POST | `/api/vendors/[id]/pay` | Record payment (paymentHistory push) | 🟩 |
 
 ### Series
 | Method | Endpoint | Description | Status |
@@ -115,44 +115,44 @@
 ### Sale Setups
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/sale-setups` | List setups | 🟦 |
-| POST | `/api/sale-setups` | Create setup | 🟦 |
-| PUT | `/api/sale-setups/[id]` | Update setup (key: groupId+adAccountId) | 🟦 |
+| GET | `/api/sale-setups` | List setups | 🟩 |
+| POST | `/api/sale-setups` | Create setup | 🟩 |
+| PUT | `/api/sale-setups/[id]` | Update setup (key: groupId+adAccountId) | 🟩 |
 
 ### Settings
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/settings` | Get settings (public) | 🟦 |
-| PUT | `/api/settings` | Update full settings | 🟦 |
-| PUT | `/api/settings/base-rate` | Update defaultDollarRate | 🟦 |
-| POST | `/api/settings/payment-methods` | Add payment method | 🟦 |
-| DELETE | `/api/settings/payment-methods/[name]` | Delete payment method | 🟦 |
+| GET | `/api/settings` | Get settings (public) | 🟩 |
+| PUT | `/api/settings` | Update full settings | 🟩 |
+| PUT | `/api/settings/base-rate` | Update defaultDollarRate | 🟩 |
+| POST | `/api/settings/payment-methods` | Add payment method | 🟩 |
+| DELETE | `/api/settings/payment-methods/[name]` | Delete payment method | 🟩 |
 
 ### Topups (Financial Audit)
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/topups` | List pending (approvalStatus Pending OR topupStatus Pending) | 🟦 |
-| PATCH | `/api/topups/[id]/approve` | Approve invoice | 🟦 |
-| PATCH | `/api/topups/[id]/reject` | Reject invoice | 🟦 |
-| POST | `/api/topups/[id]/sync` | Sync topup status with ad platform | 🟦 |
+| GET | `/api/topups` | List pending (approvalStatus Pending OR topupStatus Pending) | 🟩 |
+| PATCH | `/api/topups/[id]/approve` | Approve invoice | 🟩 |
+| PATCH | `/api/topups/[id]/reject` | Reject invoice | 🟩 |
+| POST | `/api/topups/[id]/sync` | Sync topup status with ad platform | 🟩 |
 
 ### Insights & Reports
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/insights` | Aggregated dashboard data (platform spend, top accounts) | 🟦 |
-| GET | `/api/reports?month=YYYY-MM` | Monthly report metrics | 🟦 |
-| GET | `/api/reports/export?month=YYYY-MM&format=csv\|xlsx\|pdf` | Export report | 🟦 |
+| GET | `/api/insights` | Aggregated dashboard data (platform spend, top accounts) | 🟩 |
+| GET | `/api/reports?month=YYYY-MM` | Monthly report metrics | 🟩 |
+| GET | `/api/reports/export?month=YYYY-MM&format=csv\|xlsx\|pdf` | Export report | 🟩 |
 
 ### Activities
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/activities` | Recent activities feed | 🟦 |
-| POST | `/api/activities` | Log an activity | 🟦 |
+| GET | `/api/activities` | Recent activities feed | 🟩 |
+| POST | `/api/activities` | Log an activity | 🟩 |
 
 ### Dashboard
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/dashboard` | Aggregate stats (todaySales, monthlySales, pendingTopups, pendingApprovals, activeCustomers, activeAccounts, assignedAccounts, vendorDue) + recent activities | 🟦 |
+| GET | `/api/dashboard` | Aggregate stats (todaySales, monthlySales, pendingTopups, pendingApprovals, activeCustomers, activeAccounts, assignedAccounts, vendorDue) + recent activities | 🟩 |
 
 ### Auth
 | Method | Endpoint | Description | Status |

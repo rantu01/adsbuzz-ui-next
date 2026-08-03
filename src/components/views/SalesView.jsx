@@ -63,6 +63,23 @@ function SalesView({
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
 
+  // Sales records pagination state
+  const RECORDS_PER_PAGE = 8;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(invoices.length / RECORDS_PER_PAGE));
+  const clampedPage = Math.min(currentPage, totalPages);
+  const paginatedInvoices = invoices.slice(
+    (clampedPage - 1) * RECORDS_PER_PAGE,
+    clampedPage * RECORDS_PER_PAGE
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   // Checkout State
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId || customers[0]?.id || '');
   const [platform, setSelectedPlatform] = useState('Facebook');
@@ -1028,7 +1045,7 @@ function SalesView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {invoices.map((inv) => {
+              {paginatedInvoices.map((inv) => {
                 const custName = customers.find(c => c.id === inv.customerId)?.name || "Cash Client";
                 const displayGroupCode = inv.groupId || inv.invoiceNo;
                 const recordStatus = inv.status || inv.paymentStatus;
@@ -1072,6 +1089,50 @@ function SalesView({
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Showing {paginatedInvoices.length} of {invoices.length} entries
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={clampedPage === 1}
+                className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              >
+                <ChevronRight size={12} className="rotate-180" />
+                Prev
+              </button>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={`h-7 w-7 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                    page === clampedPage
+                      ? 'bg-brand-blue text-white'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={clampedPage === totalPages}
+                className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              >
+                Next
+                <ChevronRight size={12} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Edit Sales Entry Record Modal */}

@@ -2,17 +2,24 @@
 
 import { useApp } from '@/context/AppContext';
 import TopupsView from '@/components/views/TopupsView';
+import { useTopups } from '@/hooks/useTopups';
 
 export default function TopupsPage() {
   const app = useApp();
+  const {
+    invoices,
+    approveInvoice,
+    rejectInvoice,
+    syncTopupStatus,
+  } = useTopups(app.triggerToast);
 
   return (
     <TopupsView
-      invoices={app.invoices}
+      invoices={invoices}
       customers={app.customers}
-      onApproveInvoice={app.handleApproveInvoice}
-      onRejectInvoice={app.handleRejectInvoice}
-      onSyncTopupStatus={app.handleSyncTopupStatus}
+      onApproveInvoice={approveInvoice}
+      onRejectInvoice={rejectInvoice}
+      onSyncTopupStatus={syncTopupStatus}
     />
   );
 }

@@ -60,41 +60,166 @@ export function AppProvider({ children }) {
     customers,
     loading: customersLoading,
     addCustomer,
-    updateCustomer: handleUpdateCustomer,
-    updateCustomerNotes: handleUpdateCustomerNotes,
-    toggleFavorite: handleToggleFavorite,
+    updateCustomer: rawUpdateCustomer,
+    updateCustomerNotes: rawUpdateCustomerNotes,
+    toggleFavorite: rawToggleFavorite,
     applySaleCredit,
   } = useCustomers(triggerToast);
 
   const {
     adAccounts,
+    loading: adAccountsLoading,
     addAdAccount,
-    updateAdAccount: handleUpdateAdAccount,
-    updateAccountStatus: handleUpdateAccountStatus,
-    bulkUpdateStatus: handleBulkUpdateStatus,
+    updateAdAccount: rawUpdateAdAccount,
+    updateAccountStatus: rawUpdateAccountStatus,
+    bulkUpdateStatus: rawBulkUpdateStatus,
     markAccountSold,
   } = useAdAccounts(triggerToast);
 
   const {
     invoices,
     addInvoice,
-    updateInvoice: handleUpdateInvoice,
-    approveInvoice: handleApproveInvoice,
-    rejectInvoice: handleRejectInvoice,
-    syncTopupStatus: handleSyncTopupStatus,
+    updateInvoice: rawUpdateInvoice,
+    approveInvoice: rawApproveInvoice,
+    rejectInvoice: rawRejectInvoice,
+    syncTopupStatus: rawSyncTopupStatus,
   } = useInvoices(triggerToast);
 
-  const { cards, addCard, updateCard, toggleCardStatus: handleToggleCardStatus, applyCardLoad } = useCards(triggerToast);
-  const { vendors, addVendor, updateVendor: handleUpdateVendor } = useVendors(triggerToast);
-  const { series, addSeries, updateSeries: handleUpdateSeries } = useSeries(triggerToast);
-  const { setups, addSetup, updateSaleSetup: handleUpdateSaleSetup } = useSaleSetups(triggerToast);
+  const { cards, addCard, updateCard: rawUpdateCard, toggleCardStatus: rawToggleCardStatus, applyCardLoad } = useCards(triggerToast);
+  const { vendors, addVendor, updateVendor: rawUpdateVendor, payVendor: rawPayVendor } = useVendors(triggerToast);
+  const { series, addSeries, updateSeries: rawUpdateSeries } = useSeries(triggerToast);
+  const { setups, addSetup, updateSaleSetup: rawUpdateSaleSetup } = useSaleSetups(triggerToast);
   const {
     settings,
-    updateBaseRate: handleUpdateBaseRate,
-    addPaymentMethod: handleAddPaymentMethod,
-    deletePaymentMethod: handleDeletePaymentMethod,
+    updateBaseRate: rawUpdateBaseRate,
+    addPaymentMethod: rawAddPaymentMethod,
+    deletePaymentMethod: rawDeletePaymentMethod,
   } = useSettings(triggerToast);
   const { activities, addActivity } = useActivities();
+
+  const logActivityFx = (user, action, details, type) => {
+    addActivity({ time: "Just now", user, action, details, type });
+  };
+
+  // Wrapped mutation handlers so every action also writes to the activity feed
+  const wrapCustomerUpdate = (result, name, type) => {
+    if (result) logActivityFx("Rakibul Riyet", name, `${result.name || ""} (${result.id || ""})`.trim(), type);
+    return result;
+  };
+
+  const handleApproveInvoice = async (invoiceNo) => {
+    const result = await rawApproveInvoice(invoiceNo);
+    logActivityFx("Finance Auditor", "Approved Invoice", `Invoice ${invoiceNo} approved and settled.`, "payment");
+    return result;
+  };
+
+  const handleRejectInvoice = async (invoiceNo) => {
+    const result = await rawRejectInvoice(invoiceNo);
+    logActivityFx("Finance Auditor", "Rejected Invoice", `Invoice ${invoiceNo} rejected.`, "payment");
+    return result;
+  };
+
+  const handleSyncTopupStatus = async (invoiceNo, status) => {
+    const result = await rawSyncTopupStatus(invoiceNo, status);
+    logActivityFx("System Scheduler", "Topup Status Sync", `Invoice ${invoiceNo} synced (${status}).`, "system");
+    return result;
+  };
+
+  const handleUpdateInvoice = async (inv) => {
+    const result = await rawUpdateInvoice(inv);
+    logActivityFx("Rakibul R.", "Updated Invoice", `Invoice ${inv?.invoiceNo} edited.`, "payment");
+    return result;
+  };
+
+  const handleUpdateCustomer = async (cust) => {
+    const result = await rawUpdateCustomer(cust);
+    wrapCustomerUpdate(result, "Updated Customer", "customer");
+    return result;
+  };
+
+  const handleUpdateCustomerNotes = async (id, notes) => {
+    const result = await rawUpdateCustomerNotes(id, notes);
+    if (result) logActivityFx("Rakibul R.", "Updated CRM Notes", `Customer ${result.id} notes updated.`, "customer");
+    return result;
+  };
+
+  const handleToggleFavorite = async (id) => {
+    const result = await rawToggleFavorite(id);
+    if (result) logActivityFx("Rakibul R.", "Toggled Favorite", `Customer ${result.id} favorite toggled.`, "customer");
+    return result;
+  };
+
+  const handleUpdateAdAccount = async (acc) => {
+    const result = await rawUpdateAdAccount(acc);
+    if (result) logActivityFx("Rakibul R.", "Updated Ad Account", `Ad account ${result.adAccountName} updated.`, "account");
+    return result;
+  };
+
+  const handleUpdateAccountStatus = async (id, status) => {
+    const result = await rawUpdateAccountStatus(id, status);
+    if (result) logActivityFx("Rakibul R.", "Updated Account Status", `Ad account ${result.adAccountId} set to ${status}.`, "account");
+    return result;
+  };
+
+  const handleBulkUpdateStatus = async (ids, status) => {
+    const result = await rawBulkUpdateStatus(ids, status);
+    if (result) logActivityFx("Rakibul R.", "Bulk Status Update", `${ids?.length || 0} accounts set to ${status}.`, "account");
+    return result;
+  };
+
+  const updateCard = async (card) => {
+    const result = await rawUpdateCard(card);
+    if (result) logActivityFx("Rakibul R.", "Updated Card", `Card ${result.cardName} updated.`, "system");
+    return result;
+  };
+
+  const handleToggleCardStatus = async (id) => {
+    const result = await rawToggleCardStatus(id);
+    if (result) logActivityFx("Rakibul R.", "Toggled Card Status", `Card ${result.cardName} set to ${result.status}.`, "system");
+    return result;
+  };
+
+  const handleUpdateVendor = async (vendor) => {
+    const result = await rawUpdateVendor(vendor);
+    if (result) logActivityFx("Rakibul R.", "Updated Vendor", `Vendor ${result.name} updated.`, "system");
+    return result;
+  };
+
+  const handlePayVendor = async (id, payload) => {
+    const result = await rawPayVendor(id, payload);
+    if (result) logActivityFx("Finance Auditor", "Vendor Payment", `Payment of $${payload?.amountUSD} recorded for ${result.name}.`, "payment");
+    return result;
+  };
+
+  const handleUpdateSeries = async (series) => {
+    const result = await rawUpdateSeries(series);
+    if (result) logActivityFx("Rakibul R.", "Updated Series", `Series ${result.seriesName} updated.`, "system");
+    return result;
+  };
+
+  const handleUpdateSaleSetup = async (setup) => {
+    const result = await rawUpdateSaleSetup(setup);
+    if (result) logActivityFx("Rakibul R.", "Updated Sale Setup", `Setup for ${result.adName} updated.`, "account");
+    return result;
+  };
+
+  const handleUpdateBaseRate = async (rate) => {
+    const result = await rawUpdateBaseRate(rate);
+    if (result) logActivityFx("Finance Auditor", "Updated Base Rate", `Default dollar rate set to ৳${rate}.`, "payment");
+    return result;
+  };
+
+  const handleAddPaymentMethod = async (method) => {
+    const result = await rawAddPaymentMethod(method);
+    if (result) logActivityFx("Rakibul R.", "Added Payment Method", `${method} added.`, "payment");
+    return result;
+  };
+
+  const handleDeletePaymentMethod = async (method) => {
+    const result = await rawDeletePaymentMethod(method);
+    if (result) logActivityFx("Rakibul R.", "Removed Payment Method", `${method} removed.`, "payment");
+    return result;
+  };
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -169,62 +294,69 @@ export function AppProvider({ children }) {
     });
   };
 
-  const handleExecuteSale = (saleData) => {
-    const serial = invoices.length + 1;
-    const invoiceNo = `ADB 202416${serial.toString().padStart(3, '0')}`;
-    const today = new Date().toISOString().split('T')[0];
-
-    const newInvoice = {
-      ...saleData,
-      invoiceNo,
-      date: today,
-    };
-
-    addInvoice(newInvoice);
-
-    if (saleData.adAccountId && saleData.customerId) {
-      markAccountSold(saleData.adAccountId, saleData.customerId);
+  const handleExecuteSale = async (saleData) => {
+    let newInvoice;
+    try {
+      newInvoice = await addInvoice(saleData);
+    } catch (err) {
+      triggerToast('error', 'Sale Failed', err.message || 'Could not create the invoice.');
+      return;
     }
 
-    if (saleData.customerId) {
-      applySaleCredit(saleData.customerId, saleData.paidAmountBDT, saleData.topupAmountUSD);
-    }
-
-    const targetAccount = adAccounts.find(acc => acc.adAccountId === saleData.adAccountId);
-    if (targetAccount?.billingCard) {
-      applyCardLoad(targetAccount.billingCard, saleData.topupAmountUSD);
-    }
+    const invoiceNo = newInvoice.invoiceNo || 'INV';
+    const paidAmountBDT = newInvoice.paidAmountBDT || saleData.paidAmountBDT || 0;
 
     addActivity({
       id: `act-${Date.now()}`,
       time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       user: "Rakibul Riyet",
       action: "Completed Topup",
-      details: `${invoiceNo} - Loaded $${saleData.topupAmountUSD.toFixed(1)} to ${saleData.adAccountName}`,
+      details: `${invoiceNo} - Loaded $${(saleData.topupAmountUSD || 0).toFixed(1)} to ${saleData.adAccountName}`,
       type: 'sale',
     });
 
     triggerToast(
       'success',
       'Sale Executed Successfully',
-      `Invoice ${invoiceNo} generated. ৳${saleData.paidAmountBDT.toLocaleString()} settled.`,
+      `Invoice ${invoiceNo} generated. ৳${Number(paidAmountBDT).toLocaleString()} settled.`,
     );
     router.push('/');
   };
 
-  const handleTriggerExport = (format) => {
+  const handleTriggerExport = async (format) => {
+    const fmt = format === 'excel' ? 'xlsx' : format;
+    const url = `/api/reports/export?format=${encodeURIComponent(fmt)}`;
+
     triggerToast(
       'info',
-      'Generating Document export...',
-      `Processing ledger rows into standard AdsBuzz ${format.toUpperCase()} layout.`,
+      'Generating document export...',
+      `Processing ledger rows into standard AdsBuzz ${fmt.toUpperCase()} layout.`,
     );
-    setTimeout(() => {
-      triggerToast(
-        'success',
-        'Download Complete',
-        `AdsBuzz_Ledger_Statements_June2026.${format === 'excel' ? 'xlsx' : format}`,
-      );
-    }, 1500);
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = /filename="?([^"]+)"?/.exec(disposition);
+      const filename = match?.[1] || `AdsBuzz_Ledger_Statements.${fmt}`;
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      triggerToast('success', 'Download Complete', filename);
+    } catch (err) {
+      triggerToast('error', 'Export Failed', err.message);
+    }
   };
 
   const handleSelectCustomerFromHeader = (id) => {
@@ -321,6 +453,7 @@ export function AppProvider({ children }) {
     customers,
     customersLoading,
     adAccounts,
+    adAccountsLoading,
     invoices,
     cards,
     vendors,
@@ -350,6 +483,7 @@ export function AppProvider({ children }) {
     addCard,
     handleUpdateVendor,
     addVendor,
+    handlePayVendor,
     handleUpdateSeries,
     addSeries,
     handleUpdateSaleSetup,

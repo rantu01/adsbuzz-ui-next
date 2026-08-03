@@ -1,7 +1,7 @@
 # Todo List — AdsBuzz ERP Backend
 
 > Living checklist. Completed tasks are never deleted — only marked complete.
-> Last updated: 2026-08-02
+> Last updated: 2026-08-03
 
 ---
 
@@ -73,16 +73,16 @@
 
 ---
 
-## Phase 3 — CRUD APIs (page by page)
+## Phase 3 — CRUD APIs (page by page) ✅
 
-### Settings (no deps)
-- [ ] GET /api/settings
-- [ ] PUT /api/settings
-- [ ] PUT /api/settings/base-rate
-- [ ] POST /api/settings/payment-methods
-- [ ] DELETE /api/settings/payment-methods/[name]
-- [ ] Wire useSettings → API
-- [ ] Testing + docs update
+### Settings (no deps) ✅
+- [x] GET /api/settings
+- [x] PUT /api/settings
+- [x] PUT /api/settings/base-rate
+- [x] POST /api/settings/payment-methods
+- [x] DELETE /api/settings/payment-methods/[name]
+- [x] Wire useSettings → API
+- [x] Testing + docs update
 
 ### Series (no deps) ✅
 - [x] GET/POST /api/series
@@ -123,62 +123,62 @@
 - [x] Wire useAdAccounts → API
 - [x] Testing + docs update
 
-### Vendors (no deps) ✅ (partial)
+### Vendors (no deps) ✅
 - [x] GET/POST /api/vendors
 - [x] PUT /api/vendors/[id]
-- [ ] POST /api/vendors/[id]/pay (paymentHistory)
+- [x] POST /api/vendors/[id]/pay (paymentHistory)
 - [x] Wire useVendors → API
 - [x] Testing + docs update
 
-### Sale Setups (deps: Ad Accounts)
-- [ ] GET/POST /api/sale-setups
-- [ ] PUT /api/sale-setups/[id]
-- [ ] Wire useSaleSetups → API
-- [ ] Testing + docs update
+### Sale Setups (deps: Ad Accounts) ✅
+- [x] GET/POST /api/sale-setups
+- [x] PUT /api/sale-setups/[id]
+- [x] Wire useSaleSetups → API
+- [x] Testing + docs update
 
-### Invoices (deps: Customers, Ad Accounts) ⏳ (partial)
+### Invoices (deps: Customers, Ad Accounts) ✅
 - [x] GET /api/invoices (list + search + paymentStatus filter + legacy sync)
-- [ ] POST /api/invoices (create sale — full transactional flow)
-- [ ] GET /api/invoices/[id]
-- [ ] PUT /api/invoices/[id]
-- [ ] PATCH /api/invoices/[id]/approve
-- [ ] PATCH /api/invoices/[id]/reject
-- [ ] PATCH /api/invoices/[id]/sync-topup
-- [x] Wire useInvoices → API (list only)
-- [ ] Testing + docs update
+- [x] POST /api/invoices (create sale — full transactional flow)
+- [x] GET /api/invoices/[id]
+- [x] PUT /api/invoices/[id]
+- [x] PATCH /api/invoices/[id]/approve
+- [x] PATCH /api/invoices/[id]/reject
+- [x] PATCH /api/invoices/[id]/sync-topup
+- [x] Wire useInvoices → API
+- [x] Testing + docs update
 
 ---
 
-## Phase 4 — Business Logic APIs
+## Phase 4 — Business Logic APIs ✅
 
-### Topups (deps: Invoices)
-- [ ] GET /api/topups (pending: approvalStatus Pending OR topupStatus Pending)
-- [ ] PATCH /api/topups/[id]/approve
-- [ ] PATCH /api/topups/[id]/reject
-- [ ] POST /api/topups/[id]/sync
-- [ ] Wire TopupsView → API
-- [ ] Testing + docs update
+### Topups (deps: Invoices) ✅
+- [x] GET /api/topups (pending: approvalStatus Pending OR topupStatus Pending)
+- [x] PATCH /api/topups/[id]/approve
+- [x] PATCH /api/topups/[id]/reject
+- [x] POST /api/topups/[id]/sync
+- [x] Wire TopupsView → API
+- [x] Testing + docs update
 
-### Insights
-- [ ] GET /api/insights (platform spend, account analyzer, gateway breakdown)
-- [ ] Wire InsightsView → API
-- [ ] Testing + docs update
+### Insights ✅
+- [x] GET /api/insights (platform spend, account analyzer, gateway breakdown)
+- [x] Wire InsightsView → API
+- [x] Testing + docs update
 
-### Reports
-- [ ] GET /api/reports?month=YYYY-MM (6 metrics + ledger rows)
-- [ ] GET /api/reports/export?month=&format=csv|xlsx|pdf
-- [ ] Wire ReportsView → API
-- [ ] Testing + docs update
+### Reports ✅
+- [x] GET /api/reports?month=YYYY-MM (6 metrics + ledger rows)
+- [x] GET /api/reports/export?month=&format=csv|xlsx|pdf
+- [x] Wire ReportsView → API
+- [x] Testing + docs update
 
-### Activities
-- [ ] GET/POST /api/activities
-- [ ] Wire useActivities → API (addActivity calls on every mutation)
-- [ ] Testing + docs update
+### Activities ✅
+- [x] GET/POST /api/activities
+- [x] Wire useActivities → API (addActivity calls on every mutation)
+- [x] Testing + docs update
 
-### Dashboard
-- [ ] GET /api/dashboard (aggregate stats)
-- [ ] Wire DashboardView → API
-- [ ] Testing + docs update
+### Dashboard ✅
+- [x] GET /api/dashboard (aggregate stats)
+- [x] Wire DashboardView → API
+- [x] Testing + docs update
 
 ---
 

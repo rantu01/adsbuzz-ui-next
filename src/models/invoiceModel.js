@@ -1,6 +1,10 @@
 import { ObjectId } from "mongodb";
 import { getCollection, getDb } from "@/lib/db";
 import logger from "@/utils/logger";
+import { getSettings } from "@/models/settingsModel";
+import { markAccountSold } from "@/models/adAccountModel";
+import { applyCardLoad, getCardByName } from "@/models/cardModel";
+import { applyCustomerCredit } from "@/models/customerModel";
 
 export const DEFAULT_DOLLAR_RATE = 132;
 export const DEFAULT_CREDIT_LIMIT = 1000;
@@ -197,4 +201,226 @@ export async function listInvoices({ search = "", paymentStatus = "", customerId
   }
 
   return items;
+}
+
+async function getNextInvoiceNo() {
+  const db = await getDb();
+  const result = await db.collection("counters").findOneAndUpdate(
+    { _id: "invoiceId" },
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true }
+  );
+  const counter = result.value || result;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `ADB ${year}${month}${String(counter.seq).padStart(3, "0")}`;
+}
+
+function mapInvoice({ _id, ...rest }) {
+  return { ...rest };
+}
+
+function computePaymentStatus({ totalAmountBDT = 0, paidAmountBDT = 0, dueAmountBDT = 0 } = {}) {
+  const total = Number(totalAmountBDT) || 0;
+  const paid = Number(paidAmountBDT) || 0;
+  const due = Number(dueAmountBDT) || 0;
+
+  if (total <= 0) return "Paid";
+  if (due <= 0 && paid > 0) return "Paid";
+  if (paid > 0 && paid < total) return "Partially Paid";
+  return "Due";
+}
+
+export async function createInvoice(data = {}) {
+  const invoicesCollection = await getCollection("invoices");
+  const settings = await getSettings();
+  const defaultRate = Number(settings.defaultDollarRate) > 0 ? Number(settings.defaultDollarRate) : DEFAULT_DOLLAR_RATE;
+
+  const dollarRate = Number(data.dollarRate) > 0 ? Number(data.dollarRate) : defaultRate;
+  const topupAmountUSD = Math.round(Number(data.topupAmountUSD || 0) * 100) / 100;
+  const totalAmountBDT = Math.round(Number(data.totalAmountBDT || topupAmountUSD * dollarRate) * 100) / 100;
+  const paidAmountBDT = Math.round(Number(data.paidAmountBDT || 0) * 100) / 100;
+  const dueAmountBDT = Math.round((Number(data.dueAmountBDT ?? (totalAmountBDT - paidAmountBDT)) || 0) * 100) / 100;
+  const paymentStatus = data.paymentStatus || computePaymentStatus({ totalAmountBDT, paidAmountBDT, dueAmountBDT });
+  const date = data.date || new Date().toISOString().split("T")[0];
+
+  const invoice = {
+    invoiceNo: await getNextInvoiceNo(),
+    date,
+    platform: data.platform || detectPlatform(data.adAccountName),
+    adAccountName: String(data.adAccountName || "").trim(),
+    adAccountId: String(data.adAccountId || "").trim(),
+    serviceType: data.serviceType === "Others" ? "Others" : "Ad Account Topup",
+    serviceDetails: data.serviceDetails ? String(data.serviceDetails).trim() : "",
+    serviceFee: Number(data.serviceFee) > 0 ? Number(data.serviceFee) : 0,
+    dollarRate,
+    topupAmountUSD,
+    totalAmountBDT,
+    paidAmountBDT,
+    dueAmountBDT,
+    paymentStatus,
+    paymentMethod: String(data.paymentMethod || "").trim() || "N/A",
+    topupStatus: String(data.topupStatus || "Successfull"),
+    approvalStatus: String(data.approvalStatus || "Approved"),
+    customerId: String(data.customerId || "").trim(),
+    groupId: String(data.groupId || "").trim(),
+    note: String(data.note || "").trim(),
+    paymentScreenshot: data.paymentScreenshot || "",
+    source: "manual",
+    createdAtRaw: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await invoicesCollection.insertOne(invoice);
+  logger.info(`createInvoice: created ${invoice.invoiceNo} (${invoice.topupAmountUSD} USD)`);
+
+  const account = invoice.adAccountId
+    ? await markAccountSold(invoice.adAccountId, invoice.customerId)
+    : null;
+
+  const cardName = account?.billingCard || data.billingCard;
+  if (cardName) {
+    const card = await getCardByName(cardName);
+    if (card) {
+      await applyCardLoad(cardName, invoice.topupAmountUSD);
+    }
+  }
+
+  if (invoice.customerId) {
+    await applyCustomerCredit(invoice.customerId, invoice.paidAmountBDT, invoice.topupAmountUSD);
+  }
+
+  return mapInvoice(invoice);
+}
+
+export async function listPendingTopups({ search = "" } = {}) {
+  await syncLegacyInvoices();
+  const invoicesCollection = await getCollection("invoices");
+
+  const filter = {
+    $or: [{ approvalStatus: "Pending" }, { topupStatus: "Pending" }],
+  };
+  const cursor = invoicesCollection.find(filter).sort({ createdAtRaw: -1, date: -1 });
+  const invoices = await cursor.toArray();
+
+  let items = invoices;
+  if (search) {
+    const q = search.toLowerCase();
+    items = items.filter(
+      (inv) =>
+        inv.invoiceNo?.toLowerCase().includes(q) ||
+        inv.adAccountName?.toLowerCase().includes(q) ||
+        inv.groupId?.toLowerCase().includes(q) ||
+        inv.customerId?.toLowerCase().includes(q)
+    );
+  }
+
+  return items;
+}
+
+export async function getInvoiceByNo(invoiceNo) {
+  const invoicesCollection = await getCollection("invoices");
+  const doc = await invoicesCollection.findOne({ invoiceNo });
+  if (!doc) return null;
+  return { ...mapInvoice(doc), _id: doc._id };
+}
+
+export async function updateInvoice(invoiceNo, data = {}) {
+  const invoicesCollection = await getCollection("invoices");
+  const existing = await invoicesCollection.findOne({ invoiceNo });
+  if (!existing) return null;
+
+  const allowed = [
+    "date",
+    "platform",
+    "adAccountName",
+    "adAccountId",
+    "serviceType",
+    "serviceDetails",
+    "serviceFee",
+    "dollarRate",
+    "topupAmountUSD",
+    "totalAmountBDT",
+    "paidAmountBDT",
+    "dueAmountBDT",
+    "paymentStatus",
+    "paymentMethod",
+    "topupStatus",
+    "approvalStatus",
+    "customerId",
+    "groupId",
+    "note",
+    "paymentScreenshot",
+  ];
+
+  const patch = {};
+  for (const key of allowed) {
+    if (data[key] === undefined) continue;
+    const value = data[key];
+    if (key === "dollarRate") patch.dollarRate = Number(value) > 0 ? Number(value) : existing.dollarRate;
+    else if (key === "topupAmountUSD") patch.topupAmountUSD = Math.round(Number(value || 0) * 100) / 100;
+    else if (key === "totalAmountBDT") patch.totalAmountBDT = Math.round(Number(value || 0) * 100) / 100;
+    else if (key === "paidAmountBDT") patch.paidAmountBDT = Math.round(Number(value || 0) * 100) / 100;
+    else if (key === "dueAmountBDT") patch.dueAmountBDT = Math.round(Number(value || 0) * 100) / 100;
+    else if (key === "serviceFee") patch.serviceFee = Number(value) > 0 ? Number(value) : 0;
+    else if (key === "serviceType") patch.serviceType = value === "Others" ? "Others" : "Ad Account Topup";
+    else if (key === "paymentStatus") patch.paymentStatus = value;
+    else if (key === "topupStatus") patch.topupStatus = String(value);
+    else if (key === "approvalStatus") patch.approvalStatus = String(value);
+    else if (key === "paymentScreenshot") patch.paymentScreenshot = String(value || "");
+    else patch[key] = String(value ?? "").trim();
+  }
+
+  if (data.paymentStatus === undefined && data.paidAmountBDT !== undefined) {
+    patch.paymentStatus = computePaymentStatus({
+      totalAmountBDT: patch.totalAmountBDT ?? existing.totalAmountBDT,
+      paidAmountBDT: patch.paidAmountBDT,
+      dueAmountBDT: patch.dueAmountBDT ?? existing.dueAmountBDT,
+    });
+  }
+
+  patch.updatedAt = new Date();
+  await invoicesCollection.updateOne({ invoiceNo }, { $set: patch });
+  const updated = await invoicesCollection.findOne({ invoiceNo });
+  return mapInvoice(updated);
+}
+
+export async function approveInvoice(invoiceNo) {
+  const invoicesCollection = await getCollection("invoices");
+  const existing = await invoicesCollection.findOne({ invoiceNo });
+  if (!existing) return null;
+
+  await invoicesCollection.updateOne(
+    { invoiceNo },
+    { $set: { approvalStatus: "Approved", paymentStatus: "Paid", dueAmountBDT: 0, updatedAt: new Date() } }
+  );
+  const updated = await invoicesCollection.findOne({ invoiceNo });
+  return mapInvoice(updated);
+}
+
+export async function rejectInvoice(invoiceNo) {
+  const invoicesCollection = await getCollection("invoices");
+  const existing = await invoicesCollection.findOne({ invoiceNo });
+  if (!existing) return null;
+
+  await invoicesCollection.updateOne(
+    { invoiceNo },
+    { $set: { approvalStatus: "Rejected", paymentStatus: "Due", updatedAt: new Date() } }
+  );
+  const updated = await invoicesCollection.findOne({ invoiceNo });
+  return mapInvoice(updated);
+}
+
+export async function syncTopupStatus(invoiceNo, status) {
+  const invoicesCollection = await getCollection("invoices");
+  const existing = await invoicesCollection.findOne({ invoiceNo });
+  if (!existing) return null;
+
+  await invoicesCollection.updateOne(
+    { invoiceNo },
+    { $set: { topupStatus: String(status || "Pending"), updatedAt: new Date() } }
+  );
+  const updated = await invoicesCollection.findOne({ invoiceNo });
+  return mapInvoice(updated);
 }

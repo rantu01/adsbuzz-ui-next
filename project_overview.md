@@ -2,8 +2,8 @@
 
 # AdsBuzz ERP — Project Overview
 
-> Status: **Phases 0–2 ✅ + Phase 3 (CRUD) 🟩 mostly complete. Phase 4 pending, Phase 5 in progress.**
-> Last updated: 2026-08-02
+> Status: **Phases 0–2 ✅ + Phase 3 (CRUD) 🟩 + Phase 4 (Business APIs) 🟩 complete. Phase 5 (Frontend Integration) in progress.**
+> Last updated: 2026-08-03
 
 ---
 
@@ -98,11 +98,16 @@ docs/                              # Planning docs (api_list, database_schema, b
   - **Series, Cards, Vendors** — CRUD + seeding against new collections.
   - **Customers** — CRUD + notes + favourite + sync from old `users`.
   - **Invoices** — live list + legacy-invoice sync.
-- **Frontend wired to APIs** via hooks (Customers, AdAccounts, Invoices-list, Cards, Vendors, Series).
+  - **Activities** — feed + logging wired into every AppContext mutation.
+  - **Topups** — pending list + approve/reject/sync (Topups page wired).
+  - **Insights** — platform spend, account analyzer, gateway breakdown.
+  - **Reports** — monthly metrics + CSV/XLSX/PDF export (download buttons live).
+  - **Dashboard** — aggregate stats + recent invoices/activities (page wired).
+- **Frontend wired to APIs** via hooks (Customers, AdAccounts, Invoices-list, Cards, Vendors, Series, Activities, Topups, Dashboard).
 - **Fixed bugs:** infinite re-fetch loop (AppContext) and Modal focus/typing bug (all modals).
 - **Pagination** added to Reports & Invoices tables.
-- **Remaining:** Invoices write flow, Settings, Sale Setups, Topups, Insights, Reports/export, Activities, Dashboard, then full Phase 5/6 polish.
-- **Next step:** finish Phase 3/4 endpoints, complete Phase 5 wiring, Phase 6 polish.
+- **Remaining:** Phase 5 polish (API error handling, optimistic updates, upload flow), then Phase 6 polish.
+- **Next step:** complete Phase 5 wiring polish + Phase 6 (validation, confirmations, tests).
 
 ---
 
@@ -198,11 +203,11 @@ src/
 
 ## 12. Phase Gate
 
-**Phases 0–2 complete; Phase 3 (CRUD) mostly complete; Phase 4 & Phase 5 in progress.** Analysis is in:
+**Phases 0–2 complete; Phase 3 (CRUD) complete; Phase 4 (Business APIs) complete; Phase 5 (Frontend Integration) in progress.** Analysis is in:
 - `backend-analysis.md` — full old-project analysis + new-UI contract + schema mapping
 - `api-status.md` — API endpoint inventory + build status matrix (live)
 - `progress.md` — running progress log
 - `todo.md` — living checklist
 - `report.md` — client-facing summary of uncommitted work
 
-**Phase 3 shows Marginal ask.** Remaining CRUD: Invoices write flow, Sale Setups, Settings, Vendors pay.
+**Phase 3+4 shows Strong progress.** Remaining: Phase 5 polish (API error handling, optimistic updates, upload flow) + Phase 6 (validation, confirmations, tests).
