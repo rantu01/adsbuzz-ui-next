@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useCards(triggerToast) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchCards = useCallback(async () => {
     try {
-      const res = await fetch('/api/cards');
-      if (!res.ok) throw new Error('Failed to load cards');
-      const data = await res.json();
+      const data = await apiFetch('/api/cards');
       setCards(data.cards || []);
+      setError(null);
     } catch (err) {
-      triggerToast('error', 'Load Failed', err.message);
+      setError(err);
+      triggerToast('error', 'Load Failed', getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -22,91 +24,98 @@ export function useCards(triggerToast) {
   }, [fetchCards]);
 
   const addCard = useCallback(
-    (newCard) => {
-      fetch('/api/cards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCard),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to register card');
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setCards(prev => [...prev, data.card]);
-          triggerToast('success', 'Card Registered', `Successfully added corporate card: ${data.card.cardName}`);
-        })
-        .catch((err) => triggerToast('error', 'Failed to Register Card', err.message));
+    async (newCard) => {
+      try {
+        const data = await apiFetch('/api/cards', {
+          method: 'POST',
+          body: JSON.stringify(newCard),
+        });
+        setCards(prev => [data.card, ...prev]);
+        triggerToast('success', 'Card Registered', `Successfully added corporate card: ${data.card.cardName}`);
+        return data.card;
+      } catch (err) {
+        triggerToast('error', 'Failed to Register Card', getErrorMessage(err));
+        throw err;
+      }
     },
     [triggerToast],
   );
 
   const updateCard = useCallback(
-    (updatedCard) => {
-      fetch(`/api/cards/${updatedCard.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedCard),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to update card');
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setCards(prev => prev.map(c => (c.id === data.card.id ? data.card : c)));
-          triggerToast('success', 'Card Updated', `Updated settings for ${data.card.cardName}`);
-        })
-        .catch((err) => triggerToast('error', 'Failed to Update Card', err.message));
+    async (objOrId, updates) => {
+      const cardObj = typeof objOrId === 'object' ? objOrId : { id: objOrId, ...updates };
+      const id = cardObj.id;
+
+      // Optimistic update, roll back on failure
+      const prev = cards.find(c => c.id === id);
+      if (prev) setCards(prevCards => prevCards.map(c => (c.id === id ? { ...c, ...cardObj } : c)));
+
+      try {
+        const data = await apiFetch(`/api/cards/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(cardObj),
+        });
+        const saved = data.card;
+        setCards(prevCards => prevCards.map(c => (c.id === saved.id ? saved : c)));
+        triggerToast('success', 'Card Updated', `Updated settings for ${saved.cardName}`);
+        return saved;
+      } catch (err) {
+        if (prev) setCards(prevCards => prevCards.map(c => (c.id === id ? prev : c)));
+        triggerToast('error', 'Failed to Update Card', getErrorMessage(err));
+        throw err;
+      }
     },
-    [triggerToast],
+    [cards, triggerToast],
   );
 
   const toggleCardStatus = useCallback(
-    (cardId) => {
-      fetch(`/api/cards/${cardId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statusOnly: true }),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to toggle card status');
-          }
-          return res.json();
-        })
-        .then((data) => {
-          const card = data.card;
-          setCards(prev => prev.map(c => (c.id === card.id ? card : c)));
-          triggerToast('warning', 'Card Policy Modified', `Card ${card.cardName} set to ${card.status}.`);
-        })
-        .catch((err) => triggerToast('error', 'Failed to Toggle Card', err.message));
+    async (cardId) => {
+      const prev = cards.find(c => c.id === cardId);
+      const nextStatus = prev?.status === 'Active' ? 'Disabled' : 'Active';
+
+      // Optimistic toggle
+      if (prev) setCards(prevCards => prevCards.map(c => (c.id === cardId ? { ...c, status: nextStatus } : c)));
+
+      try {
+        const data = await apiFetch(`/api/cards/${encodeURIComponent(cardId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ statusOnly: true }),
+        });
+        const card = data.card;
+        setCards(prevCards => prevCards.map(c => (c.id === card.id ? card : c)));
+        triggerToast('warning', 'Card Policy Modified', `Card ${card.cardName} set to ${card.status}.`);
+        return card;
+      } catch (err) {
+        if (prev) setCards(prevCards => prevCards.map(c => (c.id === cardId ? prev : c)));
+        triggerToast('error', 'Failed to Toggle Card', getErrorMessage(err));
+        throw err;
+      }
     },
-    [triggerToast],
+    [cards, triggerToast],
   );
 
   const applyCardLoad = useCallback(
-    (cardName, topupAmountUSD) => {
-      fetch('/api/cards/load', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardName, topupAmountUSD }),
-      })
-        .then(async (res) => {
-          if (!res.ok) return;
-          const data = await res.json();
+    async (cardName, topupAmountUSD) => {
+      try {
+        const data = await apiFetch('/api/cards/load', {
+          method: 'POST',
+          body: JSON.stringify({ cardName, topupAmountUSD }),
+        });
+        if (data?.card) {
           setCards(prev => prev.map(card => (card.id === data.card.id ? data.card : card)));
-        })
-        .catch(() => {});
+        }
+        return data?.card || null;
+      } catch (err) {
+        return null;
+      }
     },
     [],
   );
 
-  return { cards, loading, addCard, updateCard, toggleCardStatus, applyCardLoad };
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchCards();
+  }, [fetchCards]);
+
+  return { cards, loading, error, addCard, updateCard, toggleCardStatus, applyCardLoad, refetch };
 }

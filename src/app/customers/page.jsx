@@ -17,6 +17,8 @@ function CustomersPageInner() {
     <CustomersView
       customers={app.customers}
       loading={app.customersLoading}
+      error={app.customersError}
+      onRetry={app.refetchCustomers}
       adAccounts={app.adAccounts}
       invoices={app.invoices}
       onAddCustomer={app.handleAddCustomer}

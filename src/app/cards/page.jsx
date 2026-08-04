@@ -9,6 +9,8 @@ export default function CardsPage() {
   return (
     <CardsView
       cards={app.cards}
+      error={app.cardsError}
+      onRetry={app.refetchCards}
       adAccounts={app.adAccounts}
       onUpdateCard={app.updateCard}
       onAddCard={app.addCard}

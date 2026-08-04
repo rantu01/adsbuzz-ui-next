@@ -20,6 +20,9 @@ import PlatformText from '@/components/common/PlatformText';
 import StatCard from '@/components/common/StatCard';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import FieldError from '@/components/ui/FieldError';
+import { validate, hasErrors, required, positiveNumber, maxLength } from '@/utils/formValidation';
 
 function AdAccountsView({
   adAccounts,
@@ -31,6 +34,8 @@ function AdAccountsView({
   onUpdateAccountStatus,
   onBulkUpdateStatus,
   autoOpenAddModal = false,
+  error,
+  onRetry,
 }) {
   const [searchTerm, setSearchQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('All');
@@ -67,6 +72,10 @@ function AdAccountsView({
   // Edit Account Modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editAccountData, setEditAccountData] = useState(null);
+
+  // Form validation state
+  const [addFormErrors, setAddFormErrors] = useState({});
+  const [editFormErrors, setEditFormErrors] = useState({});
 
   useEffect(() => {
     setNewSeriesId('');
@@ -157,7 +166,25 @@ function AdAccountsView({
 
   const handleCreateAccountSubmit = (e) => {
     e.preventDefault();
-    if (!newAccountId || !newAccountName) return;
+    const errors = validate(
+      {
+        accountId: newAccountId,
+        name: newAccountName,
+        rate: newRate,
+        spend: newSpend,
+      },
+      {
+        accountId: [required('Ad Account ID is required'), maxLength(64)],
+        name: [required('Ad Account Name is required'), maxLength(200)],
+        rate: positiveNumber('Dollar rate must be greater than 0'),
+        spend: positiveNumber('Monthly spend must be greater than 0'),
+      },
+    );
+    if (hasErrors(errors)) {
+      setAddFormErrors(errors);
+      return;
+    }
+    setAddFormErrors({});
 
     onAddAdAccount({
       adAccountId: newAccountId,
@@ -209,6 +236,23 @@ function AdAccountsView({
   const handleSaveEditAccount = (e) => {
     e.preventDefault();
     if (!editAccountData || !onUpdateAdAccount) return;
+    const errors = validate(
+      {
+        name: editAccountData.adAccountName,
+        rate: editAccountData.dollarRate,
+        spend: editAccountData.monthlySpending,
+      },
+      {
+        name: [required('Ad Account Name is required'), maxLength(200)],
+        rate: positiveNumber('Dollar rate must be greater than 0'),
+        spend: positiveNumber('Monthly spend must be greater than 0'),
+      },
+    );
+    if (hasErrors(errors)) {
+      setEditFormErrors(errors);
+      return;
+    }
+    setEditFormErrors({});
     onUpdateAdAccount(editAccountData);
     setShowEditModal(false);
   };
@@ -228,6 +272,7 @@ function AdAccountsView({
 
   return (
     <div className="space-y-8 animate-fade-in" id="ad-accounts-view">
+      <ErrorBanner error={error} onRetry={onRetry} />
       
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -585,7 +630,7 @@ function AdAccountsView({
       {/* Account Loading Drawer/Modal */}
       <Modal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setAddFormErrors({}); }}
         title="Load Social Ad Account Inventory"
         description="Catalog new advertising account into the ERP system."
         size="xl"
@@ -605,6 +650,7 @@ function AdAccountsView({
                 value={newAccountId}
                 onChange={(e) => setNewAccountId(e.target.value)}
               />
+              <FieldError error={addFormErrors.accountId} />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account Name</label>
@@ -617,6 +663,7 @@ function AdAccountsView({
                 value={newAccountName}
                 onChange={(e) => setNewAccountName(e.target.value)}
               />
+              <FieldError error={addFormErrors.name} />
             </div>
           </div>
 
@@ -646,6 +693,7 @@ function AdAccountsView({
                 value={newRate}
                 onChange={(e) => setNewRate(Number(e.target.value))}
               />
+              <FieldError error={addFormErrors.rate} />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Avg Monthly Spend</label>
@@ -657,6 +705,7 @@ function AdAccountsView({
                 value={newSpend}
                 onChange={(e) => setNewRateSpend(Number(e.target.value))}
               />
+              <FieldError error={addFormErrors.spend} />
             </div>
           </div>
 
@@ -797,7 +846,7 @@ function AdAccountsView({
       {/* Edit Ad Account Modal */}
       <Modal
         isOpen={showEditModal && !!editAccountData}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => { setShowEditModal(false); setEditFormErrors({}); }}
         title="Edit Ad Account Record"
         description={editAccountData ? `Update parameters for ${editAccountData.adAccountName} (${editAccountData.adAccountId})` : undefined}
         size="xl"
@@ -826,6 +875,7 @@ function AdAccountsView({
                 value={editAccountData?.adAccountName ?? ''}
                 onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, adAccountName: e.target.value })}
               />
+              <FieldError error={editFormErrors.name} />
             </div>
           </div>
 
@@ -854,6 +904,7 @@ function AdAccountsView({
                 value={editAccountData?.dollarRate ?? 0}
                 onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, dollarRate: Number(e.target.value) })}
               />
+              <FieldError error={editFormErrors.rate} />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Avg Monthly Spend</label>
@@ -864,6 +915,7 @@ function AdAccountsView({
                 value={editAccountData?.monthlySpending ?? 0}
                 onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, monthlySpending: Number(e.target.value) })}
               />
+              <FieldError error={editFormErrors.spend} />
             </div>
           </div>
 

@@ -6,8 +6,9 @@ import StatCard from '@/components/common/StatCard';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import SearchBar from '@/components/ui/SearchBar';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 
-function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries }) {
+function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, error, onRetry }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -64,6 +65,7 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries }) {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <ErrorBanner error={error} onRetry={onRetry} />
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Account Series Registry</h1>

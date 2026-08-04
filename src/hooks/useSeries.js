@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useSeries(triggerToast) {
   const [series, setSeries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchSeries = useCallback(async () => {
     try {
-      const res = await fetch('/api/series');
-      if (!res.ok) throw new Error('Failed to load series');
-      const data = await res.json();
+      const data = await apiFetch('/api/series');
       setSeries(data.series || []);
+      setError(null);
     } catch (err) {
-      triggerToast('error', 'Load Failed', err.message);
+      setError(err);
+      triggerToast('error', 'Load Failed', getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -22,53 +24,53 @@ export function useSeries(triggerToast) {
   }, [fetchSeries]);
 
   const addSeries = useCallback(
-    (seriesData) => {
-      fetch('/api/series', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(seriesData),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to create series');
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setSeries(prev => [...prev, data.series]);
-          triggerToast('success', 'Series Added', `${data.series.seriesName} has been created.`);
-        })
-        .catch((err) => triggerToast('error', 'Failed to Add Series', err.message));
+    async (seriesData) => {
+      try {
+        const data = await apiFetch('/api/series', {
+          method: 'POST',
+          body: JSON.stringify(seriesData),
+        });
+        setSeries(prev => [...prev, data.series]);
+        triggerToast('success', 'Series Added', `${data.series.seriesName} has been created.`);
+        return data.series;
+      } catch (err) {
+        triggerToast('error', 'Failed to Add Series', getErrorMessage(err));
+        throw err;
+      }
     },
     [triggerToast],
   );
 
   const updateSeries = useCallback(
-    (id, updates) => {
-      const seriesObj = typeof id === 'object' ? id : { seriesId: id, ...updates };
-      fetch(`/api/series/${seriesObj.seriesId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(seriesObj),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Failed to update series');
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setSeries(prev =>
-            prev.map(s => (s.seriesId === seriesObj.seriesId ? data.series : s)),
-          );
-          triggerToast('success', 'Series Updated', 'Changes saved.');
-        })
-        .catch((err) => triggerToast('error', 'Failed to Update Series', err.message));
+    async (objOrId, updates) => {
+      const seriesObj = typeof objOrId === 'object' ? objOrId : { seriesId: objOrId, ...updates };
+
+      // Optimistic update, roll back on failure
+      const prev = series.find(s => s.seriesId === seriesObj.seriesId);
+      if (prev) setSeries(prevS => prevS.map(s => (s.seriesId === seriesObj.seriesId ? { ...s, ...seriesObj } : s)));
+
+      try {
+        const data = await apiFetch(`/api/series/${encodeURIComponent(seriesObj.seriesId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(seriesObj),
+        });
+        const saved = data.series;
+        setSeries(prevS => prevS.map(s => (s.seriesId === saved.seriesId ? saved : s)));
+        triggerToast('success', 'Series Updated', 'Changes saved.');
+        return saved;
+      } catch (err) {
+        if (prev) setSeries(prevS => prevS.map(s => (s.seriesId === seriesObj.seriesId ? prev : s)));
+        triggerToast('error', 'Failed to Update Series', getErrorMessage(err));
+        throw err;
+      }
     },
-    [triggerToast],
+    [series, triggerToast],
   );
 
-  return { series, loading, addSeries, updateSeries };
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchSeries();
+  }, [fetchSeries]);
+
+  return { series, loading, error, addSeries, updateSeries, refetch };
 }

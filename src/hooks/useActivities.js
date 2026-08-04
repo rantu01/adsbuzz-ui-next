@@ -1,27 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch } from '@/utils/api';
 
 export function useActivities() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchActivities = useCallback(async () => {
     try {
       const data = await apiFetch('/api/activities');
       setActivities(data.activities || []);
+      setError(null);
     } catch (err) {
-      // silent — activity feed is non-critical
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -46,5 +37,10 @@ export function useActivities() {
     }
   }, []);
 
-  return { activities, loading, addActivity, refetch: fetchActivities };
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchActivities();
+  }, [fetchActivities]);
+
+  return { activities, loading, error, addActivity, refetch };
 }

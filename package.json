@@ -2,12 +2,13 @@
   "name": "adsbuzz-erp",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
+"scripts": {
+      "dev": "next dev --port 3000",
+      "build": "next build",
+      "start": "next start",
+      "lint": "next lint",
+      "test": "node --import ./tests/load-env.mjs --test-reporter=spec --test tests/invoiceMath.test.mjs tests/formValidation.test.mjs tests/pagination.test.mjs tests/integration.test.mjs"
+    },
   "dependencies": {
     "firebase": "^12.13.0",
     "firebase-admin": "^14.1.0",

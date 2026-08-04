@@ -1,6 +1,7 @@
 import { asyncHandler, ok, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, requirePositiveNumber, optionalString } from "@/utils/validate";
 import { listInvoices, createInvoice } from "@/models/invoiceModel";
+import { getPagination, paginate } from "@/utils/pagination";
 
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
@@ -9,7 +10,8 @@ export const GET = asyncHandler(async (request) => {
     paymentStatus: searchParams.get("paymentStatus") || "",
     customerId: searchParams.get("customerId") || "",
   });
-  return ok({ invoices, total: invoices.length });
+  const p = paginate(invoices, getPagination(searchParams, { page: 1, limit: 50 }));
+  return ok({ invoices: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages });
 });
 
 export const POST = asyncHandler(async (request) => {

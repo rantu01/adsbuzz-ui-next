@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from '@/utils/api';
 
 export function useDashboard() {
   const [stats, setStats] = useState(null);
@@ -8,9 +9,7 @@ export function useDashboard() {
 
   const fetchDashboard = useCallback(async () => {
     try {
-      const res = await fetch('/api/dashboard');
-      if (!res.ok) throw new Error('Failed to load dashboard');
-      const data = await res.json();
+      const data = await apiFetch('/api/dashboard');
       setDashboard(data.dashboard || null);
       setStats(data.dashboard?.stats || null);
       setError(null);
@@ -25,5 +24,10 @@ export function useDashboard() {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  return { stats, dashboard, loading, error, refetch: fetchDashboard };
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchDashboard();
+  }, [fetchDashboard]);
+
+  return { stats, dashboard, loading, error, refetch };
 }

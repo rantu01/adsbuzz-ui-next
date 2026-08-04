@@ -4,12 +4,16 @@ import { Calendar, ChevronLeft, ChevronRight, Clock, FileEdit } from 'lucide-rea
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import SearchBar from '@/components/ui/SearchBar';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import FieldError from '@/components/ui/FieldError';
+import { validate, hasErrors, positiveNumber } from '@/utils/formValidation';
 
-function InvoicesView({ invoices, customers, onUpdateInvoice }) {
+function InvoicesView({ invoices, customers, onUpdateInvoice, error, onRetry }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormErrors, setEditFormErrors] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -85,15 +89,30 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
-    if (editingInvoice && onUpdateInvoice) {
-      onUpdateInvoice(editingInvoice);
+    if (!editingInvoice || !onUpdateInvoice) return;
+    const errors = validate(
+      {
+        usd: editingInvoice.topupAmountUSD,
+        bdt: editingInvoice.totalAmountBDT,
+      },
+      {
+        usd: positiveNumber('Topup amount must be greater than 0'),
+        bdt: positiveNumber('Total amount (BDT) must be greater than 0'),
+      },
+    );
+    if (hasErrors(errors)) {
+      setEditFormErrors(errors);
+      return;
     }
+    setEditFormErrors({});
+    onUpdateInvoice(editingInvoice);
     setShowEditModal(false);
     setEditingInvoice(null);
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <ErrorBanner error={error} onRetry={onRetry} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Transaction Ledger</h1>
         <p className="text-sm text-slate-500">Historical database of all top-up invoice settlements.</p>
@@ -324,7 +343,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
       {/* Edit Invoice Modal */}
       <Modal
         isOpen={showEditModal && !!editingInvoice}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => { setShowEditModal(false); setEditFormErrors({}); }}
         title={`Edit Invoice Record #${editingInvoice?.invoiceNo ?? ''}`}
         size="lg"
       >
@@ -404,6 +423,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
                 }}
                 className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
               />
+              <FieldError error={editFormErrors.usd} />
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">BDT Total (৳)</label>
@@ -413,6 +433,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice }) {
                 onChange={(e) => editingInvoice && setEditingInvoice({ ...editingInvoice, totalAmountBDT: Number(e.target.value) })}
                 className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
               />
+              <FieldError error={editFormErrors.bdt} />
             </div>
           </div>
 

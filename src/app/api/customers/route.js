@@ -4,6 +4,7 @@ import {
   listCustomers,
   createCustomer,
 } from "@/models/customerModel";
+import { getPagination, paginate } from "@/utils/pagination";
 
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
@@ -12,7 +13,8 @@ export const GET = asyncHandler(async (request) => {
     status: searchParams.get("status") || "",
     favorite: searchParams.get("favorite") || "",
   });
-  return ok({ customers, total: customers.length });
+  const p = paginate(customers, getPagination(searchParams, { page: 1, limit: 50 }));
+  return ok({ customers: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages });
 });
 
 export const POST = asyncHandler(async (request) => {

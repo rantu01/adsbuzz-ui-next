@@ -5,8 +5,9 @@ import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import SearchBar from '@/components/ui/SearchBar';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 
-function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymentMethods }) {
+function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymentMethods, error, onRetry }) {
   const [search, setSearch] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState(vendors[0]?.id || '');
   const [showModal, setShowModal] = useState(false);
@@ -123,6 +124,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <ErrorBanner error={error} onRetry={onRetry} />
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Vendor &amp; Publisher Partners</h1>

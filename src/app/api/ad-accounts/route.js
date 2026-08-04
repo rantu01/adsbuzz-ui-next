@@ -1,10 +1,13 @@
 import { asyncHandler, ok, badRequest } from "@/utils/http";
 import { readJsonBody, optionalString } from "@/utils/validate";
 import { listAdAccounts, createAdAccount } from "@/models/adAccountModel";
+import { getPagination, paginate } from "@/utils/pagination";
 
 export const GET = asyncHandler(async (request) => {
+  const searchParams = new URL(request.url).searchParams;
   const accounts = await listAdAccounts();
-  return ok({ adAccounts: accounts, total: accounts.length });
+  const p = paginate(accounts, getPagination(searchParams, { page: 1, limit: 50 }));
+  return ok({ adAccounts: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages });
 });
 
 export const POST = asyncHandler(async (request) => {

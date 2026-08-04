@@ -21,6 +21,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { useSaleSetups } from '@/hooks/useSaleSetups';
 import { useSettings } from '@/hooks/useSettings';
 import { useActivities } from '@/hooks/useActivities';
+import { uploadScreenshot, getErrorMessage } from '@/utils/api';
 
 const AppContext = createContext(null);
 
@@ -59,43 +60,78 @@ export function AppProvider({ children }) {
   const {
     customers,
     loading: customersLoading,
+    error: customersError,
     addCustomer,
     updateCustomer: rawUpdateCustomer,
     updateCustomerNotes: rawUpdateCustomerNotes,
     toggleFavorite: rawToggleFavorite,
     applySaleCredit,
+    refetch: refetchCustomers,
   } = useCustomers(triggerToast);
 
   const {
     adAccounts,
     loading: adAccountsLoading,
+    error: adAccountsError,
     addAdAccount,
     updateAdAccount: rawUpdateAdAccount,
     updateAccountStatus: rawUpdateAccountStatus,
     bulkUpdateStatus: rawBulkUpdateStatus,
     markAccountSold,
+    refetch: refetchAdAccounts,
   } = useAdAccounts(triggerToast);
 
   const {
     invoices,
+    error: invoicesError,
     addInvoice,
     updateInvoice: rawUpdateInvoice,
     approveInvoice: rawApproveInvoice,
     rejectInvoice: rawRejectInvoice,
     syncTopupStatus: rawSyncTopupStatus,
+    refetch: refetchInvoices,
   } = useInvoices(triggerToast);
 
-  const { cards, addCard, updateCard: rawUpdateCard, toggleCardStatus: rawToggleCardStatus, applyCardLoad } = useCards(triggerToast);
-  const { vendors, addVendor, updateVendor: rawUpdateVendor, payVendor: rawPayVendor } = useVendors(triggerToast);
-  const { series, addSeries, updateSeries: rawUpdateSeries } = useSeries(triggerToast);
-  const { setups, addSetup, updateSaleSetup: rawUpdateSaleSetup } = useSaleSetups(triggerToast);
+  const {
+    cards,
+    error: cardsError,
+    addCard,
+    updateCard: rawUpdateCard,
+    toggleCardStatus: rawToggleCardStatus,
+    applyCardLoad,
+    refetch: refetchCards,
+  } = useCards(triggerToast);
+  const {
+    vendors,
+    error: vendorsError,
+    addVendor,
+    updateVendor: rawUpdateVendor,
+    payVendor: rawPayVendor,
+    refetch: refetchVendors,
+  } = useVendors(triggerToast);
+  const {
+    series,
+    error: seriesError,
+    addSeries,
+    updateSeries: rawUpdateSeries,
+    refetch: refetchSeries,
+  } = useSeries(triggerToast);
+  const {
+    setups,
+    error: setupsError,
+    addSetup,
+    updateSaleSetup: rawUpdateSaleSetup,
+    refetch: refetchSetups,
+  } = useSaleSetups(triggerToast);
   const {
     settings,
+    error: settingsError,
     updateBaseRate: rawUpdateBaseRate,
     addPaymentMethod: rawAddPaymentMethod,
     deletePaymentMethod: rawDeletePaymentMethod,
+    refetch: refetchSettings,
   } = useSettings(triggerToast);
-  const { activities, addActivity } = useActivities();
+  const { activities, error: activitiesError, addActivity, refetch: refetchActivities } = useActivities();
 
   const logActivityFx = (user, action, details, type) => {
     addActivity({ time: "Just now", user, action, details, type });
@@ -297,9 +333,29 @@ export function AppProvider({ children }) {
   const handleExecuteSale = async (saleData) => {
     let newInvoice;
     try {
-      newInvoice = await addInvoice(saleData);
+      const payload = { ...saleData };
+
+      // Persist the payment screenshot to the upload store instead of embedding
+      // the full data URL in the invoice document.
+      if (typeof payload.paymentScreenshot === 'string' && payload.paymentScreenshot.startsWith('data:')) {
+        try {
+          const uploadedUrl = await uploadScreenshot({
+            name: payload.screenshotName || 'payment-screenshot.png',
+            data: payload.paymentScreenshot,
+          });
+          if (uploadedUrl) {
+            payload.paymentScreenshot = uploadedUrl;
+            payload.screenshotName = payload.screenshotName || 'payment-screenshot.png';
+          }
+        } catch (uploadErr) {
+          triggerToast('error', 'Screenshot Upload Failed', uploadErr.message);
+          // Continue the sale with the data URL embedded so the transaction is not lost.
+        }
+      }
+
+      newInvoice = await addInvoice(payload);
     } catch (err) {
-      triggerToast('error', 'Sale Failed', err.message || 'Could not create the invoice.');
+      triggerToast('error', 'Sale Failed', getErrorMessage(err));
       return;
     }
 
@@ -452,16 +508,35 @@ export function AppProvider({ children }) {
 
     customers,
     customersLoading,
+    customersError,
     adAccounts,
     adAccountsLoading,
+    adAccountsError,
     invoices,
+    invoicesError,
     cards,
+    cardsError,
     vendors,
+    vendorsError,
     series,
+    seriesError,
     setups,
+    setupsError,
     settings,
+    settingsError,
     activities,
+    activitiesError,
     stats,
+
+    refetchCustomers,
+    refetchAdAccounts,
+    refetchInvoices,
+    refetchCards,
+    refetchVendors,
+    refetchSeries,
+    refetchSetups,
+    refetchSettings,
+    refetchActivities,
 
     toggleTheme,
     triggerToast,

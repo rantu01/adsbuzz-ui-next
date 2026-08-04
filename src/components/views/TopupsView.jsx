@@ -1,17 +1,25 @@
 'use client';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Clock, ShieldCheck, AlertCircle, CheckCircle, XCircle, Search, DollarSign } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import StatCard from '@/components/common/StatCard';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 function TopupsView({
   invoices,
   customers,
   onApproveInvoice,
   onRejectInvoice,
-  onSyncTopupStatus
+  onSyncTopupStatus,
+  loading = false,
+  error,
+  onRetry
 }) {
+
+  // Reject confirmation dialog target (invoiceNo)
+  const [rejectTarget, setRejectTarget] = useState(null);
 
   // Get only pending approvals or pending topups
   const pendingInvoices = invoices.filter(inv => 
@@ -26,6 +34,7 @@ function TopupsView({
 
   return (
     <div className="space-y-8 animate-fade-in" id="topups-view">
+      <ErrorBanner error={error} onRetry={onRetry} />
       
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -71,7 +80,13 @@ function TopupsView({
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Audit Queue</h3>
         </div>
         
-        {pendingInvoices.length === 0 ? (
+        {loading ? (
+          <div className="p-16 text-center text-slate-400 dark:text-slate-500">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-brand-blue" />
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Loading audit queue...</h4>
+            <p className="text-xs mt-1">Fetching pending approvals and top-up syncs.</p>
+          </div>
+        ) : pendingInvoices.length === 0 ? (
           <div className="p-16 text-center text-slate-400 dark:text-slate-500">
             <CheckCircle className="mx-auto mb-3 text-emerald-500" size={40} />
             <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Inbox Completely Settled!</h4>
@@ -140,7 +155,7 @@ function TopupsView({
                             </button>
                             <button
                               id={`btn-reject-${inv.invoiceNo}`}
-                              onClick={() => onRejectInvoice(inv.invoiceNo)}
+                              onClick={() => setRejectTarget(inv.invoiceNo)}
                               className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-2.5 py-1 rounded cursor-pointer active:scale-95 transition-all"
                             >
                               Reject
@@ -166,6 +181,19 @@ function TopupsView({
         )}
       </div>
 
+      {/* Reject confirmation dialog */}
+      <ConfirmDialog
+        isOpen={!!rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        onConfirm={() => {
+          if (rejectTarget) onRejectInvoice(rejectTarget);
+          setRejectTarget(null);
+        }}
+        title="Reject this invoice?"
+        message={`This will mark invoice #${rejectTarget ?? ''} as Rejected. This action cannot be undone.`}
+        confirmLabel="Reject"
+        loadingLabel="Rejecting..."
+      />
     </div>
   );
 }

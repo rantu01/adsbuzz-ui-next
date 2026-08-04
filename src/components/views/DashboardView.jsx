@@ -35,6 +35,7 @@ import {
 import PlatformText from '@/components/common/PlatformText';
 
 import StatCard from '@/components/common/StatCard';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 const ACCOUNT_COLORS = [
   '#2563EB', // Blue
   '#059669', // Emerald
@@ -106,7 +107,9 @@ function DashboardView({
   activities,
   onNavigate,
   onQuickAction,
-  onSelectInsightsAccount
+  onSelectInsightsAccount,
+  error,
+  onRetry
 }) {
 
   // Prepare monthly revenue data for Recharts
@@ -254,6 +257,7 @@ function DashboardView({
 
   return (
     <div className="space-y-8 pb-12 animate-fade-in" id="dashboard-view">
+      <ErrorBanner error={error} onRetry={onRetry} />
       
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

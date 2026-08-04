@@ -1,27 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useVendors(triggerToast) {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchVendors = useCallback(async () => {
     try {
       const data = await apiFetch('/api/vendors');
       setVendors(data.vendors || []);
+      setError(null);
     } catch (err) {
-      triggerToast('error', 'Load Failed', err.message);
+      setError(err);
+      triggerToast('error', 'Load Failed', getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -42,7 +34,7 @@ export function useVendors(triggerToast) {
         triggerToast('success', 'Vendor Added', `${data.vendor.name} has been added.`);
         return data.vendor;
       } catch (err) {
-        triggerToast('error', 'Failed to Add Vendor', err.message);
+        triggerToast('error', 'Failed to Add Vendor', getErrorMessage(err));
         throw err;
       }
     },
@@ -52,20 +44,27 @@ export function useVendors(triggerToast) {
   const updateVendor = useCallback(
     async (objOrId, updates) => {
       const vendorObj = typeof objOrId === 'object' ? objOrId : { id: objOrId, ...updates };
+
+      // Optimistic update, roll back on failure
+      const prev = vendors.find(v => v.id === vendorObj.id);
+      if (prev) setVendors(prevV => prevV.map(v => (v.id === vendorObj.id ? { ...v, ...vendorObj } : v)));
+
       try {
         const data = await apiFetch(`/api/vendors/${encodeURIComponent(vendorObj.id)}`, {
           method: 'PATCH',
           body: JSON.stringify(vendorObj),
         });
-        setVendors(prev => prev.map(v => (v.id === data.vendor.id ? data.vendor : v)));
+        const saved = data.vendor;
+        setVendors(prevV => prevV.map(v => (v.id === saved.id ? saved : v)));
         triggerToast('success', 'Vendor Updated', 'Changes saved.');
-        return data.vendor;
+        return saved;
       } catch (err) {
-        triggerToast('error', 'Failed to Update Vendor', err.message);
+        if (prev) setVendors(prevV => prevV.map(v => (v.id === vendorObj.id ? prev : v)));
+        triggerToast('error', 'Failed to Update Vendor', getErrorMessage(err));
         throw err;
       }
     },
-    [triggerToast],
+    [vendors, triggerToast],
   );
 
   const payVendor = useCallback(
@@ -79,12 +78,17 @@ export function useVendors(triggerToast) {
         triggerToast('success', 'Payment Recorded', `$${amountUSD} settled to vendor.`);
         return data.vendor;
       } catch (err) {
-        triggerToast('error', 'Payment Recording Failed', err.message);
+        triggerToast('error', 'Payment Recording Failed', getErrorMessage(err));
         throw err;
       }
     },
     [triggerToast],
   );
 
-  return { vendors, loading, addVendor, updateVendor, payVendor };
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchVendors();
+  }, [fetchVendors]);
+
+  return { vendors, loading, error, addVendor, updateVendor, payVendor, refetch };
 }

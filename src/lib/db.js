@@ -46,4 +46,17 @@ export async function pingDatabase() {
   }
 }
 
+export async function closeDb() {
+  try {
+    const c = await clientPromise;
+    await c.close();
+    if (global._adsbuzzMongoClientPromise) {
+      global._adsbuzzMongoClientPromise = null;
+    }
+    clientPromise = null;
+  } catch {
+    // ignore close errors
+  }
+}
+
 export default clientPromise;

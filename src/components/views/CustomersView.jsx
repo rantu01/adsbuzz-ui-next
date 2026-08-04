@@ -23,6 +23,9 @@ import {
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import FieldError from '@/components/ui/FieldError';
+import { validate, hasErrors, required, email, phone, positiveNumber, maxLength } from '@/utils/formValidation';
 
 const CustomerRow = memo(function CustomerRow({ cust, isSelected, stats, onSelect }) {
   return (
@@ -95,6 +98,8 @@ const Pagination = memo(function Pagination({ page, totalPages, onPageChange }) 
 function CustomersView({
   customers,
   loading = false,
+  error,
+  onRetry,
   adAccounts,
   invoices,
   onAddCustomer,
@@ -124,6 +129,10 @@ function CustomersView({
   // Edit Customer Modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editCustData, setEditCustData] = useState(null);
+
+  // Form validation state
+  const [addFormErrors, setAddFormErrors] = useState({});
+  const [editFormErrors, setEditFormErrors] = useState({});
 
   // Notes state
   const [editingNotes, setEditingNotes] = useState(false);
@@ -227,7 +236,29 @@ function CustomersView({
 
   const handleCreateCustomerSubmit = (e) => {
     e.preventDefault();
-    if (!newCustName || !newCustEmail || !newCustCompany) return;
+    const errors = validate(
+      {
+        name: newCustName,
+        groupId: newCustGroupId,
+        email: newCustEmail,
+        phone: newCustPhone,
+        company: newCustCompany,
+        credit: newCustCredit,
+      },
+      {
+        name: [required('Full corporate name is required'), maxLength(120)],
+        groupId: maxLength(30, 'Group ID must be 30 characters or fewer'),
+        email: [required('Email address is required'), email()],
+        phone,
+        company: [required('Company name is required'), maxLength(120)],
+        credit: positiveNumber('Credit limit must be greater than 0'),
+      },
+    );
+    if (hasErrors(errors)) {
+      setAddFormErrors(errors);
+      return;
+    }
+    setAddFormErrors({});
     const generatedGroupId = newCustGroupId.trim() || `GC-${newCustName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase()}`;
     onAddCustomer({
       name: newCustName,
@@ -258,12 +289,36 @@ function CustomersView({
   const handleSaveEditCustomer = (e) => {
     e.preventDefault();
     if (!editCustData || !onUpdateCustomer) return;
+    const errors = validate(
+      {
+        name: editCustData.name,
+        groupId: editCustData.groupId,
+        email: editCustData.email,
+        phone: editCustData.phone,
+        company: editCustData.companyName,
+        credit: editCustData.creditLimitUSD,
+      },
+      {
+        name: [required('Full corporate name is required'), maxLength(120)],
+        groupId: [required('Group ID is required'), maxLength(30)],
+        email: [required('Email address is required'), email()],
+        phone,
+        company: [required('Company name is required'), maxLength(120)],
+        credit: positiveNumber('Credit limit must be greater than 0'),
+      },
+    );
+    if (hasErrors(errors)) {
+      setEditFormErrors(errors);
+      return;
+    }
+    setEditFormErrors({});
     onUpdateCustomer(editCustData);
     setShowEditModal(false);
   };
 
   return (
     <div className="space-y-5 sm:space-y-6 animate-fade-in" id="customers-view">
+      <ErrorBanner error={error} onRetry={onRetry} />
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -706,7 +761,7 @@ function CustomersView({
       {/* Customer creation Modal dialog */}
       <Modal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setAddFormErrors({}); }}
         title="Create New Corporate Customer"
         description="Add details to populate client record and grant agency ad accounts."
         size="md"
@@ -723,8 +778,9 @@ function CustomersView({
               placeholder="e.g. Bijoy Group Ltd"
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={newCustName}
-              onChange={(e) => setNewCustName(e.target.value)}
+              onChange={(e) => { setNewCustName(e.target.value); if (addFormErrors.name) setAddFormErrors((p) => ({ ...p, name: undefined })); }}
             />
+            <FieldError error={addFormErrors.name} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -737,6 +793,7 @@ function CustomersView({
                 value={newCustGroupId}
                 onChange={(e) => setNewCustGroupId(e.target.value)}
               />
+              <FieldError error={addFormErrors.groupId} />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Brand / Company Name</label>
@@ -749,6 +806,7 @@ function CustomersView({
                 value={newCustCompany}
                 onChange={(e) => setNewCustCompany(e.target.value)}
               />
+              <FieldError error={addFormErrors.company} />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -763,6 +821,7 @@ function CustomersView({
                 value={newCustEmail}
                 onChange={(e) => setNewCustEmail(e.target.value)}
               />
+              <FieldError error={addFormErrors.email} />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Phone Number</label>
@@ -774,6 +833,7 @@ function CustomersView({
                 value={newCustPhone}
                 onChange={(e) => setNewCustPhone(e.target.value)}
               />
+              <FieldError error={addFormErrors.phone} />
             </div>
           </div>
           <div>
@@ -786,6 +846,7 @@ function CustomersView({
               value={newCustCredit}
               onChange={(e) => setNewCustCredit(Number(e.target.value))}
             />
+            <FieldError error={addFormErrors.credit} />
           </div>
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <Button variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
@@ -797,7 +858,7 @@ function CustomersView({
       {/* Edit Customer Modal Dialog */}
       <Modal
         isOpen={showEditModal && !!editCustData}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => { setShowEditModal(false); setEditFormErrors({}); }}
         title="Edit Corporate Customer Record"
         description={editCustData ? `Modify parameters for ${editCustData.name} (${editCustData.id})` : undefined}
         size="lg"
@@ -815,6 +876,7 @@ function CustomersView({
               value={editCustData?.name ?? ''}
               onChange={(e) => editCustData && setEditCustData({ ...editCustData, name: e.target.value })}
             />
+            <FieldError error={editFormErrors.name} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -828,6 +890,7 @@ function CustomersView({
                 value={editCustData?.groupId || ''}
                 onChange={(e) => editCustData && setEditCustData({ ...editCustData, groupId: e.target.value })}
               />
+              <FieldError error={editFormErrors.groupId} />
             </div>
 
             <div>
@@ -840,6 +903,7 @@ function CustomersView({
                 value={editCustData?.companyName ?? ''}
                 onChange={(e) => editCustData && setEditCustData({ ...editCustData, companyName: e.target.value })}
               />
+              <FieldError error={editFormErrors.company} />
             </div>
           </div>
 
@@ -854,6 +918,7 @@ function CustomersView({
                 value={editCustData?.email ?? ''}
                 onChange={(e) => editCustData && setEditCustData({ ...editCustData, email: e.target.value })}
               />
+              <FieldError error={editFormErrors.email} />
             </div>
 
             <div>
@@ -865,6 +930,7 @@ function CustomersView({
                 value={editCustData?.phone ?? ''}
                 onChange={(e) => editCustData && setEditCustData({ ...editCustData, phone: e.target.value })}
               />
+              <FieldError error={editFormErrors.phone} />
             </div>
           </div>
 
@@ -878,6 +944,7 @@ function CustomersView({
                 value={editCustData?.creditLimitUSD ?? 0}
                 onChange={(e) => editCustData && setEditCustData({ ...editCustData, creditLimitUSD: Number(e.target.value) })}
               />
+              <FieldError error={editFormErrors.credit} />
             </div>
 
             <div>

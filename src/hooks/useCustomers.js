@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useCustomers(triggerToast) {
   const [customers, setCustomers] = useState([]);
@@ -45,7 +34,7 @@ export function useCustomers(triggerToast) {
         triggerToast('success', 'Customer Onboarded', `${newCustomer.name} added with ID ${newCustomer.id}`);
         return newCustomer;
       } catch (err) {
-        triggerToast('error', 'Customer Onboarding Failed', err.message);
+        triggerToast('error', 'Customer Onboarding Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -64,7 +53,7 @@ export function useCustomers(triggerToast) {
         triggerToast('success', 'Customer Updated', `Profile updated for ${saved.name}`);
         return saved;
       } catch (err) {
-        triggerToast('error', 'Customer Update Failed', err.message);
+        triggerToast('error', 'Customer Update Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -83,7 +72,7 @@ export function useCustomers(triggerToast) {
         triggerToast('success', 'CRM Notes Updated', 'Customer relationship records synchronized.');
         return saved;
       } catch (err) {
-        triggerToast('error', 'Notes Update Failed', err.message);
+        triggerToast('error', 'Notes Update Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -92,13 +81,18 @@ export function useCustomers(triggerToast) {
 
   const toggleFavorite = useCallback(
     async (customerId) => {
+      const target = customers.find(c => c.id === customerId);
+      if (!target) return null;
+      const nextState = !Boolean(target.favorite);
+
+      // Optimistic update — apply immediately, roll back on failure
+      setCustomers(prev => prev.map(c => (c.id === customerId ? { ...c, favorite: nextState } : c)));
+
       try {
         const data = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/favorite`, {
           method: 'PATCH',
         });
         const saved = data.customer;
-        const wasFavorite = customers.find(c => c.id === customerId)?.favorite;
-        const nextState = !Boolean(wasFavorite);
         setCustomers(prev => prev.map(c => (c.id === saved.id ? saved : c)));
         triggerToast(
           'info',
@@ -107,7 +101,8 @@ export function useCustomers(triggerToast) {
         );
         return saved;
       } catch (err) {
-        triggerToast('error', 'Favorite Update Failed', err.message);
+        setCustomers(prev => prev.map(c => (c.id === customerId ? { ...c, favorite: target.favorite } : c)));
+        triggerToast('error', 'Favorite Update Failed', getErrorMessage(err));
         throw err;
       }
     },

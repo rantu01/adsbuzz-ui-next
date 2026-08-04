@@ -9,6 +9,8 @@ export default function SeriesPage() {
   return (
     <SeriesView
       series={app.series}
+      error={app.seriesError}
+      onRetry={app.refetchSeries}
       adAccounts={app.adAccounts}
       onUpdateSeries={app.handleUpdateSeries}
       onAddSeries={app.addSeries}

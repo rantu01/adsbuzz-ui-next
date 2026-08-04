@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { INITIAL_INVOICES } from '@/data/seedData';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useInvoices(triggerToast) {
   const [invoices, setInvoices] = useState(INITIAL_INVOICES);
@@ -46,7 +35,7 @@ export function useInvoices(triggerToast) {
         setInvoices(prev => [data.invoice, ...prev]);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Sale Failed', err.message);
+        triggerToast('error', 'Sale Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -66,7 +55,7 @@ export function useInvoices(triggerToast) {
         triggerToast('success', 'Invoice Updated', `Invoice ${data.invoice.invoiceNo} updated.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Invoice Update Failed', err.message);
+        triggerToast('error', 'Invoice Update Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -85,7 +74,7 @@ export function useInvoices(triggerToast) {
         triggerToast('success', 'Invoice Approved', `Invoice ${invoiceNo} approved.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Approval Failed', err.message);
+        triggerToast('error', 'Approval Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -104,7 +93,7 @@ export function useInvoices(triggerToast) {
         triggerToast('warning', 'Invoice Rejected', `Invoice ${invoiceNo} rejected.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Rejection Failed', err.message);
+        triggerToast('error', 'Rejection Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -124,7 +113,7 @@ export function useInvoices(triggerToast) {
         triggerToast('success', 'Topup Synced', `Invoice ${invoiceNo} topup status: ${status}.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Topup Sync Failed', err.message);
+        triggerToast('error', 'Topup Sync Failed', getErrorMessage(err));
         throw err;
       }
     },

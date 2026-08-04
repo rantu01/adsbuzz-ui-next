@@ -9,6 +9,8 @@ export default function SettingsPage() {
   return (
     <SettingsView
       settings={app.settings}
+      error={app.settingsError}
+      onRetry={app.refetchSettings}
       onUpdateBaseRate={app.handleUpdateBaseRate}
       onAddPaymentMethod={app.handleAddPaymentMethod}
       onDeletePaymentMethod={app.handleDeletePaymentMethod}

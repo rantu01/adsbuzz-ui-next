@@ -320,6 +320,7 @@ function SalesView({
       topupStatus,
       approvalStatus,
       paymentScreenshot,
+      screenshotName: screenshotName || undefined,
       note: noteText || undefined
     });
 

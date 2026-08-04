@@ -1,27 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useTopups(triggerToast) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchTopups = useCallback(async () => {
     try {
       const data = await apiFetch('/api/topups');
       setInvoices(data.topups || []);
+      setError(null);
     } catch (err) {
-      triggerToast('error', 'Load Failed', err.message);
+      setError(err);
+      triggerToast('error', 'Load Failed', getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -41,7 +33,7 @@ export function useTopups(triggerToast) {
         triggerToast('success', 'Topup Approved', `Invoice ${invoiceNo} approved and settled.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Approval Failed', err.message);
+        triggerToast('error', 'Approval Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -58,7 +50,7 @@ export function useTopups(triggerToast) {
         triggerToast('warning', 'Topup Rejected', `Invoice ${invoiceNo} rejected.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Rejection Failed', err.message);
+        triggerToast('error', 'Rejection Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -76,19 +68,25 @@ export function useTopups(triggerToast) {
         triggerToast('success', 'Topup Synced', `Invoice ${invoiceNo} marked API-complete.`);
         return data.invoice;
       } catch (err) {
-        triggerToast('error', 'Topup Sync Failed', err.message);
+        triggerToast('error', 'Topup Sync Failed', getErrorMessage(err));
         throw err;
       }
     },
     [triggerToast],
   );
 
+  const refetch = useCallback(() => {
+    setLoading(true);
+    return fetchTopups();
+  }, [fetchTopups]);
+
   return {
     invoices,
     loading,
+    error,
     approveInvoice,
     rejectInvoice,
     syncTopupStatus,
-    refetch: fetchTopups,
+    refetch,
   };
 }

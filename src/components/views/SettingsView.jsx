@@ -2,30 +2,44 @@
 
 import { memo, useState } from 'react';
 import { Trash2, Building2 } from 'lucide-react';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { positiveNumber, validate, hasErrors } from '@/utils/formValidation';
 
 function SettingsView({
   settings,
   onUpdateBaseRate,
   onAddPaymentMethod,
-  onDeletePaymentMethod
+  onDeletePaymentMethod,
+  error,
+  onRetry
 }) {
   const [newPm, setNewPm] = useState('');
   const [rateInput, setRateInput] = useState(settings.defaultDollarRate);
+  const [rateError, setRateError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const handleRateUpdate = (e) => {
     e.preventDefault();
+    const errors = validate({ rate: rateInput }, { rate: positiveNumber('Rate must be greater than 0') });
+    if (hasErrors(errors)) {
+      setRateError(errors.rate);
+      return;
+    }
+    setRateError('');
     onUpdateBaseRate(Number(rateInput));
   };
 
   const handlePmAdd = (e) => {
     e.preventDefault();
-    if (!newPm) return;
-    onAddPaymentMethod(newPm);
+    if (!newPm.trim()) return;
+    onAddPaymentMethod(newPm.trim());
     setNewPm('');
   };
 
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl" id="settings-view">
+      <ErrorBanner error={error} onRetry={onRetry} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">ERP System Settings</h1>
         <p className="text-sm text-slate-500 font-medium">Configure Exchange Rates, Income Channels, and Audit Access Controls.</p>
@@ -43,14 +57,15 @@ function SettingsView({
               <div className="flex-1">
                 <label className="block text-[10px] text-slate-500 mb-1">Standard Exchange Rate (BDT/USD)</label>
                 <div className="relative">
-                  <input
+                    <input
                     type="number"
                     value={rateInput}
-                    onChange={(e) => setRateInput(Number(e.target.value))}
+                    onChange={(e) => { setRateInput(Number(e.target.value)); if (rateError) setRateError(''); }}
                     className="w-full text-xs font-bold pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
                   />
                   <span className="absolute left-3 top-2.5 font-bold text-slate-400 text-xs">৳</span>
                 </div>
+                {rateError && <p className="mt-1 text-[10px] font-semibold text-rose-500">{rateError}</p>}
               </div>
               <button
                 type="submit"
@@ -88,7 +103,7 @@ function SettingsView({
                 <span className="font-semibold text-slate-700">{pm}</span>
                 <button
                   type="button"
-                  onClick={() => onDeletePaymentMethod(pm)}
+                  onClick={() => setDeleteTarget(pm)}
                   aria-label={`Delete payment method ${pm}`}
                   className="text-slate-400 hover:text-red-500 cursor-pointer p-0.5 rounded hover:bg-slate-50"
                 >
@@ -118,6 +133,20 @@ function SettingsView({
         </div>
 
       </div>
+
+      {/* Delete payment method confirmation */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) onDeletePaymentMethod(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        title="Delete payment method?"
+        message={`Remove "${deleteTarget ?? ''}" from configured payment channels? This cannot be undone.`}
+        confirmLabel="Delete"
+        loadingLabel="Deleting..."
+      />
     </div>
   );
 }

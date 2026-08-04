@@ -9,6 +9,8 @@ export default function VendorsPage() {
   return (
     <VendorsView
       vendors={app.vendors}
+      error={app.vendorsError}
+      onRetry={app.refetchVendors}
       onUpdateVendor={app.handleUpdateVendor}
       onAddVendor={app.addVendor}
       onPayVendor={app.handlePayVendor}

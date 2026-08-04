@@ -25,9 +25,9 @@
 | Insights | ⚠️ top-up-insights | ✅ charts/analyzer | 🟩 platform spend + account analyzer |
 | Settings | ✅ site_settings | ✅ company/payment/roles | 🟩 singleton doc + payment methods |
 | Activities | ⚠️ logs | ✅ feed | 🟩 list + create (wired into mutations) |
-| Upload | ❌ none | ✅ screenshot | 🟦 |
+| Upload | ❌ none | ✅ screenshot | 🟩 base64 image → `public/uploads` → URL |
 
-**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) COMPLETE: Settings, Series, Cards, Customers, Ad Accounts, Vendors, Sale Setups, Invoices (full write flow). Phase 4 (Business APIs) COMPLETE: Topups, Insights, Reports + Export, Activities, Dashboard — all wired to the UI. Phase 5 (Frontend Integration) in progress.**
+**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) COMPLETE: Settings, Series, Cards, Customers, Ad Accounts, Vendors, Sale Setups, Invoices (full write flow). Phase 4 (Business APIs) COMPLETE: Topups, Insights, Reports + Export, Activities, Dashboard — all wired to the UI. Phase 5 (Frontend Integration) COMPLETE: error handling, optimistic updates, and the payment screenshot upload flow are live. Phase 6 (Polish & Testing) COMPLETE: form validation, confirmation dialogs, unit/integration/E2E tests (30/30 pass via `npm test`), and server-side pagination on list APIs. Phase 7 (Deployment) next.**
 
 ### Phase 1 foundation files (🟩 Complete)
 
@@ -61,7 +61,7 @@
 ### Customers
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/customers` | List all customers (search/filter/pagination) | 🟩 |
+| GET | `/api/customers` | List all customers (search/filter, `page`/`limit` pagination) | 🟩 |
 | POST | `/api/customers` | Create customer (generate CUST-* id) | 🟩 |
 | GET | `/api/customers/[id]` | Get customer by id | 🟩 |
 | PUT | `/api/customers/[id]` | Update customer | 🟩 |
@@ -71,7 +71,7 @@
 ### Ad Accounts
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/ad-accounts` | List (search/platform/status/assignment/series filters) | 🟩 |
+| GET | `/api/ad-accounts` | List (search/platform/status/assignment/series filters + `page`/`limit`) | 🟩 |
 | POST | `/api/ad-accounts` | Create ad account | 🟩 |
 | PUT | `/api/ad-accounts/[id]` | Update | 🟩 |
 | PATCH | `/api/ad-accounts/[id]` | Update status (statusOnly) | 🟩 |
@@ -80,7 +80,7 @@
 ### Invoices
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/invoices` | List all invoices | 🟩 (list + legacy sync) |
+| GET | `/api/invoices` | List all invoices (search/paymentStatus filter + `page`/`limit`) | 🟩 (list + legacy sync) |
 | POST | `/api/invoices` | Create invoice (sale) — full sales flow | 🟩 |
 | GET | `/api/invoices/[id]` | Get invoice | 🟩 |
 | PUT | `/api/invoices/[id]` | Update invoice (edit modal) | 🟩 |
@@ -91,7 +91,7 @@
 ### Cards
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| GET | `/api/cards` | List all cards | 🟩 |
+| GET | `/api/cards` | List all cards (`page`/`limit` supported) | 🟩 |
 | POST | `/api/cards` | Create card | 🟩 |
 | PUT | `/api/cards/[id]` | Update card | 🟩 |
 | PATCH | `/api/cards/[id]` | Toggle Active/Disable (statusOnly) | 🟩 |
@@ -168,7 +168,7 @@
 ### Upload
 | Method | Endpoint | Description | Status |
 |---|---|---|---|
-| POST | `/api/upload` | Payment screenshot upload (returns URL/data URL) | 🟦 |
+| POST | `/api/upload` | Payment screenshot upload — JSON `{ name, data }` (base64 data URL), validates image type + ≤5 MB, saves to `public/uploads/`, returns `{ url }` | 🟩 |
 
 ---
 
@@ -180,7 +180,7 @@
 | `src/app/api/admin/route.js` | admin-only aggregate endpoints |
 | `src/app/api/auth/route.js` | `/api/auth/*` when auth decided |
 | `src/app/api/tasks/route.js` | `/api/topups/*` or `/api/activities` |
-| `src/app/api/upload/route.js` | `/api/upload` |
+| `src/app/api/upload/route.js` | `/api/upload` (🟩 live — screenshot upload) |
 
 ---
 
@@ -284,3 +284,18 @@ These exist in `ad-buzz` and are the reference implementation for equivalent new
 5. Reuse old business logic where possible (balance integrity, spend-cap updates, notifications) adapted to new shapes.
 6. Update this file after every completed endpoint.
 7. Foundation utilities to use in every route: `@/lib/db` (`getDb`/`getCollection`), `@/utils/http` (`ok`/`fail`/`ApiError`/`asyncHandler`), `@/utils/validate`, `@/middlewares/errorHandler`, `@/utils/logger`, `@/config`.
+
+---
+
+## 8. Test Suite (Phase 6)
+
+Run with `npm test` (node:test; all files must run together so the `@/` alias loader is active).
+
+| File | Type | Coverage |
+|---|---|---|
+| `tests/invoiceMath.test.mjs` | Unit | `round2`, `dateOnly`, `detectPlatform`, `computePaymentStatus`, `invoiceNoFromLegacyId` |
+| `tests/formValidation.test.mjs` | Unit | `required`, `email`, `phone`, `positiveNumber`, `min`, `maxLength`, `maxBytes`, `oneOf`, `validate`, `hasErrors` |
+| `tests/pagination.test.mjs` | Unit | `getPagination`, `paginate` (clamping, slicing, edge cases) |
+| `tests/integration.test.mjs` | Integration/E2E | `/api/settings` GET; customers create/list/invalid-email; cards register/duplicate (409); **create-sale → approve-topup**, reject-topup, sync-topup; approve-404; pagination params |
+
+Infrastructure: `tests/load-env.mjs` (forces `MONGODB_DB_NAME=adsbuzz_test`, registers loader), `tests/alias-loader.mjs` (`@/`→`src`, extension resolution, `next/server`+`next/headers` → `tests/stubs/next-server.mjs`). Tests run against an isolated **`adsbuzz_test`** database that is dropped at the start of the integration run — production `ad_buzz` is never touched.

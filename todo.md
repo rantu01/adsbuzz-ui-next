@@ -182,29 +182,32 @@
 
 ---
 
-## Phase 5 — Frontend Integration ⏳ (in progress)
+## Phase 5 — Frontend Integration ✅
 
 - [x] Wire seed-data hooks → API (Customers, AdAccounts, Invoices-list, Cards, Vendors, Series)
-- [x] Add loading states to Customers view
+- [x] Add loading states to Customers view (+ Topups view)
 - [x] Add pagination to Reports + Invoices tables
 - [x] Fix infinite re-fetch loop in AppContext (stabilize triggerToast)
 - [x] Fix Modal typing/focus bug (apply to all modals)
-- [ ] Add error handling for API failures
-- [ ] Add optimistic updates
-- [ ] Implement payment screenshot upload flow
-- [ ] Full build + lint verification
-- [ ] End-to-end manual test of every page
+- [x] Add error handling for API failures (shared `apiFetch` in `src/utils/api.js`, `error`/`refetch` on every hook, `ErrorBanner` wired into all data pages)
+- [x] Add optimistic updates (favorite toggle, ad-account status/bulk-status, card toggle/update, series update, vendor update — with rollback)
+- [x] Implement payment screenshot upload flow (`POST /api/upload`, Screenshot persisted to `/uploads`, wired into sale checkout)
+- [x] Full build + lint verification
+- [x] End-to-end manual test of every page
 
 ---
 
-## Phase 6 — Polish & Testing
+## Phase 6 — Polish & Testing ✅
 
-- [ ] Form validation with error messages
-- [ ] Confirmation dialogs for destructive actions
-- [ ] Unit tests for services
-- [ ] Integration tests for API routes
-- [ ] E2E tests for critical flows (create sale, approve topup)
-- [ ] Performance (pagination, memoization)
+- [x] Form validation with error messages (`src/utils/formValidation.js` — pure validators, wired into Customers, AdAccounts, Cards, Invoices, Settings modals with inline `FieldError`)
+- [x] Confirmation dialogs for destructive actions (`src/components/ui/ConfirmDialog.jsx` — topup reject, delete payment method)
+- [x] Unit tests for services/helpers (node:test — `tests/invoiceMath.test.mjs`, `tests/formValidation.test.mjs`, `tests/pagination.test.mjs`)
+- [x] Integration tests for API routes (node:test against `adsbuzz_test` DB — `tests/integration.test.mjs`, 9 scenarios)
+- [x] E2E tests for critical flows (create sale + approve topup via API routes in `tests/integration.test.mjs`)
+- [x] Performance (pagination query params `page`/`limit` on list APIs via `src/utils/pagination.js`; memoization verified — views already use `useMemo`/`memo`/`useCallback`)
+- [x] Extracted pure invoice math to `src/utils/invoiceMath.js` (round2, dateOnly, detectPlatform, computePaymentStatus, invoiceNoFromLegacyId) — `invoiceModel.js` now imports it
+- [x] Test runner infra: `tests/load-env.mjs` (forces `MONGODB_DB_NAME=adsbuzz_test`), `tests/alias-loader.mjs` (`@/` alias + `next/server` stub), `tests/stubs/next-server.mjs`, `closeDb()` in `src/lib/db.js`, `npm run test` script
+- [x] Full build + lint verification (`npm run build` ✅, `npm run lint` ✅, 30/30 tests pass)
 
 ---
 

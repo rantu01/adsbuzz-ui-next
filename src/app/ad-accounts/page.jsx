@@ -14,6 +14,8 @@ function AdAccountsPageInner() {
   return (
     <AdAccountsView
       adAccounts={app.adAccounts}
+      error={app.adAccountsError}
+      onRetry={app.refetchAdAccounts}
       customers={app.customers}
       cards={app.cards}
       series={app.series}

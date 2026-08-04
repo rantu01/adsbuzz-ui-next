@@ -1,10 +1,13 @@
 import { asyncHandler, ok, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import { listCards, createCard } from "@/models/cardModel";
+import { getPagination, paginate } from "@/utils/pagination";
 
 export const GET = asyncHandler(async (request) => {
+  const searchParams = new URL(request.url).searchParams;
   const cards = await listCards();
-  return ok({ cards, total: cards.length });
+  const p = paginate(cards, getPagination(searchParams, { page: 1, limit: 50 }));
+  return ok({ cards: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages });
 });
 
 export const POST = asyncHandler(async (request) => {

@@ -1,8 +1,6 @@
 # AdsBuzz ERP — Project Overview
 
-# AdsBuzz ERP — Project Overview
-
-> Status: **Phases 0–2 ✅ + Phase 3 (CRUD) 🟩 + Phase 4 (Business APIs) 🟩 complete. Phase 5 (Frontend Integration) in progress.**
+> Status: **Phases 0–5 ✅ + Phase 6 (Polish & Testing) ✅ complete. Phase 7 (Deployment) next.**
 > Last updated: 2026-08-03
 
 ---
@@ -78,7 +76,7 @@ src/
 │       └── users/route.js
 ├── components/
 │   ├── common/  AppShell, Header, Sidebar, PlatformText, StatCard, Toast
-│   ├── ui/      Badge, Button, Modal, SearchBar
+│   ├── ui/      Badge, Button, Modal, SearchBar, ErrorBanner, FieldError, ConfirmDialog
 │   └── views/   Dashboard, Customers, Sales, SaleSetup, Topups, AdAccounts,
 │                Series, Cards, Vendors, Reports, Insights, Invoices, Settings
 ├── context/AppContext.jsx         # Global state + ALL CRUD handlers (central UI contract)
@@ -86,6 +84,7 @@ src/
 │                                  # useCards, useVendors, useSeries, useSaleSetups,
 │                                  # useSettings, useActivities
 ├── data/seedData.js               # All mock data (INITIAL_* constants)
+├── tests/                         # node:test suite (unit + integration/E2E) + alias/stub infra
 docs/                              # Planning docs (api_list, database_schema, backend_architecture, etc.)
 ```
 
@@ -106,8 +105,15 @@ docs/                              # Planning docs (api_list, database_schema, b
 - **Frontend wired to APIs** via hooks (Customers, AdAccounts, Invoices-list, Cards, Vendors, Series, Activities, Topups, Dashboard).
 - **Fixed bugs:** infinite re-fetch loop (AppContext) and Modal focus/typing bug (all modals).
 - **Pagination** added to Reports & Invoices tables.
-- **Remaining:** Phase 5 polish (API error handling, optimistic updates, upload flow), then Phase 6 polish.
-- **Next step:** complete Phase 5 wiring polish + Phase 6 (validation, confirmations, tests).
+- **Error handling:** shared `apiFetch` layer (`src/utils/api.js`), `error`/`refetch` on every hook, and an `ErrorBanner` (message + retry) on all 13 pages.
+- **Optimistic updates** with rollback for toggles/status changes (customer favorite, ad-account status/bulk, card status/update, series, vendor).
+- **Payment screenshot upload flow:** `POST /api/upload` persists base64 images to `public/uploads/` and returns a public URL; sale checkout uploads the screenshot and stores the URL on the invoice.
+- **Form validation:** `src/utils/formValidation.js` (pure validators) + inline `FieldError` messages in Customers, Ad Accounts, Cards, Invoices, and Settings modals.
+- **Confirmation dialogs:** `src/components/ui/ConfirmDialog.jsx` guards destructive actions (Topups reject, Settings delete payment method).
+- **Automated tests:** node:test suite (16 unit + 9 integration/E2E) running against an isolated `adsbuzz_test` DB — `npm test` → 30/30 passing. Test infra: `tests/alias-loader.mjs` (`@/` alias + `next/server` stub), `tests/load-env.mjs`, `tests/stubs/next-server.mjs`.
+- **Server-side pagination:** `page`/`limit` query params on the main list APIs (customers, cards, ad-accounts, invoices) via `src/utils/pagination.js`.
+- **Remaining:** Phase 7 deployment (prod DB config, monitoring, deploy).
+- **Next step:** Phase 7 — deployment.
 
 ---
 
@@ -203,11 +209,11 @@ src/
 
 ## 12. Phase Gate
 
-**Phases 0–2 complete; Phase 3 (CRUD) complete; Phase 4 (Business APIs) complete; Phase 5 (Frontend Integration) in progress.** Analysis is in:
+**Phases 0–6 complete. Phase 7 (Deployment) next.** Analysis is in:
 - `backend-analysis.md` — full old-project analysis + new-UI contract + schema mapping
 - `api-status.md` — API endpoint inventory + build status matrix (live)
 - `progress.md` — running progress log
 - `todo.md` — living checklist
 - `report.md` — client-facing summary of uncommitted work
 
-**Phase 3+4 shows Strong progress.** Remaining: Phase 5 polish (API error handling, optimistic updates, upload flow) + Phase 6 (validation, confirmations, tests).
+**Phases 3–6 shows Strong progress.** Remaining: Phase 7 deployment.

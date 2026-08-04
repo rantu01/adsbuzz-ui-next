@@ -1,16 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useAdAccounts(triggerToast) {
   const [adAccounts, setAdAccounts] = useState([]);
@@ -49,7 +38,7 @@ export function useAdAccounts(triggerToast) {
         );
         return newAccount;
       } catch (err) {
-        triggerToast('error', 'Ad Account Load Failed', err.message);
+        triggerToast('error', 'Ad Account Load Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -75,7 +64,7 @@ export function useAdAccounts(triggerToast) {
         );
         return saved;
       } catch (err) {
-        triggerToast('error', 'Ad Account Update Failed', err.message);
+        triggerToast('error', 'Ad Account Update Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -84,6 +73,12 @@ export function useAdAccounts(triggerToast) {
 
   const updateAccountStatus = useCallback(
     async (accountId, status) => {
+      const match = (a) => a._id === accountId || a.adAccountId === accountId;
+      const prevSnapshot = adAccounts.filter(match).map(a => ({ id: a._id || a.adAccountId, accountStatus: a.accountStatus }));
+
+      // Optimistic update — reflect the new status immediately, roll back on failure
+      setAdAccounts(prev => prev.map(a => (match(a) ? { ...a, accountStatus: status } : a)));
+
       try {
         const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(accountId)}`, {
           method: 'PATCH',
@@ -102,21 +97,39 @@ export function useAdAccounts(triggerToast) {
         );
         return saved;
       } catch (err) {
-        triggerToast('error', 'Status Update Failed', err.message);
+        setAdAccounts(prev =>
+          prev.map(a =>
+            match(a) ? { ...a, accountStatus: prevSnapshot.find(p => p.id === (a._id || a.adAccountId))?.accountStatus || a.accountStatus } : a,
+          ),
+        );
+        triggerToast('error', 'Status Update Failed', getErrorMessage(err));
         throw err;
       }
     },
-    [triggerToast],
+    [adAccounts, triggerToast],
   );
 
   const bulkUpdateStatus = useCallback(
     async (accountIds, status) => {
+      const idSet = new Set(accountIds);
+      const prevSnapshot = new Map(
+        adAccounts.filter(a => idSet.has(a._id) || idSet.has(a.adAccountId)).map(a => [a._id || a.adAccountId, a.accountStatus]),
+      );
+
+      // Optimistic update for all affected accounts
+      setAdAccounts(prev =>
+        prev.map(a =>
+          idSet.has(a._id) || idSet.has(a.adAccountId)
+            ? { ...a, accountStatus: status, status: status }
+            : a,
+        ),
+      );
+
       try {
         const data = await apiFetch('/api/ad-accounts/bulk-status', {
           method: 'PATCH',
           body: JSON.stringify({ ids: accountIds, status }),
         });
-        const idSet = new Set(accountIds);
         setAdAccounts(prev =>
           prev.map(a =>
             idSet.has(a._id) || idSet.has(a.adAccountId)
@@ -131,11 +144,18 @@ export function useAdAccounts(triggerToast) {
         );
         return data;
       } catch (err) {
-        triggerToast('error', 'Bulk Action Failed', err.message);
+        setAdAccounts(prev =>
+          prev.map(a =>
+            idSet.has(a._id) || idSet.has(a.adAccountId)
+              ? { ...a, accountStatus: prevSnapshot.get(a._id || a.adAccountId) || a.accountStatus, status: prevSnapshot.get(a._id || a.adAccountId) || a.status }
+              : a,
+          ),
+        );
+        triggerToast('error', 'Bulk Action Failed', getErrorMessage(err));
         throw err;
       }
     },
-    [triggerToast],
+    [adAccounts, triggerToast],
   );
 
   const markAccountSold = useCallback(

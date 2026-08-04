@@ -6,6 +6,9 @@ import PlatformText from '@/components/common/PlatformText';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import FieldError from '@/components/ui/FieldError';
+import { validate, hasErrors, required, maxLength } from '@/utils/formValidation';
 
 // Card-type brand icon helper (visually distinguishes Visa / Mastercard / Union Pay / Amex)
 const getCardTypeIcon = (cardType) => {
@@ -69,7 +72,9 @@ function CardsView({
   adAccounts,
   onAddCard,
   onUpdateCard,
-  onToggleCardStatus
+  onToggleCardStatus,
+  error,
+  onRetry
 }) {
   const [selectedCardId, setSelectedCardId] = useState(cards[0]?.id || '');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -106,6 +111,9 @@ function CardsView({
   const [newCardPlatform, setNewCardPlatform] = useState('Rizon');
   const [newCardStatus, setNewCardStatus] = useState('Active');
 
+  const [addFormErrors, setAddFormErrors] = useState({});
+  const [editFormErrors, setEditFormErrors] = useState({});
+
   // Edit Card State
   const [editCardData, setEditCardData] = useState(null);
 
@@ -116,7 +124,15 @@ function CardsView({
 
   const handleCreateCardSubmit = (e) => {
     e.preventDefault();
-    if (!newCardName) return;
+    const errors = validate(
+      { name: newCardName },
+      { name: [required('Card display name is required'), maxLength(60)] },
+    );
+    if (hasErrors(errors)) {
+      setAddFormErrors(errors);
+      return;
+    }
+    setAddFormErrors({});
 
     onAddCard({
       id: `CARD-${Date.now().toString().slice(-4)}`,
@@ -142,6 +158,16 @@ function CardsView({
     e.preventDefault();
     if (!editCardData) return;
 
+    const errors = validate(
+      { name: editCardData.cardName },
+      { name: [required('Card display name is required'), maxLength(60)] },
+    );
+    if (hasErrors(errors)) {
+      setEditFormErrors(errors);
+      return;
+    }
+    setEditFormErrors({});
+
     if (onUpdateCard) {
       onUpdateCard(editCardData);
     }
@@ -162,6 +188,7 @@ function CardsView({
 
   return (
     <div className="space-y-8 animate-fade-in" id="cards-view">
+      <ErrorBanner error={error} onRetry={onRetry} />
       
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -435,7 +462,7 @@ function CardsView({
       {/* Add Card Modal */}
       <Modal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setAddFormErrors({}); }}
         title="Register Funding Credit Card"
         size="sm"
         variant="animated"
@@ -452,6 +479,7 @@ function CardsView({
               value={newCardName}
               onChange={(e) => setNewCardName(e.target.value)}
             />
+            <FieldError error={addFormErrors.name} />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Initials</label>
@@ -521,7 +549,7 @@ function CardsView({
       {/* Edit Card Modal */}
       <Modal
         isOpen={showEditModal && !!editCardData}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => { setShowEditModal(false); setEditFormErrors({}); }}
         title="Edit Billing Card"
         size="sm"
         variant="animated"
@@ -537,6 +565,7 @@ function CardsView({
               value={editCardData?.cardName ?? ''}
               onChange={(e) => editCardData && setEditCardData({ ...editCardData, cardName: e.target.value })}
             />
+            <FieldError error={editFormErrors.name} />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Initials</label>

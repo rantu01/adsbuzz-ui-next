@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { INITIAL_SETUPS } from '@/data/seedData';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useSaleSetups(triggerToast) {
   const [setups, setSetups] = useState(INITIAL_SETUPS);
@@ -47,7 +36,7 @@ export function useSaleSetups(triggerToast) {
         triggerToast('success', 'Sale Setup Created', 'New campaign setup saved.');
         return data.setup;
       } catch (err) {
-        triggerToast('error', 'Failed to Create Setup', err.message);
+        triggerToast('error', 'Failed to Create Setup', getErrorMessage(err));
         throw err;
       }
     },
@@ -66,12 +55,12 @@ export function useSaleSetups(triggerToast) {
         triggerToast('success', 'Sale Setup Updated', 'Changes saved.');
         return data.setup;
       } catch (err) {
-        triggerToast('error', 'Failed to Update Setup', err.message);
+        triggerToast('error', 'Failed to Update Setup', getErrorMessage(err));
         throw err;
       }
     },
     [triggerToast],
   );
 
-  return { setups, loading, error, addSetup, updateSaleSetup };
+  return { setups, loading, error, addSetup, updateSaleSetup, refetch: fetchSetups };
 }

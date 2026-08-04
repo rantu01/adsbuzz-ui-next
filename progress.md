@@ -1,7 +1,7 @@
 # Progress Report — AdsBuzz ERP Backend
 
 > Last updated: 2026-08-03
-> Current phase: **Phase 4 (Business APIs) COMPLETE — Topups, Insights, Reports + Export, Activities, Dashboard all live and wired to UI. Next: Phase 5 frontend polish (error handling, optimistic updates, upload flow).**
+> Current phase: **Phase 6 (Polish & Testing) COMPLETE — form validation, confirmation dialogs, unit/integration/E2E tests, and list-API pagination are all live and verified. Next: Phase 7 deployment.**
 
 ---
 
@@ -14,8 +14,8 @@
 | Phase 2 | Auth & RBAC | ✅ Complete |
 | Phase 3 | CRUD APIs (Series, Cards, Customers, Ad Accounts, Vendors) | ✅ Complete |
 | Phase 4 | Business APIs (Topups, Insights, Reports, Export, Activities, Dashboard) | ✅ Complete |
-| Phase 5 | Frontend integration (swap seed data → API calls) | 🔶 In progress |
-| Phase 6 | Polish & testing | ⬜ Not started |
+| Phase 5 | Frontend integration (swap seed data → API calls) | ✅ Complete |
+| Phase 6 | Polish & testing | ✅ Complete |
 | Phase 7 | Deployment | ⬜ Not started |
 
 ---
@@ -96,6 +96,26 @@
 - [x] **Dashboard** — `src/models/dashboardModel.js` (`getDashboardStats` → todaySales/monthlySales/pendingTopups/pendingApprovals/activeCustomers/activeAccounts/assignedAccounts/vendorDue + recent invoices/activities), `/api/dashboard`; `useDashboard` hook; `src/app/page.jsx` rewired (falls back to `app.stats`).
 - [x] `npm run build` ✅ (41 pages, 0 errors).
 
+### Phase 5 — Frontend Integration (2026-08-03, COMPLETE)
+
+- [x] **Shared API layer** — `src/utils/api.js` with `apiFetch` (JSON/error extraction) + `getErrorMessage` + `uploadScreenshot`. All hooks now use it (removed per-hook `apiFetch` duplication).
+- [x] **Error handling for API failures** — every hook exposes `error` + `refetch` (Cards, Vendors, Series, Topups, Dashboard were missing; now consistent with Customers/AdAccounts/Invoices/Setups/Settings/Activities). New `ErrorBanner` UI component (message + Retry) wired into all 13 pages via pages → views (`error`/`onRetry` props).
+- [x] **Loading states** — Customers view already had one; added a loading spinner to the Topups audit queue.
+- [x] **Optimistic updates (with rollback on failure)** — customer favorite toggle, ad-account single status change, ad-account bulk status, card status toggle, card update, series update, vendor update all apply the change immediately then reconcile with the server response; on error the previous snapshot is restored and an error toast is shown.
+- [x] **Payment screenshot upload flow** — implemented `POST /api/upload` (base64 data-URL → validated image (PNG/JPG/JPEG/WebP/GIF, ≤5 MB) → saved to `public/uploads/` → returns public `/uploads/...` URL). Sale checkout (`AppContext.handleExecuteSale`) now uploads the screenshot first and stores the URL on the invoice instead of embedding a data URL (falls back to embedding on upload failure so the sale is never lost).
+- [x] **Verified** — `node --check` on all changed files ✅, `npm run build` ✅ (0 errors), `next lint` ✅ (no warnings), live dev-server smoke test: `/api/upload` 201 + served file 200, `/api/reports/export?format=csv` 200 (attachment), `/api/dashboard` 200, `/api/auth` 200, all 13 pages return 200.
+
+### Phase 6 — Polish & Testing (2026-08-03, COMPLETE)
+
+- [x] **Pure testable modules** — `src/utils/invoiceMath.js` (round2, dateOnly, detectPlatform, computePaymentStatus, invoiceNoFromLegacyId) extracted from `invoiceModel.js` (which now imports them); `src/utils/formValidation.js` (pure function validators + `validate`/`hasErrors`); `src/utils/pagination.js` (`getPagination`/`paginate`).
+- [x] **Form validation with error messages** — validation on submit + inline `FieldError` under fields in Customers (add + edit), Ad Accounts (add + edit), Cards (add + edit), Invoices (edit amounts), Settings (base rate). Errors clear on change/close; submission blocked until valid.
+- [x] **Confirmation dialogs** — new `src/components/ui/ConfirmDialog.jsx` (danger/warning variants, busy loading state) wired into Topups "Reject" and Settings "Delete payment method".
+- [x] **Test runner infra** — `tests/load-env.mjs` (loads `.env.local`, forces `MONGODB_DB_NAME=adsbuzz_test`, registers alias loader), `tests/alias-loader.mjs` (`@/`→`src` + extension resolution + `next/server`/`next/headers` → stub), `tests/stubs/next-server.mjs` (NextResponse/NextRequest stand-in), `closeDb()` in `src/lib/db.js`, `npm test` script.
+- [x] **Unit tests** (node:test) — `tests/invoiceMath.test.mjs`, `tests/formValidation.test.mjs`, `tests/pagination.test.mjs` (pure, no DB).
+- [x] **Integration + E2E tests** — `tests/integration.test.mjs` (9 scenarios against temporarily-dropped `adsbuzz_test` DB): settings GET, customers create/list/invalid-email, cards register/duplicate, create-sale → approve-topup E2E, reject-topup, sync-topup, approve-404, pagination params. **30/30 tests pass.**
+- [x] **Performance** — added `page`/`limit`/`total`/`totalPages` query params to GET list APIs (customers, cards, ad-accounts, invoices) via `src/utils/pagination.js`. Memoization verified present (`useMemo`/`memo`/`useCallback` in views/AppContext).
+- [x] **Verified** — `npm test` ✅ (30/30), `next lint` ✅ (no errors), `npm run build` ✅ (0 errors).
+
 ---
 
 ## Known Issues / Decisions Pending
@@ -107,16 +127,18 @@
 5. **Historical data** — ✅ resolved: live production data read (412 ad accounts, synced customers/invoices).
 6. **Roles** — backend uses old roles (admin/staff/customer) since prod `users` store those; new UI roles (Admin/Sales Manager/Operations Manager/Finance Auditor) still open — see `backend-analysis.md`.
 7. **Export format** — ✅ RESOLVED: CSV / XLSX (HTML table) / PDF (HTML) via `/api/reports/export?format=csv|xlsx|pdf`, wired to Reports page download buttons.
-8. **Login UI** — new project has no login page yet; client-side Firebase Auth + Bearer token needed during Phase 5.
+8. **Login UI** — new project has no login page yet; client-side Firebase Auth + Bearer token still open (client work, backend `/api/auth/*` ready).
 
 ---
 
 ## Current Focus
 
-**Next tasks:** Phase 5 frontend polish — API error handling, optimistic updates, payment screenshot upload flow, full build+lint verification, end-to-end manual test of every page. Then Phase 6 polish (form validation, confirmation dialogs, tests).
+**Next tasks:** Phase 7 deployment — production database config, monitoring/logging, deploy (Vercel / custom server), final docs update.
 
-### Completed this session
-- Phase 4 business APIs (Activities, Topups, Insights, Reports + CSV/XLSX/PDF export, Dashboard) built and wired to UI.
-- AppContext mutation handlers now write to the activity feed (approve/reject/sync/update invoice, customer/ad-account/card/vendor/series/setup edits, base-rate & payment-method changes).
-- Reports export button downloads real files via `/api/reports/export`.
-- `npm run build` ✅ (41 pages, 0 errors).
+### Completed this session (Phase 6)
+- Form validation (`src/utils/formValidation.js` + inline `FieldError`) wired into Customers, Ad Accounts, Cards, Invoices, and Settings modals.
+- `ConfirmDialog` component wired into destructive actions (Topups reject, Settings delete payment method).
+- Test infrastructure: node:test runner with `@/` alias loader, `next/server` stub, and an isolated `adsbuzz_test` database.
+- 16 unit tests (invoiceMath, formValidation, pagination) + 9 integration/E2E API tests (create-sale → approve-topup flow, reject, sync, validation, pagination) — **30/30 passing via `npm test`.**
+- Server-side pagination (`page`/`limit`) on customers/cards/ad-accounts/invoices list APIs via `src/utils/pagination.js`.
+- `npm run build` ✅ (0 errors), `npm run lint` ✅ (no errors).

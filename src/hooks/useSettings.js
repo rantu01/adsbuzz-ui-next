@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { INITIAL_SETTINGS } from '@/data/seedData';
-
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
+import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useSettings(triggerToast) {
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
@@ -44,7 +33,7 @@ export function useSettings(triggerToast) {
         setSettings(data.settings);
         triggerToast('success', 'Base Rate Updated', `Default dollar rate set to ৳${rate}.`);
       } catch (err) {
-        triggerToast('error', 'Rate Update Failed', err.message);
+        triggerToast('error', 'Rate Update Failed', getErrorMessage(err));
       }
     },
     [triggerToast],
@@ -60,7 +49,7 @@ export function useSettings(triggerToast) {
         setSettings(data.settings);
         triggerToast('success', 'Payment Method Added', `${method} has been added.`);
       } catch (err) {
-        triggerToast('error', 'Failed to Add Payment Method', err.message);
+        triggerToast('error', 'Failed to Add Payment Method', getErrorMessage(err));
       }
     },
     [triggerToast],
@@ -75,7 +64,7 @@ export function useSettings(triggerToast) {
         setSettings(data.settings);
         triggerToast('info', 'Payment Method Removed', `${method} has been deleted.`);
       } catch (err) {
-        triggerToast('error', 'Failed to Delete Payment Method', err.message);
+        triggerToast('error', 'Failed to Delete Payment Method', getErrorMessage(err));
       }
     },
     [triggerToast],

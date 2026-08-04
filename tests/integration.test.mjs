@@ -1,0 +1,199 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { getDb, closeDb } from '@/lib/db';
+
+import * as settingsRoute from '@/app/api/settings/route';
+import * as customersRoute from '@/app/api/customers/route';
+import * as cardsRoute from '@/app/api/cards/route';
+import * as invoicesRoute from '@/app/api/invoices/route';
+import * as topupsRoute from '@/app/api/topups/route';
+import * as approveRoute from '@/app/api/invoices/[invoiceNo]/approve/route';
+import * as rejectRoute from '@/app/api/invoices/[invoiceNo]/reject/route';
+import * as syncRoute from '@/app/api/invoices/[invoiceNo]/sync-topup/route';
+
+const BASE = 'http://localhost';
+
+function makeRequest(path, { method = 'GET', body, search = '' } = {}) {
+  const url = `${BASE}${path}${search ? `?${search}` : ''}`;
+  const init = { method, headers: {} };
+  if (body !== undefined) {
+    init.headers['content-type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+  return new Request(url, init);
+}
+
+function params(invoiceNo) {
+  return { params: Promise.resolve({ invoiceNo }) };
+}
+
+before(async () => {
+  const db = await getDb();
+  await db.dropDatabase();
+});
+
+after(async () => {
+  await closeDb();
+});
+
+test('GET /api/settings returns system settings', async () => {
+  const res = await settingsRoute.GET(makeRequest('/api/settings'));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.success, true);
+  assert.ok(body.settings);
+  assert.ok(body.settings.defaultDollarRate > 0);
+});
+
+test('POST /api/customers creates a customer and GET lists it', async () => {
+  const res = await customersRoute.POST(
+    makeRequest('/api/customers', {
+      method: 'POST',
+      body: { name: 'Integration Test Corp', email: 'itc@example.com', companyName: 'ITC Ltd', phone: '+880 1711 000000', creditLimitUSD: 5000 },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.equal(body.success, true);
+  assert.ok(body.customer.id);
+
+  const listRes = await customersRoute.GET(makeRequest('/api/customers', { search: 'search=Integration' }));
+  assert.equal(listRes.status, 200);
+  const list = await listRes.json();
+  assert.ok(list.customers.some((c) => c.email === 'itc@example.com'));
+});
+
+test('POST /api/customers rejects invalid email', async () => {
+  const res = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Bad', email: 'not-an-email', companyName: 'X' } }),
+  );
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.success, false);
+  assert.match(body.message, /email/i);
+});
+
+test('POST /api/cards registers a card and GET lists it', async () => {
+  const res = await cardsRoute.POST(
+    makeRequest('/api/cards', {
+      method: 'POST',
+      body: { cardName: 'TEST DBBL 9999', cardType: 'Visa', cardPlatform: 'RIZON', cardInitial: 'TD', status: 'Active' },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.equal(body.success, true);
+
+  const listRes = await cardsRoute.GET(makeRequest('/api/cards'));
+  assert.equal(listRes.status, 200);
+  const list = await listRes.json();
+  assert.ok(list.cards.some((c) => c.cardName === 'TEST DBBL 9999'));
+});
+
+test('POST /api/cards rejects duplicate card names', async () => {
+  const res = await cardsRoute.POST(
+    makeRequest('/api/cards', { method: 'POST', body: { cardName: 'TEST DBBL 9999' } }),
+  );
+  assert.equal(res.status, 409);
+});
+
+test('E2E: create sale invoice, then approve topup via audit queue', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Sale Client', email: 'sale@example.com', companyName: 'Sale Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: {
+        customerId,
+        adAccountId: 'test-sale-account-001',
+        adAccountName: 'ADS_Test_Sale_001',
+        topupAmountUSD: 100,
+        dollarRate: 132,
+        billingCard: 'TEST DBBL 9999',
+        paymentMethod: 'TEST DBBL 9999',
+        approvalStatus: 'Pending',
+        topupStatus: 'Pending',
+      },
+    }),
+  );
+  assert.equal(invRes.status, 201);
+  const { invoice } = await invRes.json();
+  assert.equal(invoice.paymentStatus, 'Due');
+  assert.equal(invoice.approvalStatus, 'Pending');
+
+  const pendingRes = await topupsRoute.GET(makeRequest('/api/topups'));
+  assert.equal(pendingRes.status, 200);
+  const pending = await pendingRes.json();
+  assert.ok(pending.topups.some((t) => t.invoiceNo === invoice.invoiceNo));
+
+  const approveRes = await approveRoute.PATCH(makeRequest(`/api/invoices/${invoice.invoiceNo}/approve`, { method: 'PATCH' }), params(invoice.invoiceNo));
+  assert.equal(approveRes.status, 200);
+  const approved = await approveRes.json();
+  assert.equal(approved.invoice.approvalStatus, 'Approved');
+  assert.equal(approved.invoice.paymentStatus, 'Paid');
+
+  const listRes = await invoicesRoute.GET(makeRequest('/api/invoices', { search: `search=${invoice.invoiceNo}` }));
+  const list = await listRes.json();
+  const updated = list.invoices.find((i) => i.invoiceNo === invoice.invoiceNo);
+  assert.equal(updated.approvalStatus, 'Approved');
+});
+
+test('E2E: reject topup marks invoice Rejected', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Reject Client', email: 'reject@example.com', companyName: 'Reject Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: { customerId, adAccountId: 'test-reject-001', topupAmountUSD: 50, approvalStatus: 'Pending', topupStatus: 'Pending' },
+    }),
+  );
+  const { invoice } = await invRes.json();
+
+  const rejectRes = await rejectRoute.PATCH(makeRequest(`/api/invoices/${invoice.invoiceNo}/reject`, { method: 'PATCH' }), params(invoice.invoiceNo));
+  assert.equal(rejectRes.status, 200);
+  const rejected = await rejectRes.json();
+  assert.equal(rejected.invoice.approvalStatus, 'Rejected');
+  assert.equal(rejected.invoice.paymentStatus, 'Due');
+});
+
+test('PATCH sync-topup updates topup status', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Sync Client', email: 'sync@example.com', companyName: 'Sync Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: { customerId, adAccountId: 'test-sync-001', topupAmountUSD: 25, approvalStatus: 'Approved', topupStatus: 'Pending' },
+    }),
+  );
+  const { invoice } = await invRes.json();
+
+  const syncRes = await syncRoute.PATCH(makeRequest(`/api/invoices/${invoice.invoiceNo}/sync-topup`, { method: 'PATCH', body: { status: 'Successfull' } }), params(invoice.invoiceNo));
+  assert.equal(syncRes.status, 200);
+  const synced = await syncRes.json();
+  assert.equal(synced.invoice.topupStatus, 'Successfull');
+});
+
+test('PATCH approve unknown invoice returns 404', async () => {
+  const res = await approveRoute.PATCH(makeRequest('/api/invoices/ADB 999999/approve', { method: 'PATCH' }), params('ADB 999999'));
+  assert.equal(res.status, 404);
+});
+
+test('GET /api/customers supports page/limit pagination', async () => {
+  const res = await customersRoute.GET(makeRequest('/api/customers', { search: 'limit=1&page=1' }));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.success, true);
+  assert.equal(body.limit, 1);
+  assert.ok(body.total >= 1);
+  assert.equal(body.customers.length, 1);
+  assert.equal(body.totalPages, body.total);
+});

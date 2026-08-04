@@ -8,14 +8,20 @@ export default function TopupsPage() {
   const app = useApp();
   const {
     invoices,
+    loading,
+    error,
     approveInvoice,
     rejectInvoice,
     syncTopupStatus,
+    refetch,
   } = useTopups(app.triggerToast);
 
   return (
     <TopupsView
       invoices={invoices}
+      loading={loading}
+      error={error}
+      onRetry={refetch}
       customers={app.customers}
       onApproveInvoice={approveInvoice}
       onRejectInvoice={rejectInvoice}

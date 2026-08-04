@@ -6,7 +6,7 @@ import { useDashboard } from '@/hooks/useDashboard';
 
 export default function DashboardPage() {
   const app = useApp();
-  const { stats: serverStats, dashboard } = useDashboard();
+  const { stats: serverStats, dashboard, error: dashboardError, refetch: refetchDashboard } = useDashboard();
 
   const stats = serverStats || app.stats;
   const activities = dashboard?.recentActivities || app.activities;
@@ -14,6 +14,8 @@ export default function DashboardPage() {
   return (
     <DashboardView
       stats={stats}
+      error={dashboardError}
+      onRetry={refetchDashboard}
       invoices={app.invoices}
       customers={app.customers}
       adAccounts={app.adAccounts}
