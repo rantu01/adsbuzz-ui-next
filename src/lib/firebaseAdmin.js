@@ -1,4 +1,4 @@
-import admin from "firebase-admin";
+import * as admin from "firebase-admin";
 import { getAuth } from "firebase-admin/auth";
 
 function normalizePrivateKey(rawKey) {
@@ -99,6 +99,23 @@ export async function verifyFirebaseToken(idToken) {
   }
   const decoded = await fbAuth.verifyIdToken(idToken);
   return decoded;
+}
+
+export async function createBrowserSessionCookie(idToken, expiresInMs) {
+  const fbAuth = getFirebaseAuth();
+  if (!fbAuth) {
+    throw new Error("Firebase Auth not available. Check FIREBASE_ADMIN_* env vars.");
+  }
+  const expiresIn = Number(expiresInMs) || 10 * 24 * 60 * 60 * 1000; // default 10 days
+  return fbAuth.createSessionCookie(idToken, { expiresIn });
+}
+
+export async function verifySessionCookie(token) {
+  const fbAuth = getFirebaseAuth();
+  if (!fbAuth) {
+    throw new Error("Firebase Auth not available. Check FIREBASE_ADMIN_* env vars.");
+  }
+  return fbAuth.verifySessionCookie(token, true);
 }
 
 export async function deleteFirebaseAuthUser(uid) {

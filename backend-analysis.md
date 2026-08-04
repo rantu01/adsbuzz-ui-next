@@ -453,7 +453,17 @@ Options:
 2. **JWT + local users table** (as new docs planned) with roles Admin/Sales Manager/Operations Manager/Finance Auditor.
 3. Hybrid.
 
-> Because the new UI has no login page and old project uses Firebase, recommend option 1 for consistency with existing production users, OR option 2 if a clean internal-only tool is preferred. **Decision deferred until instructed.**
+> **RESOLVED (2026-08-02):** Option 1 — reuse Firebase Auth for consistency with existing production users. Client uses `signInWithEmailAndPassword`; server verifies the ID token with firebase-admin.
+>
+> **Frontend auth layer (2026-08-04):** Chrome/Next.js can't read the sign-in state across a full page refresh, so the new project establishes a persistent server session. Flow:
+> 1. `/login` page → `signInWithEmailAndPassword(auth, email, password)` (Firebase client SDK).
+> 2. `user.getIdToken()` → `POST /api/auth/login` with `{ idToken }`.
+> 3. Server verifies the ID token (firebase-admin), loads the `users` doc by `uid`, and sets an **HttpOnly session cookie** (`adsbuzz_session`, SameSite=Lax, 14-day Max-Age).
+> 4. On every app load, `AuthContext` calls `GET /api/auth/session` to validate the cookie and hydrate the user — a valid logged-in user stays logged in across refresh.
+> 5. `src/middleware.js` checks the session cookie on all dashboard routes and redirects to `/login?next=` if missing (covers refresh / direct URL / bookmarks).
+> 6. Logout clears the cookie (`POST /api/auth/logout`) + Firebase `signOut` and redirects to `/login`.
+>
+> Roles mapping stays on old roles (`users.role`) as stored in prod. New-UI named roles (Admin / Sales Manager / Operations Manager / Finance Auditor) remain pending (see Part E).
 
 ### D4. Module build order (dependency-aware, from docs/todo.md)
 1. Settings (no deps) → 2. Series ✅ → 3. Cards ✅ → 4. Customers ✅ → 5. Ad Accounts ✅ (deps: Cards, Series, Customers) → 6. Vendors ✅ (list/create/update; pay pending) → 7. Invoices ⏳ (list done; write flow pending) → 8. Sale Setups (deps: Ad Accounts) → 9. Topups (approve/reject/sync; deps: Invoices) → 10. Insights/Reports/Reports-export (deps: Invoices) → 11. Activities → 12. Dashboard aggregation → 13. Auth/RBAC (✅ earlier).
@@ -473,6 +483,6 @@ See `api-status.md` for the full endpoint matrix.
 4. **Invoices** — new `invoices` collection ✅ created; legacy data synced via `syncLegacyInvoices`.
 5. **Historical data** — ✅ resolved: live production data is read (412 ad accounts, synced customers/invoices).
 6. **Roles/permissions** — backend uses old roles (admin/staff/customer) as prod `users` store them; new-UI roles open.
-7. **Remaining open:** export format (CSV vs XLSX/PDF); login UI (none yet — client-side Firebase + Bearer during Phase 5); topups/insights/reports/settings/saleSetups endpoints pending.
+7. **Login UI** — ✅ **RESOLVED (2026-08-04):** full frontend auth shipped — `/login` page, middleware route guard, `AuthContext` session persistence, Header logout. Old-UI vs new-UI roles still open.
 
 > All decisions are recorded here and must be re-confirmed only if implementation is blocked.

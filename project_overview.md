@@ -1,7 +1,7 @@
 # AdsBuzz ERP — Project Overview
 
-> Status: **Phases 0–5 ✅ + Phase 6 (Polish & Testing) ✅ complete. Phase 7 (Deployment) next.**
-> Last updated: 2026-08-03
+> Status: **Phases 0–5 ✅ + Phase 6 (Polish & Testing) ✅ + Frontend Authentication System ✅ complete. Phase 7 (Deployment) next.**
+> Last updated: 2026-08-04
 
 ---
 
@@ -38,8 +38,8 @@ AdsBuzz Ltd is a Bangladeshi digital ad agency. It manages **Facebook, TikTok, G
 |---|---|---|
 | Framework | Next.js 16.2.7 (App Router) | Next.js 15.3.1 (App Router, `next dev --port 3000`) |
 | Frontend | React 19.2.4 + Tailwind v4 + Framer Motion + SweetAlert2 | React 19 + Tailwind v4 + motion v12 + Recharts 3.9.2 |
-| Auth | Firebase Auth (Email/Password + Google OAuth) + Firebase Admin | None yet (planned) |
-| Database | MongoDB 7 (native `mongodb` driver ^7.2.0) | None yet (planned: MongoDB — see backend-analysis) |
+| Auth | Firebase Auth (Email/Password + Google OAuth) + Firebase Admin | Firebase Auth (Email/Password) + Firebase Admin + session cookie |
+| Database | MongoDB 7 (native `mongodb` driver ^7.2.0) | MongoDB (native `mongodb` driver ^7.5.0) |
 | Icons | lucide-react | lucide-react 0.546.0 |
 | External APIs | Meta Graph API v22.0, WhatsApp Cloud API v22.0 | None yet |
 | Language | JavaScript (`.js`, ESM) | JavaScript (`.jsx`/`.js`, ESM) |
@@ -50,10 +50,11 @@ AdsBuzz Ltd is a Bangladeshi digital ad agency. It manages **Facebook, TikTok, G
 
 ```
 src/
-├── middleware.js                  # Placeholder (matcher: [])
+├── middleware.js                  # Session route guard (dashboard → /login)
 ├── app/
-│   ├── layout.jsx                 # Root layout: AppProvider + AppShell
+│   ├── layout.jsx                 # Root layout: AuthProvider + AppProvider + AppShell
 │   ├── page.jsx                   # Dashboard (route /)
+│   ├── login/page.jsx             # Login (Firebase email/password → session cookie)
 │   ├── error.jsx / loading.jsx / not-found.jsx
 │   ├── globals.css                # Tailwind v4 + brand CSS vars (orange #F68B2D / blue #154A7D)
 │   ├── ad-accounts/page.jsx
@@ -68,18 +69,15 @@ src/
 │   ├── settings/page.jsx
 │   ├── topups/page.jsx
 │   ├── vendors/page.jsx
-│   └── api/                       # 5 STUB routes (placeholder JSON)
-│       ├── admin/route.js
-│       ├── auth/route.js
-│       ├── tasks/route.js
-│       ├── upload/route.js
-│       └── users/route.js
+│   └── api/                       # Live REST routes (auth, customers, invoices, …)
+├── context/
+│   ├── AppContext.jsx             # Global state + ALL CRUD handlers (central UI contract)
+│   └── AuthContext.jsx            # Session validation, user state, logout
 ├── components/
 │   ├── common/  AppShell, Header, Sidebar, PlatformText, StatCard, Toast
 │   ├── ui/      Badge, Button, Modal, SearchBar, ErrorBanner, FieldError, ConfirmDialog
 │   └── views/   Dashboard, Customers, Sales, SaleSetup, Topups, AdAccounts,
 │                Series, Cards, Vendors, Reports, Insights, Invoices, Settings
-├── context/AppContext.jsx         # Global state + ALL CRUD handlers (central UI contract)
 ├── hooks/                         # 9 hooks: useCustomers, useAdAccounts, useInvoices,
 │                                  # useCards, useVendors, useSeries, useSaleSetups,
 │                                  # useSettings, useActivities
@@ -112,6 +110,12 @@ docs/                              # Planning docs (api_list, database_schema, b
 - **Confirmation dialogs:** `src/components/ui/ConfirmDialog.jsx` guards destructive actions (Topups reject, Settings delete payment method).
 - **Automated tests:** node:test suite (16 unit + 9 integration/E2E) running against an isolated `adsbuzz_test` DB — `npm test` → 30/30 passing. Test infra: `tests/alias-loader.mjs` (`@/` alias + `next/server` stub), `tests/load-env.mjs`, `tests/stubs/next-server.mjs`.
 - **Server-side pagination:** `page`/`limit` query params on the main list APIs (customers, cards, ad-accounts, invoices) via `src/utils/pagination.js`.
+- **Authentication system (2026-08-04):** full login + route protection is live.
+  - `src/middleware.js` is a session route guard — all 13 dashboard routes redirect to `/login?next=...` when the `adsbuzz_session` cookie is missing (covers refresh, direct URL, bookmarks).
+  - `/login` page signs in via Firebase (email/password), exchanges the ID token for an HttpOnly session cookie via `POST /api/auth/login`, then redirects.
+  - `AuthContext` validates the cookie on every load (`GET /api/auth/session`), so a valid user stays logged in across refreshes; invalid sessions are bounced to login.
+  - Header shows the real user + working Logout (clears cookie + Firebase signOut).
+  - Same admin credentials as the mother project (`adsbuzzbd@gmail.com`) authenticate against the shared Firebase project — verified end-to-end.
 - **Remaining:** Phase 7 deployment (prod DB config, monitoring, deploy).
 - **Next step:** Phase 7 — deployment.
 
@@ -198,12 +202,12 @@ src/
 
 ## 11. Known Issues / Notes
 
-1. **Old project has NO server-side token verification** on most routes (accepts client `uid`). New backend should decide whether to keep or harden this.
+1. **Old project has NO server-side token verification** on most routes (accepts client `uid`). New backend hardens this — all `/api/auth/*` routes verify the Firebase ID token / session cookie.
 2. **DB name inconsistency** in old project: `userModel.js` defaults `adBuzz`, everything else `ad_buzz` (both overridden by `MONGODB_DB_NAME`).
 3. Old project `updateSpendCap` posts **dollars** to Meta while Meta returns cents/100 — potential unit bug (documented, do not fix unless instructed).
 4. Old "auto 95%/20% spend-cap increase" feature is **NOT implemented in code** (only described in docs).
 5. `CRON_SECRET` optional; when empty, cron endpoints are open. `SyncPoller` relies on this.
-6. New UI has **no login page / no auth flow** yet; auth design is still an open decision (see `backend-analysis.md` §Auth).
+6. ~~New UI has no login page / no auth flow yet~~ — **RESOLVED (2026-08-04):** `/login` page, session-cookie route guard, `AuthContext`, and Header logout are live (see "Current State").
 
 ---
 

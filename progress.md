@@ -1,7 +1,7 @@
 # Progress Report — AdsBuzz ERP Backend
 
-> Last updated: 2026-08-03
-> Current phase: **Phase 6 (Polish & Testing) COMPLETE — form validation, confirmation dialogs, unit/integration/E2E tests, and list-API pagination are all live and verified. Next: Phase 7 deployment.**
+> Last updated: 2026-08-04
+> Current phase: **Frontend Auth System COMPLETE — login page, session route guard, logout, and session persistence are live and verified end-to-end. Next: Phase 7 deployment.**
 
 ---
 
@@ -17,6 +17,7 @@
 | Phase 5 | Frontend integration (swap seed data → API calls) | ✅ Complete |
 | Phase 6 | Polish & testing | ✅ Complete |
 | Phase 7 | Deployment | ⬜ Not started |
+| **Auth UI** | Login page + route guards + session persistence | ✅ Complete (2026-08-04) |
 
 ---
 
@@ -116,6 +117,24 @@
 - [x] **Performance** — added `page`/`limit`/`total`/`totalPages` query params to GET list APIs (customers, cards, ad-accounts, invoices) via `src/utils/pagination.js`. Memoization verified present (`useMemo`/`memo`/`useCallback` in views/AppContext).
 - [x] **Verified** — `npm test` ✅ (30/30), `next lint` ✅ (no errors), `npm run build` ✅ (0 errors).
 
+### Frontend Authentication System (2026-08-04, COMPLETE)
+
+Backend auth (Phase 2) already provided `POST /api/auth/login` (Firebase ID token → httpOnly session cookie), `POST /api/auth/logout`, `GET /api/auth/session`, `GET /api/auth/me`, and `POST /api/auth/sync-user`. This session adds the full **client-side auth layer** so no dashboard page is reachable without logging in:
+
+- [x] **Server-side route guard** — `src/middleware.js` rewritten: checks the `adsbuzz_session` cookie on all 13 dashboard routes (`/`, `/ad-accounts`, `/cards`, `/customers`, `/insights`, `/invoices`, `/reports`, `/sale-setup`, `/sales`, `/series`, `/settings`, `/topups`, `/vendors`). Missing cookie → `307` redirect to `/login?next=<original-path>`. Covers refresh, direct URL entry, bookmarks, and any other unauthenticated access. Public routes (`/login`), static assets (`/_next`, `/images`, `/uploads`, favicon), and `/api/*` pass through.
+- [x] **Login page** — `src/app/login/page.jsx`: brand-styled email/password form. On submit → `signInWithEmailAndPassword` (Firebase client SDK) → `getIdToken()` → `POST /api/auth/login` sets the httpOnly session cookie → redirect to `next` param (or `/`). Firebase error codes mapped to friendly messages.
+- [x] **Session persistence / validation** — `src/context/AuthContext.jsx`: on mount calls `GET /api/auth/session` to validate the cookie; exposes `{ user, loading, logout, refreshSession }`. If the session is invalid it redirects to `/login`; if a signed-in user visits `/login` it redirects to `/`. Logout calls `POST /api/auth/logout` + Firebase `signOut` and redirects to `/login`.
+- [x] **App gate** — `src/app/layout.jsx` wraps everything in `AuthProvider`; `src/components/common/AppShell.jsx` renders a loading spinner while the session is validated and never renders protected chrome before the user is known. `/login` renders bare (no sidebar/header).
+- [x] **Header identity + logout** — `src/components/common/Header.jsx` now shows the real signed-in user (name initials, display name, email) and a working **Logout** action wired to `useAuth().logout`.
+- [x] **Firebase Admin interop fix** — `src/lib/firebaseAdmin.js` switched `import admin from "firebase-admin"` → `import * as admin from "firebase-admin"`. The CJS entry (`lib/index.js`) declares `__esModule` without a default export, so Next.js's bundler resolved the default import to `undefined` ("Cannot read properties of undefined (reading 'getApps')") and every Admin-SDK call failed with 401. Namespace import restores `admin.getApps()/cert()/initializeApp()`.
+- [x] **Verified end-to-end on live dev server**:
+  - Unauthenticated `GET /`, `/customers`, `/invoices` → `307` to `/login?next=...`; `/login` and `/api/auth` → `200`.
+  - Admin credentials (`adsbuzzbd@gmail.com` / mother-project Firebase password) → Firebase sign-in OK (uid matches prod `users.admin` role).
+  - `POST /api/auth/login` → `200`, `set-cookie: adsbuzz_session` (HttpOnly, SameSite=Lax, 14-day Max-Age).
+  - With cookie: `/` and `/settings` → `200`; `GET /api/auth/session` → `200` with full admin payload.
+  - `POST /api/auth/logout` → `200`; after logout `/` → `307` to `/login`, session → `401`.
+- [x] `npm run build` ✅ (0 errors), `npm run lint` ✅ (no warnings), `npm test` ✅ (30/30).
+
 ---
 
 ## Known Issues / Decisions Pending
@@ -127,7 +146,7 @@
 5. **Historical data** — ✅ resolved: live production data read (412 ad accounts, synced customers/invoices).
 6. **Roles** — backend uses old roles (admin/staff/customer) since prod `users` store those; new UI roles (Admin/Sales Manager/Operations Manager/Finance Auditor) still open — see `backend-analysis.md`.
 7. **Export format** — ✅ RESOLVED: CSV / XLSX (HTML table) / PDF (HTML) via `/api/reports/export?format=csv|xlsx|pdf`, wired to Reports page download buttons.
-8. **Login UI** — new project has no login page yet; client-side Firebase Auth + Bearer token still open (client work, backend `/api/auth/*` ready).
+8. ~~**Login UI** — new project has no login page yet; client-side Firebase Auth + Bearer token still open.~~ **✅ RESOLVED (2026-08-04):** `/login` page, session-cookie route guard middleware, `AuthContext` session persistence, and Header logout are all live. See the "Frontend Authentication System" section above.
 
 ---
 
@@ -135,10 +154,10 @@
 
 **Next tasks:** Phase 7 deployment — production database config, monitoring/logging, deploy (Vercel / custom server), final docs update.
 
-### Completed this session (Phase 6)
-- Form validation (`src/utils/formValidation.js` + inline `FieldError`) wired into Customers, Ad Accounts, Cards, Invoices, and Settings modals.
-- `ConfirmDialog` component wired into destructive actions (Topups reject, Settings delete payment method).
-- Test infrastructure: node:test runner with `@/` alias loader, `next/server` stub, and an isolated `adsbuzz_test` database.
-- 16 unit tests (invoiceMath, formValidation, pagination) + 9 integration/E2E API tests (create-sale → approve-topup flow, reject, sync, validation, pagination) — **30/30 passing via `npm test`.**
-- Server-side pagination (`page`/`limit`) on customers/cards/ad-accounts/invoices list APIs via `src/utils/pagination.js`.
-- `npm run build` ✅ (0 errors), `npm run lint` ✅ (no errors).
+### Completed this session (2026-08-04 — Frontend Auth)
+- Server-side route guard in `src/middleware.js` (all 13 dashboard routes → `/login?next=` on missing session cookie).
+- `/login` page (Firebase email/password → `/api/auth/login` session cookie → redirect).
+- `AuthContext` (session validation on mount, user state, logout, login-page bounce).
+- `AppShell` auth gate + Header real identity/logout.
+- Fixed `firebase-admin` default-import interop bug (CJS `__esModule` without default) by switching to namespace import.
+- Verified end-to-end: unauthenticated → 307 login; login → cookie; protected pages 200; logout → 401/307. Build ✅, lint ✅, 30/30 tests ✅.

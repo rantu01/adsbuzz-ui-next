@@ -11,7 +11,7 @@
 | Area | Old project has | New UI needs | New backend status |
 |---|---|---|---|
 | **Foundation (Phase 1)** | — | — | 🟩 config, db, logger, http, errorHandler, validate |
-| **Auth (Phase 2)** | ✅ Firebase | ⬜ no login UI yet | 🟩 Firebase client+admin, sync-user, me, RBAC |
+| **Auth (Phase 2)** | ✅ Firebase | ✅ login page + route guards | 🟩 Firebase client+admin, sync-user, me, login/logout/session, RBAC, middleware guard |
 | Dashboard | ✅ `/api/user/dashboard` | ✅ `/` aggregates | 🟩 stats + recent invoices/activities |
 | Customers | ⚠️ `users` only | ✅ full CRM | 🟩 CRUD+notes+favorite+sync |
 | Ad Accounts | ✅ full | ✅ full | 🟩 CRUD+bulk-status+legacy map |
@@ -27,7 +27,7 @@
 | Activities | ⚠️ logs | ✅ feed | 🟩 list + create (wired into mutations) |
 | Upload | ❌ none | ✅ screenshot | 🟩 base64 image → `public/uploads` → URL |
 
-**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) COMPLETE: Settings, Series, Cards, Customers, Ad Accounts, Vendors, Sale Setups, Invoices (full write flow). Phase 4 (Business APIs) COMPLETE: Topups, Insights, Reports + Export, Activities, Dashboard — all wired to the UI. Phase 5 (Frontend Integration) COMPLETE: error handling, optimistic updates, and the payment screenshot upload flow are live. Phase 6 (Polish & Testing) COMPLETE: form validation, confirmation dialogs, unit/integration/E2E tests (30/30 pass via `npm test`), and server-side pagination on list APIs. Phase 7 (Deployment) next.**
+**Overall: Phase 1 (Foundation) + Phase 2 (Auth & RBAC) COMPLETE. Phase 3 (CRUD) COMPLETE: Settings, Series, Cards, Customers, Ad Accounts, Vendors, Sale Setups, Invoices (full write flow). Phase 4 (Business APIs) COMPLETE: Topups, Insights, Reports + Export, Activities, Dashboard — all wired to the UI. Phase 5 (Frontend Integration) COMPLETE: error handling, optimistic updates, and the payment screenshot upload flow are live. Phase 6 (Polish & Testing) COMPLETE: form validation, confirmation dialogs, unit/integration/E2E tests (30/30 pass via `npm test`), and server-side pagination on list APIs. Frontend Authentication (2026-08-04) COMPLETE: `/login` page, session-cookie middleware route guard, `AuthContext` persistence, and Header logout live. Phase 7 (Deployment) next.**
 
 ### Phase 1 foundation files (🟩 Complete)
 
@@ -160,10 +160,11 @@
 | GET | `/api/auth` | Status (provider, configured) | 🟩 |
 | POST | `/api/auth/sync-user` | Sync Firebase user to `users` collection (Bearer-verified) | 🟩 |
 | GET | `/api/auth/me` | Current user + roleLabel + navItems | 🟩 |
-| POST | `/api/auth/login` | Login — client-side via Firebase SDK (no server route needed) | 🟦 n/a |
-| POST | `/api/auth/logout` | Logout — client-side via Firebase SDK | 🟦 n/a |
+| POST | `/api/auth/login` | Login — Firebase client SDK sign-in → server verifies ID token → sets HttpOnly session cookie | 🟩 |
+| POST | `/api/auth/logout` | Logout — clears session cookie | 🟩 |
+| GET | `/api/auth/session` | Validate session cookie → current user + roleLabel + navItems (persistence) | 🟩 |
 
-> **Auth design**: Firebase Auth (Email/Password + Google OAuth) as in old app. Client calls `signInWithEmailAndPassword`/Google, then `/api/auth/sync-user` (sends ID token as `Authorization: Bearer`). Server verifies with firebase-admin `verifyIdToken` and reads the user from `users` (by `uid`). Route protection uses `requireAuth` / `requireStaff` / `requireAdmin` / `requirePermission`.
+> **Auth design**: Firebase Auth (Email/Password) as in old app. Client calls `signInWithEmailAndPassword`, then `/api/auth/login` (sends ID token as `Authorization`/body) → server verifies with firebase-admin `verifyIdToken` and sets an HttpOnly session cookie. Route protection is enforced server-side by `src/middleware.js` (redirects all dashboard routes to `/login?next=` when the session cookie is missing) and client-side by `AuthContext` (`GET /api/auth/session` on load). **Frontend auth system shipped 2026-08-04** — login page, route guards, session persistence, and Header logout are live.
 
 ### Upload
 | Method | Endpoint | Description | Status |

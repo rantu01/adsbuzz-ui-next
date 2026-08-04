@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Bell, Sun, Moon, Keyboard, LogOut, ChevronDown, User, ShieldAlert, Sparkles, X, Menu } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Header({
   onSearch,
@@ -18,6 +19,16 @@ export default function Header({
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
+
+  const { user, logout } = useAuth();
+  const displayName = user?.displayName || user?.email?.split('@')[0] || 'User';
+  const displayEmail = user?.email || '';
+  const initials = (displayName || 'U').slice(0, 2).toUpperCase();
+
+  const handleLogout = () => {
+    setShowProfileDropdown(false);
+    logout();
+  };
 
   // Update clock every second
   useEffect(() => {
@@ -221,7 +232,7 @@ export default function Header({
             aria-expanded={showProfileDropdown}
           >
             <div className="header-profile-avatar h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 md:bg-slate-100 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center border border-slate-200 dark:border-slate-700">
-              RR
+              {initials}
             </div>
             <ChevronDown size={14} className="header-profile-chevron text-slate-300 md:text-slate-400" />
           </button>
@@ -237,13 +248,16 @@ export default function Header({
                 className="absolute right-0 mt-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl w-56 p-2 z-40"
               >
                 <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Rakibul Riyet</p>
-                  <p className="text-[10px] text-slate-400 truncate">rakibulriyel1171@gmail.com</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">{displayName}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{displayEmail}</p>
                 </div>
                 <button className="header-profile-menu-item header-profile-menu-item-blue w-full text-left text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2 cursor-pointer">
                   <User size={14} /> My Profile
                 </button>
-                <button className="header-profile-menu-item header-profile-menu-item-red w-full text-left text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2 cursor-pointer">
+                <button
+                  onClick={handleLogout}
+                  className="header-profile-menu-item header-profile-menu-item-red w-full text-left text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2 cursor-pointer"
+                >
                   <LogOut size={14} /> Logout
                 </button>
               </motion.div>

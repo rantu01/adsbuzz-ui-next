@@ -1,7 +1,7 @@
 # Todo List — AdsBuzz ERP Backend
 
 > Living checklist. Completed tasks are never deleted — only marked complete.
-> Last updated: 2026-08-03
+> Last updated: 2026-08-04
 
 ---
 
@@ -208,6 +208,19 @@
 - [x] Extracted pure invoice math to `src/utils/invoiceMath.js` (round2, dateOnly, detectPlatform, computePaymentStatus, invoiceNoFromLegacyId) — `invoiceModel.js` now imports it
 - [x] Test runner infra: `tests/load-env.mjs` (forces `MONGODB_DB_NAME=adsbuzz_test`), `tests/alias-loader.mjs` (`@/` alias + `next/server` stub), `tests/stubs/next-server.mjs`, `closeDb()` in `src/lib/db.js`, `npm run test` script
 - [x] Full build + lint verification (`npm run build` ✅, `npm run lint` ✅, 30/30 tests pass)
+
+---
+
+## Frontend Authentication System (2026-08-04) ✅
+
+- [x] Server-side route guard in `src/middleware.js` (session cookie check → redirect `/login?next=` for all 13 dashboard routes; refresh/direct URL/bookmark all covered)
+- [x] Create `/login` page (Firebase email/password → `/api/auth/login` → session cookie → redirect)
+- [x] `AuthContext` — session validation on mount (`/api/auth/session`), user state, logout (server cookie + Firebase signOut), login-page bounce for signed-in users
+- [x] Wire `AuthProvider` into root layout + `AppShell` loading gate (no protected chrome before session resolves; `/login` renders bare)
+- [x] Header shows real user identity + working Logout button
+- [x] Fix `firebase-admin` default-import interop bug (switch to namespace import) so Admin SDK works under Next.js bundler
+- [x] Verify end-to-end live: 307 redirect unauthenticated, login 200 + HttpOnly cookie, protected pages 200, session 200, logout 200 → 401/307
+- [x] `npm run build` ✅ (0 errors), `npm run lint` ✅, `npm test` ✅ (30/30)
 
 ---
 

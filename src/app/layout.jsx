@@ -1,4 +1,5 @@
 import './globals.css';
+import { AuthProvider } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
 import AppShell from '@/components/common/AppShell';
 
@@ -14,9 +15,11 @@ export default function RootLayout({ children }) {
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </head>
       <body>
-        <AppProvider>
-          <AppShell>{children}</AppShell>
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <AppShell>{children}</AppShell>
+          </AppProvider>
+        </AuthProvider>
       </body>
     </html>
   );
