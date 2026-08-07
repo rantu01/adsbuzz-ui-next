@@ -234,7 +234,7 @@ function CustomersView({
     }
   };
 
-  const handleCreateCustomerSubmit = (e) => {
+  const handleCreateCustomerSubmit = async (e) => {
     e.preventDefault();
     const errors = validate(
       {
@@ -249,7 +249,7 @@ function CustomersView({
         name: [required('Full corporate name is required'), maxLength(120)],
         groupId: maxLength(30, 'Group ID must be 30 characters or fewer'),
         email: [required('Email address is required'), email()],
-        phone,
+        phone: phone(),
         company: [required('Company name is required'), maxLength(120)],
         credit: positiveNumber('Credit limit must be greater than 0'),
       },
@@ -260,23 +260,28 @@ function CustomersView({
     }
     setAddFormErrors({});
     const generatedGroupId = newCustGroupId.trim() || `GC-${newCustName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase()}`;
-    onAddCustomer({
-      name: newCustName,
-      groupId: generatedGroupId,
-      email: newCustEmail,
-      phone: newCustPhone,
-      companyName: newCustCompany,
-      status: 'Active',
-      creditLimitUSD: Number(newCustCredit)
-    });
-    // Reset fields
-    setNewCustName('');
-    setNewCustGroupId('');
-    setNewCustEmail('');
-    setNewCustPhone('');
-    setNewCustCompany('');
-    setNewCustCredit(1000);
-    setShowAddModal(false);
+    try {
+      await onAddCustomer({
+        name: newCustName,
+        groupId: generatedGroupId,
+        email: newCustEmail,
+        phone: newCustPhone,
+        companyName: newCustCompany,
+        status: 'Active',
+        creditLimitUSD: Number(newCustCredit)
+      });
+      // Only reset and close the modal once the customer was actually persisted.
+      setNewCustName('');
+      setNewCustGroupId('');
+      setNewCustEmail('');
+      setNewCustPhone('');
+      setNewCustCompany('');
+      setNewCustCredit(1000);
+      setShowAddModal(false);
+    } catch {
+      // The error toast is raised by the hook (useCustomers.addCustomer).
+      // Keep the modal open so the user can correct and retry.
+    }
   };
 
   const handleOpenEditModal = () => {
@@ -286,7 +291,7 @@ function CustomersView({
     }
   };
 
-  const handleSaveEditCustomer = (e) => {
+  const handleSaveEditCustomer = async (e) => {
     e.preventDefault();
     if (!editCustData || !onUpdateCustomer) return;
     const errors = validate(
@@ -302,7 +307,7 @@ function CustomersView({
         name: [required('Full corporate name is required'), maxLength(120)],
         groupId: [required('Group ID is required'), maxLength(30)],
         email: [required('Email address is required'), email()],
-        phone,
+        phone: phone(),
         company: [required('Company name is required'), maxLength(120)],
         credit: positiveNumber('Credit limit must be greater than 0'),
       },
@@ -312,8 +317,12 @@ function CustomersView({
       return;
     }
     setEditFormErrors({});
-    onUpdateCustomer(editCustData);
-    setShowEditModal(false);
+    try {
+      await onUpdateCustomer(editCustData);
+      setShowEditModal(false);
+    } catch {
+      // Error toast raised by the hook; keep the modal open so edits are not lost.
+    }
   };
 
   return (
@@ -849,7 +858,7 @@ function CustomersView({
             <FieldError error={addFormErrors.credit} />
           </div>
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
             <Button type="submit">Save Customer</Button>
           </div>
         </form>
@@ -974,7 +983,7 @@ function CustomersView({
           </div>
 
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Button>
             <Button type="submit">Save Changes</Button>
           </div>
         </form>
