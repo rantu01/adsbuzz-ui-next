@@ -71,6 +71,31 @@ export function useAdAccounts(triggerToast) {
     [triggerToast],
   );
 
+  const deleteAdAccount = useCallback(
+    async (accountId) => {
+      const prev = adAccounts.find(a => a._id === accountId || a.adAccountId === accountId);
+      if (!prev) return null;
+
+      // Optimistic removal — item vanishes instantly, restored on failure.
+      setAdAccounts(prevList => prevList.filter(a => a._id !== accountId && a.adAccountId !== accountId));
+
+      try {
+        const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(accountId)}`, {
+          method: 'DELETE',
+        });
+        triggerToast('info', 'Ad Account Removed', `${prev.adAccountName} was deleted from inventory.`);
+        return data.adAccount;
+      } catch (err) {
+        setAdAccounts(prevList =>
+          prevList.some(a => a._id === accountId || a.adAccountId === accountId) ? prevList : [prev, ...prevList],
+        );
+        triggerToast('error', 'Ad Account Delete Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [adAccounts, triggerToast],
+  );
+
   const updateAccountStatus = useCallback(
     async (accountId, status) => {
       const match = (a) => a._id === accountId || a.adAccountId === accountId;
@@ -171,6 +196,47 @@ export function useAdAccounts(triggerToast) {
     [],
   );
 
+  const assignAdAccount = useCallback(
+    async (adAccountId, customerId) => {
+      const prev = adAccounts.find(a => a.adAccountId === adAccountId);
+
+      // Optimistic assignment — mark Sold instantly, rolled back on failure.
+      if (prev) {
+        setAdAccounts(prevList =>
+          prevList.map(a =>
+            a.adAccountId === adAccountId ? { ...a, accountStatus: 'Sold', assignedCustomer: customerId } : a,
+          ),
+        );
+      }
+
+      try {
+        const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(adAccountId)}/assign`, {
+          method: 'POST',
+          body: JSON.stringify({ customerId }),
+        });
+        const saved = data.adAccount;
+        setAdAccounts(prevList =>
+          prevList.map(a => (a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a)),
+        );
+        triggerToast(
+          'success',
+          'Ad Account Assigned',
+          `${saved.adAccountName} assigned to customer ${saved.assignedCustomer}.`,
+        );
+        return saved;
+      } catch (err) {
+        if (prev) {
+          setAdAccounts(prevList =>
+            prevList.map(a => (a.adAccountId === adAccountId ? prev : a)),
+          );
+        }
+        triggerToast('error', 'Assignment Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [adAccounts, triggerToast],
+  );
+
   const refetch = useCallback(() => {
     setLoading(true);
     return fetchAdAccounts();
@@ -182,9 +248,11 @@ export function useAdAccounts(triggerToast) {
     error,
     addAdAccount,
     updateAdAccount,
+    deleteAdAccount,
     updateAccountStatus,
     bulkUpdateStatus,
     markAccountSold,
+    assignAdAccount,
     refetch,
   };
 }

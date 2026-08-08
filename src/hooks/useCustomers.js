@@ -43,40 +43,87 @@ export function useCustomers(triggerToast) {
 
   const updateCustomer = useCallback(
     async (updatedCust) => {
+      const id = updatedCust.id;
+      const prev = customers.find(c => c.id === id);
+
+      // Optimistic update — reflect the edits immediately, roll back on failure.
+      if (prev) {
+        setCustomers(prevList => prevList.map(c => (c.id === id ? { ...c, ...updatedCust } : c)));
+      }
+
       try {
-        const data = await apiFetch(`/api/customers/${encodeURIComponent(updatedCust.id)}`, {
+        const data = await apiFetch(`/api/customers/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body: JSON.stringify(updatedCust),
         });
         const saved = data.customer;
-        setCustomers(prev => prev.map(c => (c.id === saved.id ? saved : c)));
+        setCustomers(prevList => prevList.map(c => (c.id === saved.id ? saved : c)));
         triggerToast('success', 'Customer Updated', `Profile updated for ${saved.name}`);
         return saved;
       } catch (err) {
+        if (prev) {
+          setCustomers(prevList => prevList.map(c => (c.id === id ? prev : c)));
+        }
         triggerToast('error', 'Customer Update Failed', getErrorMessage(err));
         throw err;
       }
     },
-    [triggerToast],
+    [customers, triggerToast],
   );
 
   const updateCustomerNotes = useCallback(
     async (customerId, notes) => {
+      const prev = customers.find(c => c.id === customerId);
+
+      // Optimistic update — notes appear instantly, rolled back on failure.
+      if (prev) {
+        setCustomers(prevList => prevList.map(c => (c.id === customerId ? { ...c, notes } : c)));
+      }
+
       try {
         const data = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/notes`, {
           method: 'PATCH',
           body: JSON.stringify({ notes }),
         });
         const saved = data.customer;
-        setCustomers(prev => prev.map(c => (c.id === saved.id ? saved : c)));
+        setCustomers(prevList => prevList.map(c => (c.id === saved.id ? saved : c)));
         triggerToast('success', 'CRM Notes Updated', 'Customer relationship records synchronized.');
         return saved;
       } catch (err) {
+        if (prev) {
+          setCustomers(prevList => prevList.map(c => (c.id === customerId ? prev : c)));
+        }
         triggerToast('error', 'Notes Update Failed', getErrorMessage(err));
         throw err;
       }
     },
-    [triggerToast],
+    [customers, triggerToast],
+  );
+
+  const deleteCustomer = useCallback(
+    async (customerId) => {
+      const prev = customers.find(c => c.id === customerId);
+      if (!prev) return null;
+
+      // Optimistic removal — vanish instantly, restored on failure.
+      setCustomers(prevList => prevList.filter(c => c.id !== customerId));
+
+      try {
+        const data = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}`, {
+          method: 'DELETE',
+        });
+        const removed = data.customer;
+        triggerToast('info', 'Customer Removed', `${removed.name} was deleted from the CRM.`);
+        return removed;
+      } catch (err) {
+        setCustomers(prevList =>
+          prevList.some(c => c.id === customerId) ? prevList : [prev, ...prevList],
+        );
+        triggerToast('error', 'Customer Delete Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [customers, triggerToast],
   );
 
   const toggleFavorite = useCallback(
@@ -134,6 +181,7 @@ export function useCustomers(triggerToast) {
     addCustomer,
     updateCustomer,
     updateCustomerNotes,
+    deleteCustomer,
     toggleFavorite,
     applySaleCredit,
     refetch,

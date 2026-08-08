@@ -1,6 +1,7 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, requirePositiveNumber } from "@/utils/validate";
 import { getInvoiceByNo, updateInvoice } from "@/models/invoiceModel";
+import { cacheInvalidate } from "@/lib/cache";
 
 export const GET = asyncHandler(async (request, { params }) => {
   const { invoiceNo } = await params;
@@ -25,5 +26,6 @@ export const PUT = asyncHandler(async (request, { params }) => {
   }
 
   const invoice = await updateInvoice(invoiceNo, body);
+  cacheInvalidate("GET:/api/invoices");
   return ok({ message: "Invoice updated.", invoice });
 });

@@ -15,6 +15,8 @@ export function mapStatusToUi(legacyStatus) {
   switch (String(legacyStatus || "").toLowerCase()) {
     case "active":
       return "Active";
+    case "pending":
+      return "Pending";
     case "paused":
       return "Available";
     default:
@@ -32,6 +34,8 @@ export function mapStatusToLegacy(uiStatus) {
     case "disable":
     case "disabled":
       return "disabled";
+    case "pending":
+      return "pending";
     default:
       return "disabled";
   }
@@ -53,9 +57,11 @@ export function toUiAccount(doc) {
     accountOwner: doc.accountOwner || doc.email || DEFAULT_OWNER,
     userGroupCode: doc.userGroupCode || DEFAULT_GROUP_CODE,
     accountStatus: doc.accountStatus || (assigned ? "Sold" : mapped),
+    adminId: doc.adminId || "",
     bmId: doc.bmId || "",
     bmName: doc.bmName || "",
-    billingCard: doc.billingCard || "",
+    billingCard: doc.billingCard || doc.selectCard || "",
+    selectCard: doc.selectCard || doc.billingCard || "",
     seriesId: doc.seriesId || "",
     assignAdAccount: doc.assignAdAccount || "",
     productType: doc.productType || "",
@@ -140,9 +146,11 @@ export async function createAdAccount(ui) {
     accountOwner: ui.accountOwner || DEFAULT_OWNER,
     userGroupCode: ui.userGroupCode || DEFAULT_GROUP_CODE,
     accountStatus: ui.accountStatus || "Available",
+    adminId: ui.adminId || "",
     bmId: ui.bmId || "",
     bmName: ui.bmName || "",
     billingCard: ui.billingCard || ui.selectCard || "",
+    selectCard: ui.selectCard || ui.billingCard || "",
     seriesId: ui.seriesId || "",
     assignAdAccount: ui.assignAdAccount || "",
     productType: ui.productType || "",
@@ -182,9 +190,11 @@ export async function updateAdAccountById(id, ui) {
     accountOwner: ui.accountOwner || doc.accountOwner || DEFAULT_OWNER,
     userGroupCode: ui.userGroupCode || doc.userGroupCode || "",
     accountStatus: ui.accountStatus,
+    adminId: ui.adminId || "",
     bmId: ui.bmId || "",
     bmName: ui.bmName || "",
     billingCard: ui.billingCard || ui.selectCard || "",
+    selectCard: ui.selectCard || ui.billingCard || "",
     seriesId: ui.seriesId || "",
     assignAdAccount: ui.assignAdAccount || "",
     productType: ui.productType || "",
@@ -210,6 +220,17 @@ export async function updateAdAccountStatus(id, uiStatus) {
   await collection.updateOne({ _id: doc._id }, { $set: update });
   const saved = await collection.findOne({ _id: doc._id });
   return toUiAccount(saved);
+}
+
+export async function deleteAdAccount(identifier) {
+  if (!identifier) return null;
+  const collection = await getCollection("adAccounts");
+  const doc = await getAdAccountByIdentifier(identifier);
+  if (!doc) return null;
+
+  await collection.deleteOne({ _id: doc._id });
+  logger.info(`deleteAdAccount: removed ${doc.adAccountName}`);
+  return toUiAccount(doc);
 }
 
 export async function bulkUpdateStatus(ids, uiStatus) {

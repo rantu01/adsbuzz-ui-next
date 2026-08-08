@@ -1,6 +1,7 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, optionalString } from "@/utils/validate";
 import { syncTopupStatus } from "@/models/invoiceModel";
+import { cacheInvalidate } from "@/lib/cache";
 
 const TOPUP_STATUSES = ["Successfull", "Successful", "Pending", "Failed", "Declined"];
 
@@ -17,5 +18,6 @@ export const PATCH = asyncHandler(async (request, { params }) => {
   if (!invoice) {
     return notFound("Invoice not found.");
   }
+  cacheInvalidate("GET:/api/invoices");
   return ok({ message: "Topup status synced.", invoice });
 });

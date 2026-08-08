@@ -11,6 +11,34 @@ export const DEFAULT_DOLLAR_RATE = 132;
 export const DEFAULT_CREDIT_LIMIT = 1000;
 export const INVOICE_PAYMENT_STATUS = ["Paid", "Due", "Partially Paid"];
 
+// The legacy migration below is expensive (per-customer x per-log scan + per-invoice
+// upserts). It must never run on every list read. We de-duplicate it with a
+// module-level promise and skip it entirely once the migration has already been
+// persisted (detected via the presence of migrated legacy invoices).
+let legacyInvoiceSyncPromise = null;
+
+export function ensureLegacyInvoicesSynced() {
+  if (legacyInvoiceSyncPromise) return legacyInvoiceSyncPromise;
+
+  legacyInvoiceSyncPromise = (async () => {
+    const db = await getDb();
+    const invoicesCollection = db.collection("invoices");
+    const legacyCount = await invoicesCollection.countDocuments({
+      $or: [{ source: "legacy_sync" }, { legacyId: { $exists: true, $ne: "" } }],
+    });
+    if (legacyCount > 0) {
+      return { cached: true, synced: 0, totals: [] };
+    }
+    return await syncLegacyInvoices();
+  })().catch((error) => {
+    logger.error("Legacy invoice sync failed.", error);
+    legacyInvoiceSyncPromise = null;
+    return { synced: 0, totals: [] };
+  });
+
+  return legacyInvoiceSyncPromise;
+}
+
 /**
  * Builds invoice records for each real customer from the legacy data model
  * (mirrors how the original ad-buzz project computes/retrieves topups):
@@ -153,7 +181,7 @@ export async function syncLegacyInvoices() {
 }
 
 export async function listInvoices({ search = "", paymentStatus = "", customerId = "" } = {}) {
-  await syncLegacyInvoices();
+  await ensureLegacyInvoicesSynced();
   const invoicesCollection = await getCollection("invoices");
 
   const filter = {};
@@ -260,7 +288,7 @@ export async function createInvoice(data = {}) {
 }
 
 export async function listPendingTopups({ search = "" } = {}) {
-  await syncLegacyInvoices();
+  await ensureLegacyInvoicesSynced();
   const invoicesCollection = await getCollection("invoices");
 
   const filter = {

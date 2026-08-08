@@ -1,6 +1,7 @@
 import { asyncHandler, ok, badRequest } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import { bulkUpdateStatus } from "@/models/adAccountModel";
+import { cacheInvalidate } from "@/lib/cache";
 
 export const PATCH = asyncHandler(async (request) => {
   const body = await readJsonBody(request);
@@ -12,5 +13,6 @@ export const PATCH = asyncHandler(async (request) => {
   }
 
   const result = await bulkUpdateStatus(ids, status);
+  cacheInvalidate("GET:/api/ad-accounts");
   return ok({ message: "Ad account statuses updated.", result });
 });

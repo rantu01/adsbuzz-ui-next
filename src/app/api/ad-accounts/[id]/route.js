@@ -4,7 +4,11 @@ import {
   getAdAccountUiByIdentifier,
   updateAdAccountById,
   updateAdAccountStatus,
+  deleteAdAccount,
 } from "@/models/adAccountModel";
+import { cacheInvalidate } from "@/lib/cache";
+
+const CACHE_PREFIX = "GET:/api/ad-accounts";
 
 export const GET = asyncHandler(async (request, { params }) => {
   const { id } = await params;
@@ -26,5 +30,19 @@ export const PATCH = asyncHandler(async (request, { params }) => {
   if (!account) {
     return notFound("Ad account not found.");
   }
+  cacheInvalidate(CACHE_PREFIX);
   return ok({ message: "Ad account updated.", adAccount: account });
+});
+
+export const DELETE = asyncHandler(async (request, { params }) => {
+  const { id } = await params;
+
+  const existing = await getAdAccountUiByIdentifier(id);
+  if (!existing) {
+    return notFound("Ad account not found.");
+  }
+
+  await deleteAdAccount(id);
+  cacheInvalidate(CACHE_PREFIX);
+  return ok({ message: "Ad account deleted.", adAccount: existing });
 });

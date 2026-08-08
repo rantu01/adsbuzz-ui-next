@@ -21,6 +21,8 @@ function AdAccountsPageInner() {
       series={app.series}
       onAddAdAccount={app.handleAddAdAccount}
       onUpdateAdAccount={app.handleUpdateAdAccount}
+      onDeleteAdAccount={app.handleDeleteAdAccount}
+      onAssignAdAccount={app.handleAssignAdAccount}
       onUpdateAccountStatus={app.handleUpdateAccountStatus}
       onBulkUpdateStatus={app.handleBulkUpdateStatus}
       autoOpenAddModal={autoOpenAdd || app.pendingOpenAddAccount}

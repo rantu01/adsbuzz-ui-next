@@ -22,7 +22,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import FieldError from '@/components/ui/FieldError';
-import { validate, hasErrors, required, positiveNumber, maxLength } from '@/utils/formValidation';
+import { validate, hasErrors, required, maxLength } from '@/utils/formValidation';
 
 function AdAccountsView({
   adAccounts,
@@ -31,6 +31,8 @@ function AdAccountsView({
   series,
   onAddAdAccount,
   onUpdateAdAccount,
+  onDeleteAdAccount,
+  onAssignAdAccount,
   onUpdateAccountStatus,
   onBulkUpdateStatus,
   autoOpenAddModal = false,
@@ -54,24 +56,23 @@ function AdAccountsView({
   const [newAccountId, setNewAccountId] = useState('');
   const [newAccountName, setNewAccountName] = useState('');
   const [newPlatform, setNewPlatform] = useState('Facebook');
-  const [newAccountType, setNewAccountType] = useState('Agency Account');
-  const [newRate, setNewRate] = useState(132);
-  const [newSpend, setNewRateSpend] = useState(1000);
-  const [newOwner, setNewOwner] = useState('ADSBUZZ');
-  const [newGroupCode, setNewGroupCode] = useState('GC-700');
-  const [newBmId, setNewBmId] = useState('');
-  const [newBmName, setNewBmName] = useState('');
-  const [newCard, setNewCard] = useState('');
+  const [newAdmin, setNewAdmin] = useState('');
   const [newSeriesId, setNewSeriesId] = useState('');
-  const [newAssignAdAccount, setNewAssignAdAccount] = useState('');
-  const [newProductType, setNewProductType] = useState('');
-  const [newFundAccountStatus, setNewFundAccountStatus] = useState(true);
-  const [newAccountStatus, setNewAccountStatus] = useState('Available');
+  const [newBmName, setNewBmName] = useState('');
+  const [newBmId, setNewBmId] = useState('');
+  const [newCard, setNewCard] = useState('');
+  const [newAccountStatus, setNewAccountStatus] = useState('Active');
   const [seriesFilter, setSeriesFilter] = useState('All');
 
   // Edit Account Modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editAccountData, setEditAccountData] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Assign Account Modal
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignTarget, setAssignTarget] = useState(null);
+  const [assignCustomerId, setAssignCustomerId] = useState('');
 
   // Form validation state
   const [addFormErrors, setAddFormErrors] = useState({});
@@ -170,14 +171,20 @@ function AdAccountsView({
       {
         accountId: newAccountId,
         name: newAccountName,
-        rate: newRate,
-        spend: newSpend,
+        seriesId: newSeriesId,
+        adminId: newAdmin,
+        bmName: newBmName,
+        bmId: newBmId,
+        selectCard: newCard,
       },
       {
-        accountId: [required('Ad Account ID is required'), maxLength(64)],
+        accountId: [required('Ad Account ID is required'), maxLength(200)],
         name: [required('Ad Account Name is required'), maxLength(200)],
-        rate: positiveNumber('Dollar rate must be greater than 0'),
-        spend: positiveNumber('Monthly spend must be greater than 0'),
+        seriesId: [required('Please select a series'), maxLength(200)],
+        adminId: [maxLength(200)],
+        bmName: [maxLength(200)],
+        bmId: [maxLength(200)],
+        selectCard: [maxLength(200)],
       },
     );
     if (hasErrors(errors)) {
@@ -190,46 +197,32 @@ function AdAccountsView({
       adAccountId: newAccountId,
       adAccountName: newAccountName,
       platform: newPlatform,
-      accountType: newAccountType,
-      dollarRate: Number(newRate),
-      monthlySpending: Number(newSpend),
-      accountOwner: newOwner,
-      userGroupCode: newGroupCode,
-      accountStatus: newAccountStatus,
-      bmId: newBmId || undefined,
+      seriesId: newSeriesId,
+      adminId: newAdmin || undefined,
       bmName: newBmName || undefined,
-      billingCard: newCard || undefined,
+      bmId: newBmId || undefined,
       selectCard: newCard || undefined,
-      seriesId: newSeriesId || undefined,
-      assignAdAccount: newAssignAdAccount || undefined,
-      productType: newProductType || undefined,
-      fundAccountStatus: newFundAccountStatus
+      billingCard: newCard || undefined,
+      accountStatus: newAccountStatus,
     });
 
-    // Reset forms
+    // Reset form
     setNewAccountId('');
     setNewAccountName('');
     setNewPlatform('Facebook');
-    setNewRate(132);
-    setNewRateSpend(1000);
-    setNewOwner('ADSBUZZ');
-    setNewGroupCode('GC-700');
-    setNewBmId('');
-    setNewBmName('');
-    setNewCard('');
+    setNewAdmin('');
     setNewSeriesId('');
-    setNewAssignAdAccount('');
-    setNewProductType('');
-    setNewFundAccountStatus(true);
-    setNewAccountStatus('Available');
+    setNewBmName('');
+    setNewBmId('');
+    setNewCard('');
+    setNewAccountStatus('Active');
     setShowAddModal(false);
   };
 
   const handleOpenEditModal = (account) => {
-    setEditAccountData({
-      ...account,
-      accountStatus: account.accountStatus === 'Active' ? 'Sold' : account.accountStatus,
-    });
+    setEditAccountData(account);
+    setConfirmDelete(false);
+    setEditFormErrors({});
     setShowEditModal(true);
   };
 
@@ -239,13 +232,21 @@ function AdAccountsView({
     const errors = validate(
       {
         name: editAccountData.adAccountName,
-        rate: editAccountData.dollarRate,
-        spend: editAccountData.monthlySpending,
+        accountId: editAccountData.adAccountId,
+        seriesId: editAccountData.seriesId,
+        adminId: editAccountData.adminId,
+        bmName: editAccountData.bmName,
+        bmId: editAccountData.bmId,
+        selectCard: editAccountData.selectCard || editAccountData.billingCard,
       },
       {
         name: [required('Ad Account Name is required'), maxLength(200)],
-        rate: positiveNumber('Dollar rate must be greater than 0'),
-        spend: positiveNumber('Monthly spend must be greater than 0'),
+        accountId: [required('Ad Account ID is required'), maxLength(200)],
+        seriesId: [maxLength(200)],
+        adminId: [maxLength(200)],
+        bmName: [maxLength(200)],
+        bmId: [maxLength(200)],
+        selectCard: [maxLength(200)],
       },
     );
     if (hasErrors(errors)) {
@@ -257,10 +258,37 @@ function AdAccountsView({
     setShowEditModal(false);
   };
 
+  const handleDeleteEditAccount = async () => {
+    if (!editAccountData || !onDeleteAdAccount) return;
+    const id = editAccountData._id || editAccountData.adAccountId;
+    try {
+      await onDeleteAdAccount(id);
+      setShowEditModal(false);
+      setEditAccountData(null);
+      setConfirmDelete(false);
+    } catch (err) {
+      setConfirmDelete(false);
+    }
+  };
+
+  const openAssignModal = (account) => {
+    setAssignTarget(account);
+    setAssignCustomerId(account.assignedCustomer || '');
+    setShowAssignModal(true);
+  };
+
+  const handleAssignAccount = () => {
+    if (!assignTarget || !assignCustomerId || !onAssignAdAccount) return;
+    onAssignAdAccount(assignTarget.adAccountId, assignCustomerId);
+    setShowAssignModal(false);
+    setAssignTarget(null);
+    setAssignCustomerId('');
+  };
+
   const getCustomerName = (custId) => {
     if (!custId) return 'Available / Unassigned';
     const c = customers.find(cust => cust.id === custId);
-    return c ? c.name : 'Unknown Customer';
+    return c ? c.name : custId;
   };
 
   const totalAdAccounts = adAccounts.length;
@@ -458,11 +486,8 @@ function AdAccountsView({
                 </th>
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Ad Account Name / ID</th>
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Platform</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Type &amp; Owner</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Group Code</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Dollar Rate</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Monthly Spend</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">BM Details</th>
+                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Admin ID</th>
+                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">BM Name / ID</th>
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Billing Card</th>
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Status</th>
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Actions</th>
@@ -502,22 +527,15 @@ function AdAccountsView({
                         <PlatformText platform={acc.platform} variant="badge" />
                       </span>
                     </td>
-                    <td className="py-3.5 text-center">
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
-                        {acc.accountType}
-                      </div>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-                        <span className="text-slate-400">Owner:</span> {acc.accountOwner || 'N/A'}
-                      </div>
-                    </td>
-                    <td className="py-3.5 text-center font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
-                      {acc.userGroupCode}
-                    </td>
-                    <td className="py-3.5 text-center font-bold text-slate-900 dark:text-white">
-                      ৳{acc.dollarRate}
-                    </td>
-                    <td className="py-3.5 text-center font-bold text-slate-900 dark:text-white">
-                      ${(acc.monthlySpending || 0).toLocaleString()}
+                    <td className="py-3.5 text-center font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {acc.adminId ? (
+                        <span className="inline-flex items-center gap-1">
+                          <User size={11} className="text-slate-400 shrink-0" />
+                          {acc.adminId}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">-</span>
+                      )}
                     </td>
                     <td className="py-3.5 text-center">
                       <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate max-w-[150px] mx-auto" title={acc.bmName || 'N/A'}>
@@ -545,26 +563,43 @@ function AdAccountsView({
                       </span>
                     </td>
                     <td className="py-3.5 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenEditModal(acc)}
-                          leftIcon={<FileEdit size={11} />}
-                        >
-                          Edit
-                        </Button>
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenEditModal(acc)}
+                            leftIcon={<FileEdit size={11} />}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openAssignModal(acc)}
+                            leftIcon={<User size={11} />}
+                          >
+                            Assign
+                          </Button>
+                        </div>
                         <select
-                          id={`status-select-${acc.adAccountId}`}
+                          id={`quick-action-${acc.adAccountId}`}
+                          defaultValue=""
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (!value) return;
+                            onUpdateAccountStatus(acc.adAccountId, value);
+                            e.target.value = '';
+                          }}
                           className="text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-1 text-slate-700 dark:text-slate-200 font-medium"
-                          value={acc.accountStatus === 'Active' ? 'Sold' : acc.accountStatus}
-                          onChange={(e) => onUpdateAccountStatus(acc.adAccountId, e.target.value)}
                         >
-                          <option value="Sold">Sold</option>
-                          <option value="Disable">Disable</option>
+                          <option value="" disabled>Quick Action...</option>
+                          <option value="Active">Activate</option>
+                          <option value="Available">Make Available</option>
+                          <option value="Sold">Mark Sold</option>
+                          <option value="Disabled">Disable</option>
                           <option value="Need Support">Need Support</option>
                           <option value="Terminated">Terminated</option>
-                          <option value="Available">Available</option>
                         </select>
                       </div>
                     </td>
@@ -573,7 +608,7 @@ function AdAccountsView({
               })}
               {filteredAccounts.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="text-center py-8 text-slate-400 italic">
+                  <td colSpan={8} className="text-center py-8 text-slate-400 italic">
                     No ad accounts match search or selected filter.
                   </td>
                 </tr>
@@ -640,19 +675,6 @@ function AdAccountsView({
         <form onSubmit={handleCreateAccountSubmit} className="p-6 space-y-4" id="form-add-account">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account ID</label>
-              <input
-                id="add-acc-id"
-                type="text"
-                required
-                placeholder="e.g. 1596456534457495"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
-                value={newAccountId}
-                onChange={(e) => setNewAccountId(e.target.value)}
-              />
-              <FieldError error={addFormErrors.accountId} />
-            </div>
-            <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account Name</label>
               <input
                 id="add-acc-name"
@@ -665,9 +687,22 @@ function AdAccountsView({
               />
               <FieldError error={addFormErrors.name} />
             </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account ID</label>
+              <input
+                id="add-acc-id"
+                type="text"
+                required
+                placeholder="e.g. 1596456534457495"
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
+                value={newAccountId}
+                onChange={(e) => setNewAccountId(e.target.value)}
+              />
+              <FieldError error={addFormErrors.accountId} />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Platform</label>
               <select
@@ -683,60 +718,66 @@ function AdAccountsView({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Dollar Rate (BDT)</label>
-              <input
-                id="add-acc-rate"
-                type="number"
-                required
-                placeholder="132"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
-                value={newRate}
-                onChange={(e) => setNewRate(Number(e.target.value))}
-              />
-              <FieldError error={addFormErrors.rate} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Avg Monthly Spend</label>
-              <input
-                id="add-acc-spend"
-                type="number"
-                placeholder="1000"
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Series</label>
+              <select
+                id="add-acc-series"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={newSpend}
-                onChange={(e) => setNewRateSpend(Number(e.target.value))}
-              />
-              <FieldError error={addFormErrors.spend} />
+                value={newSeriesId}
+                onChange={(e) => setNewSeriesId(e.target.value)}
+              >
+                <option value="">Select Series</option>
+                {series
+                  .filter(s => !s.platform || s.platform === newPlatform)
+                  .map(s => (
+                    <option key={s.seriesId} value={s.seriesId}>{s.seriesName}</option>
+                  ))}
+              </select>
+              <FieldError error={addFormErrors.seriesId} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Assign Ad Account</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Admin ID</label>
               <input
-                id="add-acc-assign"
+                id="add-acc-admin-id"
                 type="text"
-                placeholder="e.g. Assigned Customer / Team"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={newAssignAdAccount}
-                onChange={(e) => setNewAssignAdAccount(e.target.value)}
+                placeholder="e.g. ADM-1098"
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
+                value={newAdmin}
+                onChange={(e) => setNewAdmin(e.target.value)}
               />
+              <FieldError error={addFormErrors.adminId} />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Product Type</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Business Manager Name</label>
               <input
-                id="add-acc-product-type"
+                id="add-acc-bm-name"
                 type="text"
-                placeholder="e.g. E-Commerce / App / Agency"
+                placeholder="e.g. AdsBuzz MCC Hub"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={newProductType}
-                onChange={(e) => setNewProductType(e.target.value)}
+                value={newBmName}
+                onChange={(e) => setNewBmName(e.target.value)}
               />
+              <FieldError error={addFormErrors.bmName} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Card (Billing Card)</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Business Manager ID</label>
+              <input
+                id="add-acc-bm-id"
+                type="text"
+                placeholder="e.g. BM-994321"
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
+                value={newBmId}
+                onChange={(e) => setNewBmId(e.target.value)}
+              />
+              <FieldError error={addFormErrors.bmId} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Card</label>
               <select
                 id="add-acc-card"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
@@ -748,7 +789,11 @@ function AdAccountsView({
                   <option key={c.id} value={c.cardName}>{c.cardName} ({c.cardPlatform || c.id})</option>
                 ))}
               </select>
+              <FieldError error={addFormErrors.selectCard} />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Account Status</label>
               <select
@@ -757,82 +802,10 @@ function AdAccountsView({
                 value={newAccountStatus}
                 onChange={(e) => setNewAccountStatus(e.target.value)}
               >
-                <option value="Sold">Sold</option>
-                <option value="Disable">Disable</option>
-                <option value="Need Support">Need Support</option>
-                <option value="Terminated">Terminated</option>
-                <option value="Available">Available</option>
+                <option value="Active">Active</option>
+                <option value="Disabled">Disabled</option>
+                <option value="Pending">Pending</option>
               </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Account Owner</label>
-              <input
-                id="add-acc-owner"
-                type="text"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={newOwner}
-                onChange={(e) => setNewOwner(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">User Group Code</label>
-              <input
-                id="add-acc-group-code"
-                type="text"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
-                value={newGroupCode}
-                onChange={(e) => setNewGroupCode(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Fund Account Status</label>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={newFundAccountStatus}
-                  aria-label="Fund account status"
-                  onClick={() => setNewFundAccountStatus(!newFundAccountStatus)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    newFundAccountStatus ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    newFundAccountStatus ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
-                </button>
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {newFundAccountStatus ? 'Funded' : 'Unfunded'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Business Manager Name</label>
-              <input
-                id="add-acc-bm-name"
-                type="text"
-                placeholder="e.g. AdsBuzz MCC Hub"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={newBmName}
-                onChange={(e) => setNewBmName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">BM ID</label>
-              <input
-                id="add-acc-bm-id"
-                type="text"
-                placeholder="e.g. BM-994321"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
-                value={newBmId}
-                onChange={(e) => setNewBmId(e.target.value)}
-              />
             </div>
           </div>
 
@@ -843,10 +816,10 @@ function AdAccountsView({
         </form>
       </Modal>
 
-      {/* Edit Ad Account Modal */}
+{/* Edit Ad Account Modal */}
       <Modal
         isOpen={showEditModal && !!editAccountData}
-        onClose={() => { setShowEditModal(false); setEditFormErrors({}); }}
+        onClose={() => { setShowEditModal(false); setEditFormErrors({}); setConfirmDelete(false); }}
         title="Edit Ad Account Record"
         description={editAccountData ? `Update parameters for ${editAccountData.adAccountName} (${editAccountData.adAccountId})` : undefined}
         size="xl"
@@ -854,17 +827,24 @@ function AdAccountsView({
         scrollable
       >
         <form onSubmit={handleSaveEditAccount} className="p-6 space-y-4" id="form-edit-account">
+          {/* Assignment Info */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-4 py-3 flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Assigned To:{' '}
+              <span className="font-bold text-slate-800 dark:text-slate-200">
+                {editAccountData?.assignedCustomer
+                  ? getCustomerName(editAccountData.assignedCustomer)
+                  : 'Available / Unassigned'}
+              </span>
+            </span>
+            {editAccountData?.assignedCustomer && (
+              <span className="text-[10px] font-mono text-slate-400">
+                ID: {editAccountData.assignedCustomer}
+              </span>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account ID</label>
-              <input
-                id="edit-acc-id"
-                type="text"
-                disabled
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 rounded-xl font-mono text-slate-500 cursor-not-allowed"
-                value={editAccountData?.adAccountId ?? ''}
-              />
-            </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account Name</label>
               <input
@@ -877,9 +857,19 @@ function AdAccountsView({
               />
               <FieldError error={editFormErrors.name} />
             </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account ID</label>
+              <input
+                id="edit-acc-id"
+                type="text"
+                disabled
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 rounded-xl font-mono text-slate-500 cursor-not-allowed"
+                value={editAccountData?.adAccountId ?? ''}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Platform</label>
               <select
@@ -895,131 +885,36 @@ function AdAccountsView({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Dollar Rate (BDT)</label>
-              <input
-                id="edit-acc-rate"
-                type="number"
-                required
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
-                value={editAccountData?.dollarRate ?? 0}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, dollarRate: Number(e.target.value) })}
-              />
-              <FieldError error={editFormErrors.rate} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Avg Monthly Spend</label>
-              <input
-                id="edit-acc-spend"
-                type="number"
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Series</label>
+              <select
+                id="edit-acc-series"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={editAccountData?.monthlySpending ?? 0}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, monthlySpending: Number(e.target.value) })}
-              />
-              <FieldError error={editFormErrors.spend} />
+                value={editAccountData?.seriesId ?? ''}
+                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, seriesId: e.target.value })}
+              >
+                <option value="">Select Series</option>
+                {series
+                  .filter(s => editAccountData && (!s.platform || s.platform === editAccountData.platform))
+                  .map(s => (
+                    <option key={s.seriesId} value={s.seriesId}>{s.seriesName}</option>
+                  ))}
+              </select>
+              <FieldError error={editFormErrors.seriesId} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Assign Ad Account</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Admin ID</label>
               <input
-                id="edit-acc-assign"
-                type="text"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={editAccountData?.assignAdAccount || ''}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, assignAdAccount: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Product Type</label>
-              <input
-                id="edit-acc-product-type"
-                type="text"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={editAccountData?.productType || ''}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, productType: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Card (Billing Card)</label>
-              <select
-                id="edit-acc-card"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
-                value={editAccountData?.billingCard || editAccountData?.selectCard || ''}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, billingCard: e.target.value, selectCard: e.target.value })}
-              >
-                <option value="">No Card Linked</option>
-                {cards.map(c => (
-                  <option key={c.id} value={c.cardName}>{c.cardName} ({c.cardPlatform || c.id})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Account Status</label>
-              <select
-                id="edit-acc-status"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
-                value={editAccountData?.accountStatus ?? 'Available'}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, accountStatus: e.target.value })}
-              >
-                <option value="Sold">Sold</option>
-                <option value="Disable">Disable</option>
-                <option value="Need Support">Need Support</option>
-                <option value="Terminated">Terminated</option>
-                <option value="Available">Available</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Account Owner</label>
-              <input
-                id="edit-acc-owner"
-                type="text"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                value={editAccountData?.accountOwner ?? ''}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, accountOwner: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">User Group Code</label>
-              <input
-                id="edit-acc-group-code"
+                id="edit-acc-admin-id"
                 type="text"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
-                value={editAccountData?.userGroupCode ?? ''}
-                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, userGroupCode: e.target.value })}
+                value={editAccountData?.adminId || ''}
+                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, adminId: e.target.value })}
               />
+              <FieldError error={editFormErrors.adminId} />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Fund Account Status</label>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!!editAccountData?.fundAccountStatus}
-                  aria-label="Fund account status"
-                  onClick={() => editAccountData && setEditAccountData({ ...editAccountData, fundAccountStatus: !editAccountData.fundAccountStatus })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    editAccountData?.fundAccountStatus ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    editAccountData?.fundAccountStatus ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
-                </button>
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {editAccountData?.fundAccountStatus ? 'Funded' : 'Unfunded'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Business Manager Name</label>
               <input
@@ -1029,9 +924,13 @@ function AdAccountsView({
                 value={editAccountData?.bmName || ''}
                 onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, bmName: e.target.value })}
               />
+              <FieldError error={editFormErrors.bmName} />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">BM ID</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Business Manager ID</label>
               <input
                 id="edit-acc-bm-id"
                 type="text"
@@ -1039,12 +938,106 @@ function AdAccountsView({
                 value={editAccountData?.bmId || ''}
                 onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, bmId: e.target.value })}
               />
+              <FieldError error={editFormErrors.bmId} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Card</label>
+              <select
+                id="edit-acc-card"
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
+                value={editAccountData?.selectCard || editAccountData?.billingCard || ''}
+                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, selectCard: e.target.value, billingCard: e.target.value })}
+              >
+                <option value="">No Card Linked</option>
+                {cards.map(c => (
+                  <option key={c.id} value={c.cardName}>{c.cardName} ({c.cardPlatform || c.id})</option>
+                ))}
+              </select>
+              <FieldError error={editFormErrors.selectCard} />
             </div>
           </div>
 
-          <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Button>
-            <Button type="submit">Save Changes</Button>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Account Status</label>
+              <select
+                id="edit-acc-status"
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
+                value={editAccountData?.accountStatus || 'Active'}
+                onChange={(e) => editAccountData && setEditAccountData({ ...editAccountData, accountStatus: e.target.value })}
+              >
+                <option value="Active">Active</option>
+                <option value="Available">Available</option>
+                <option value="Sold">Sold</option>
+                <option value="Disabled">Disabled</option>
+                <option value="Pending">Pending</option>
+                <option value="Need Support">Need Support</option>
+                <option value="Terminated">Terminated</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="custom-modal-footer flex items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <div>
+              {confirmDelete ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-red-600 dark:text-red-400">Delete this account?</span>
+                  <Button variant="danger" size="sm" onClick={handleDeleteEditAccount}>Yes, Delete</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                </div>
+              ) : (
+                <Button
+                  variant="danger"
+                  onClick={() => setConfirmDelete(true)}
+                  leftIcon={<Trash2 size={13} />}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" onClick={() => { setShowEditModal(false); setConfirmDelete(false); }}>Cancel</Button>
+              <Button type="submit">Save Changes</Button>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Assign Ad Account Modal */}
+      <Modal
+        isOpen={showAssignModal && !!assignTarget}
+        onClose={() => { setShowAssignModal(false); setAssignTarget(null); setAssignCustomerId(''); }}
+        title="Assign Ad Account"
+        description={assignTarget ? `Select a customer to assign ${assignTarget.adAccountName} (${assignTarget.adAccountId}).` : undefined}
+        size="md"
+        variant="animated"
+      >
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleAssignAccount(); }}
+          className="p-6 space-y-4"
+          id="form-assign-account"
+        >
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Assign To Customer</label>
+            <select
+              id="assign-customer-id"
+              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+              value={assignCustomerId}
+              onChange={(e) => setAssignCustomerId(e.target.value)}
+            >
+              <option value="">Select Customer...</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+              ))}
+            </select>
+            {customers.length === 0 && (
+              <p className="text-[11px] text-slate-400 italic mt-1">No customers available to assign.</p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setShowAssignModal(false)}>Cancel</Button>
+            <Button type="submit" disabled={!assignCustomerId}>Confirm Assignment</Button>
           </div>
         </form>
       </Modal>

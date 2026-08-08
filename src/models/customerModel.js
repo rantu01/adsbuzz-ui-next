@@ -1,6 +1,6 @@
 import { getDb, getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
-import { syncLegacyInvoices } from "@/models/invoiceModel";
+import { ensureLegacyInvoicesSynced } from "@/models/invoiceModel";
 
 export const CUSTOMER_STATUS = ["Active", "Inactive", "Lost"];
 const DEFAULT_DOLLAR_RATE = 132;
@@ -15,7 +15,7 @@ function ensureInitialSync() {
   if (!initialSyncPromise) {
     initialSyncPromise = (async () => {
       await syncCustomersFromUsers();
-      await syncLegacyInvoices();
+      await ensureLegacyInvoicesSynced();
     })().catch((error) => {
       logger.error("Initial customer data sync failed.", error);
       initialSyncPromise = null;
@@ -87,7 +87,7 @@ async function getNextCustomerId() {
     { returnDocument: "after", upsert: true }
   );
   const counter = result.value || result;
-  return `CUST-${String(counter.seq).padStart(4, "0")}`;
+  return `ADB${String(550000 + counter.seq)}`;
 }
 
 export async function syncCustomersFromUsers() {
@@ -281,4 +281,14 @@ export async function applyCustomerCredit(customerId, paidBDT, usd) {
     { $set: { balanceBDT: nextBDT, balanceUSD: nextUSD, updatedAt: new Date() } }
   );
   return collection.findOne({ id: customerId });
+}
+
+export async function deleteCustomer(id) {
+  if (!id) return null;
+  const collection = await getCollection("customers");
+  const existing = await collection.findOne({ id });
+  if (!existing) return null;
+
+  await collection.deleteOne({ id });
+  return existing;
 }

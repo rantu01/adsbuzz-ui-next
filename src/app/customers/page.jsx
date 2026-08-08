@@ -25,6 +25,8 @@ function CustomersPageInner() {
       onUpdateCustomer={app.handleUpdateCustomer}
       onUpdateCustomerNotes={app.handleUpdateCustomerNotes}
       onToggleFavorite={app.handleToggleFavorite}
+      onDeleteCustomer={app.handleDeleteCustomer}
+      onAssignAdAccount={app.handleAssignAdAccount}
       onTriggerTopup={app.handleTriggerTopup}
       onTriggerAssign={app.handleTriggerAssign}
       autoOpenAddModal={autoOpenAdd || app.pendingOpenAddCustomer}

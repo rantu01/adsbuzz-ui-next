@@ -64,6 +64,7 @@ export function AppProvider({ children }) {
     addCustomer,
     updateCustomer: rawUpdateCustomer,
     updateCustomerNotes: rawUpdateCustomerNotes,
+    deleteCustomer: rawDeleteCustomer,
     toggleFavorite: rawToggleFavorite,
     applySaleCredit,
     refetch: refetchCustomers,
@@ -75,9 +76,11 @@ export function AppProvider({ children }) {
     error: adAccountsError,
     addAdAccount,
     updateAdAccount: rawUpdateAdAccount,
+    deleteAdAccount: rawDeleteAdAccount,
     updateAccountStatus: rawUpdateAccountStatus,
     bulkUpdateStatus: rawBulkUpdateStatus,
     markAccountSold,
+    assignAdAccount: rawAssignAdAccount,
     refetch: refetchAdAccounts,
   } = useAdAccounts(triggerToast);
 
@@ -185,9 +188,27 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const handleDeleteCustomer = async (id) => {
+    const result = await rawDeleteCustomer(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Customer", `${result.name} (${result.id}) removed from CRM.`, "customer");
+    return result;
+  };
+
   const handleUpdateAdAccount = async (acc) => {
     const result = await rawUpdateAdAccount(acc);
     if (result) logActivityFx("Rakibul R.", "Updated Ad Account", `Ad account ${result.adAccountName} updated.`, "account");
+    return result;
+  };
+
+  const handleDeleteAdAccount = async (id) => {
+    const result = await rawDeleteAdAccount(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Ad Account", `Ad account ${result.adAccountName} removed from inventory.`, "account");
+    return result;
+  };
+
+  const handleAssignAdAccount = async (adAccountId, customerId) => {
+    const result = await rawAssignAdAccount(adAccountId, customerId);
+    if (result) logActivityFx("Rakibul R.", "Assigned Ad Account", `${result.adAccountName} assigned to customer ${customerId}.`, "account");
     return result;
   };
 
@@ -544,8 +565,11 @@ export function AppProvider({ children }) {
     handleUpdateCustomer,
     handleUpdateCustomerNotes,
     handleToggleFavorite,
+    handleDeleteCustomer,
     handleAddAdAccount,
     handleUpdateAdAccount,
+    handleDeleteAdAccount,
+    handleAssignAdAccount,
     handleUpdateAccountStatus,
     handleBulkUpdateStatus,
     handleExecuteSale,

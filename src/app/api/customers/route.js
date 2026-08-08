@@ -5,8 +5,17 @@ import {
   createCustomer,
 } from "@/models/customerModel";
 import { getPagination, paginate } from "@/utils/pagination";
+import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/cache";
+
+const CACHE_PREFIX = "GET:/api/customers";
 
 export const GET = asyncHandler(async (request) => {
+  const key = `${CACHE_PREFIX}:${request.url}`;
+  const cached = cacheGet(key);
+  if (cached) {
+    return ok(cached);
+  }
+
   const { searchParams } = new URL(request.url);
   const customers = await listCustomers({
     search: searchParams.get("search") || "",
@@ -14,7 +23,9 @@ export const GET = asyncHandler(async (request) => {
     favorite: searchParams.get("favorite") || "",
   });
   const p = paginate(customers, getPagination(searchParams, { page: 1, limit: 50 }));
-  return ok({ customers: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages });
+  const payload = { customers: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages };
+  cacheSet(key, payload);
+  return ok(payload);
 });
 
 export const POST = asyncHandler(async (request) => {
@@ -42,6 +53,8 @@ export const POST = asyncHandler(async (request) => {
     status: body.status,
     creditLimitUSD: body.creditLimitUSD,
   });
+
+  cacheInvalidate(CACHE_PREFIX);
 
   return ok({ message: "Customer created.", customer }, HttpStatus.CREATED);
 });
