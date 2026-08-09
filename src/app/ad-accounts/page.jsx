@@ -14,14 +14,18 @@ function AdAccountsPageInner() {
   return (
     <AdAccountsView
       adAccounts={app.adAccounts}
+      socialAdAccounts={app.socialAdAccounts}
       error={app.adAccountsError}
       onRetry={app.refetchAdAccounts}
       customers={app.customers}
       cards={app.cards}
       series={app.series}
       onAddAdAccount={app.handleAddAdAccount}
+      onAddSocialAdAccount={app.handleAddSocialAdAccount}
       onUpdateAdAccount={app.handleUpdateAdAccount}
+      onUpdateSocialAdAccount={app.handleUpdateSocialAdAccount}
       onDeleteAdAccount={app.handleDeleteAdAccount}
+      onDeleteSocialAdAccount={app.handleDeleteSocialAdAccount}
       onAssignAdAccount={app.handleAssignAdAccount}
       onUpdateAccountStatus={app.handleUpdateAccountStatus}
       onBulkUpdateStatus={app.handleBulkUpdateStatus}

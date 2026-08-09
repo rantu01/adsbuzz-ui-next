@@ -22,8 +22,16 @@ export const GET = asyncHandler(async (request) => {
     status: searchParams.get("status") || "",
     favorite: searchParams.get("favorite") || "",
   });
-  const p = paginate(customers, getPagination(searchParams, { page: 1, limit: 50 }));
-  const payload = { customers: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages };
+
+  // The UI loads the full customer list for own filtering/pagination. Only apply
+  // server-side paging when an explicit page/limit was requested.
+  let payload;
+  if (searchParams.has("page") || searchParams.has("limit")) {
+    const p = paginate(customers, getPagination(searchParams, { page: 1, limit: 50 }));
+    payload = { customers: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages };
+  } else {
+    payload = { customers, total: customers.length, page: 1, limit: customers.length, totalPages: 1 };
+  }
   cacheSet(key, payload);
   return ok(payload);
 });

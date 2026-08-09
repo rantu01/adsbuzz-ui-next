@@ -18,8 +18,16 @@ export const GET = asyncHandler(async (request) => {
 
   const searchParams = new URL(request.url).searchParams;
   const accounts = await listAdAccounts();
-  const p = paginate(accounts, getPagination(searchParams, { page: 1, limit: 50 }));
-  const payload = { adAccounts: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages };
+
+  // The UI loads the full ad-account list for own filtering/pagination. Only apply
+  // server-side paging when an explicit page/limit was requested.
+  let payload;
+  if (searchParams.has("page") || searchParams.has("limit")) {
+    const p = paginate(accounts, getPagination(searchParams, { page: 1, limit: 50 }));
+    payload = { adAccounts: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages };
+  } else {
+    payload = { adAccounts: accounts, total: accounts.length, page: 1, limit: accounts.length, totalPages: 1 };
+  }
   cacheSet(key, payload);
   return ok(payload);
 });

@@ -71,6 +71,7 @@ function CustomersView({
   onToggleFavorite,
   onDeleteCustomer,
   onAssignAdAccount,
+  onUnassignAdAccount,
   onTriggerTopup,
   onTriggerAssign,
   autoOpenAddModal = false,
@@ -508,6 +509,7 @@ function CustomersView({
             onRequestAssign={handleOpenAssignModal}
             onDelete={handleRequestDelete}
             onNotesSave={handlePaneNotesSave}
+            onUnassignAdAccount={onUnassignAdAccount}
           />
         ) : null}
 

@@ -103,7 +103,7 @@ async function getAdAccountByIdentifier(identifier) {
 
 export async function listAdAccounts() {
   const collection = await getCollection("adAccounts");
-  const docs = await collection.find({}).sort({ updatedAt: -1 }).limit(500).toArray();
+  const docs = await collection.find({}).sort({ updatedAt: -1 }).toArray();
   const accounts = docs.map(toUiAccount).filter(Boolean);
   logger.info(`listAdAccounts: ${accounts.length} accounts returned.`);
   return accounts;
@@ -260,6 +260,30 @@ export async function markAccountSold(identifier, customerId) {
         status: "active",
         assignedCustomer: String(customerId || "") || doc.assignedCustomer || "",
         assignedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }
+  );
+  const saved = await collection.findOne({ _id: doc._id });
+  return toUiAccount(saved);
+}
+
+export async function unassignAccount(identifier) {
+  const collection = await getCollection("adAccounts");
+  const doc = await getAdAccountByIdentifier(identifier);
+  if (!doc) return null;
+
+  await collection.updateOne(
+    { _id: doc._id },
+    {
+      $set: {
+        accountStatus: "Available",
+        status: "paused",
+        assignedCustomer: "",
+        uid: "",
+        assignedBy: null,
+        assignedAt: null,
+        unassignedAt: new Date(),
         updatedAt: new Date(),
       },
     }

@@ -21,6 +21,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { useSaleSetups } from '@/hooks/useSaleSetups';
 import { useSettings } from '@/hooks/useSettings';
 import { useActivities } from '@/hooks/useActivities';
+import { useSocialAdAccounts } from '@/hooks/useSocialAdAccounts';
 import { uploadScreenshot, getErrorMessage } from '@/utils/api';
 
 const AppContext = createContext(null);
@@ -81,8 +82,19 @@ export function AppProvider({ children }) {
     bulkUpdateStatus: rawBulkUpdateStatus,
     markAccountSold,
     assignAdAccount: rawAssignAdAccount,
+    unassignAdAccount: rawUnassignAdAccount,
     refetch: refetchAdAccounts,
   } = useAdAccounts(triggerToast);
+
+  const {
+    socialAdAccounts,
+    loading: socialAdAccountsLoading,
+    error: socialAdAccountsError,
+    addSocialAdAccount,
+    updateSocialAdAccount: rawUpdateSocialAdAccount,
+    deleteSocialAdAccount: rawDeleteSocialAdAccount,
+    refetch: refetchSocialAdAccounts,
+  } = useSocialAdAccounts(triggerToast);
 
   const {
     invoices,
@@ -209,6 +221,12 @@ export function AppProvider({ children }) {
   const handleAssignAdAccount = async (adAccountId, customerId) => {
     const result = await rawAssignAdAccount(adAccountId, customerId);
     if (result) logActivityFx("Rakibul R.", "Assigned Ad Account", `${result.adAccountName} assigned to customer ${customerId}.`, "account");
+    return result;
+  };
+
+  const handleUnassignAdAccount = async (adAccountId) => {
+    const result = await rawUnassignAdAccount(adAccountId);
+    if (result) logActivityFx("Rakibul R.", "Unassigned Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account");
     return result;
   };
 
@@ -349,6 +367,30 @@ export function AppProvider({ children }) {
       details: `Loaded ${accountData.adAccountName} (${accountData.platform}) to unassigned pool.`,
       type: 'account',
     });
+  };
+
+  const handleAddSocialAdAccount = (accountData) => {
+    addSocialAdAccount(accountData);
+    addActivity({
+      id: `act-${Date.now()}`,
+      time: "Just now",
+      user: "Rakibul R.",
+      action: "Loaded Social Ad Account",
+      details: `Cataloged ${accountData.adAccountName} (${accountData.platform}) to Load Social Ad Account entries.`,
+      type: 'account',
+    });
+  };
+
+  const handleUpdateSocialAdAccount = async (acc) => {
+    const result = await rawUpdateSocialAdAccount(acc);
+    if (result) logActivityFx("Rakibul R.", "Updated Social Ad Account", `Social ad account ${result.adAccountName} updated.`, "account");
+    return result;
+  };
+
+  const handleDeleteSocialAdAccount = async (id) => {
+    const result = await rawDeleteSocialAdAccount(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Social Ad Account", `Social ad account ${result.adAccountName} removed.`, "account");
+    return result;
   };
 
   const handleExecuteSale = async (saleData) => {
@@ -533,6 +575,9 @@ export function AppProvider({ children }) {
     adAccounts,
     adAccountsLoading,
     adAccountsError,
+    socialAdAccounts,
+    socialAdAccountsLoading,
+    socialAdAccountsError,
     invoices,
     invoicesError,
     cards,
@@ -551,6 +596,7 @@ export function AppProvider({ children }) {
 
     refetchCustomers,
     refetchAdAccounts,
+    refetchSocialAdAccounts,
     refetchInvoices,
     refetchCards,
     refetchVendors,
@@ -567,9 +613,13 @@ export function AppProvider({ children }) {
     handleToggleFavorite,
     handleDeleteCustomer,
     handleAddAdAccount,
+    handleAddSocialAdAccount,
     handleUpdateAdAccount,
+    handleUpdateSocialAdAccount,
     handleDeleteAdAccount,
+    handleDeleteSocialAdAccount,
     handleAssignAdAccount,
+    handleUnassignAdAccount,
     handleUpdateAccountStatus,
     handleBulkUpdateStatus,
     handleExecuteSale,

@@ -26,12 +26,16 @@ import { validate, hasErrors, required, maxLength } from '@/utils/formValidation
 
 function AdAccountsView({
   adAccounts,
+  socialAdAccounts = [],
   customers,
   cards,
   series,
   onAddAdAccount,
+  onAddSocialAdAccount,
   onUpdateAdAccount,
+  onUpdateSocialAdAccount,
   onDeleteAdAccount,
+  onDeleteSocialAdAccount,
   onAssignAdAccount,
   onUpdateAccountStatus,
   onBulkUpdateStatus,
@@ -76,6 +80,8 @@ function AdAccountsView({
 
   // Form validation state
   const [addFormErrors, setAddFormErrors] = useState({});
+  const [addDuplicateError, setAddDuplicateError] = useState('');
+  const [addDuplicateSource, setAddDuplicateSource] = useState(null);
   const [editFormErrors, setEditFormErrors] = useState({});
 
   useEffect(() => {
@@ -101,7 +107,12 @@ function AdAccountsView({
     return 'text-brand-blue-dark dark:text-brand-blue-dark';
   };
 
-  const filteredAccounts = adAccounts.filter(acc => {
+  // Combine existing ad accounts (untouched source collection) with the
+  // separately-managed social ad accounts so both data sources render in the
+  // same table without altering the existing collection.
+  const combinedAccounts = [...(socialAdAccounts || []), ...(adAccounts || [])];
+
+  const filteredAccounts = combinedAccounts.filter(acc => {
     const effectiveStatus = getEffectiveAccountStatus(acc);
     const matchesSearch = acc.adAccountName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           acc.adAccountId.includes(searchTerm) ||
@@ -193,7 +204,36 @@ function AdAccountsView({
     }
     setAddFormErrors({});
 
-    onAddAdAccount({
+    // Duplicate AD ACCOUNT ID check against both the existing ad accounts
+    // collection and the separate social ad accounts collection. Block
+    // creation and prompt the user to edit the existing record instead.
+    const enteredId = (newAccountId || '').trim();
+
+    // Check the existing/current ad accounts collection first.
+    const duplicateExisting = adAccounts.find((a) => (a.adAccountId || '').trim() === enteredId);
+    if (duplicateExisting) {
+      setAddDuplicateError(duplicateExisting.adAccountId);
+      setAddDuplicateSource('existing');
+      const idField = document.getElementById('add-acc-id');
+      idField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      idField?.focus();
+      return;
+    }
+
+    // Then check the separate social ad accounts collection.
+    const duplicateSocial = socialAdAccounts.find((a) => (a.adAccountId || '').trim() === enteredId);
+    if (duplicateSocial) {
+      setAddDuplicateError(duplicateSocial.adAccountId);
+      setAddDuplicateSource('social');
+      const idField = document.getElementById('add-acc-id');
+      idField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      idField?.focus();
+      return;
+    }
+    setAddDuplicateError('');
+    setAddDuplicateSource(null);
+
+    onAddSocialAdAccount({
       adAccountId: newAccountId,
       adAccountName: newAccountName,
       platform: newPlatform,
@@ -228,7 +268,12 @@ function AdAccountsView({
 
   const handleSaveEditAccount = (e) => {
     e.preventDefault();
-    if (!editAccountData || !onUpdateAdAccount) return;
+    if (!editAccountData) return;
+
+    const isSocial = editAccountData.source === 'social';
+    const updateHandler = isSocial ? onUpdateSocialAdAccount : onUpdateAdAccount;
+    if (!updateHandler) return;
+
     const errors = validate(
       {
         name: editAccountData.adAccountName,
@@ -254,15 +299,18 @@ function AdAccountsView({
       return;
     }
     setEditFormErrors({});
-    onUpdateAdAccount(editAccountData);
+    updateHandler(editAccountData);
     setShowEditModal(false);
   };
 
   const handleDeleteEditAccount = async () => {
-    if (!editAccountData || !onDeleteAdAccount) return;
+    if (!editAccountData) return;
+    const isSocial = editAccountData.source === 'social';
+    const deleteHandler = isSocial ? onDeleteSocialAdAccount : onDeleteAdAccount;
+    if (!deleteHandler) return;
     const id = editAccountData._id || editAccountData.adAccountId;
     try {
-      await onDeleteAdAccount(id);
+      await deleteHandler(id);
       setShowEditModal(false);
       setEditAccountData(null);
       setConfirmDelete(false);
@@ -585,10 +633,14 @@ function AdAccountsView({
                         <select
                           id={`quick-action-${acc.adAccountId}`}
                           defaultValue=""
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const value = e.target.value;
                             if (!value) return;
-                            onUpdateAccountStatus(acc.adAccountId, value);
+                            if (acc.source === 'social' && onUpdateSocialAdAccount) {
+                              await onUpdateSocialAdAccount({ ...acc, accountStatus: value });
+                            } else if (onUpdateAccountStatus) {
+                              onUpdateAccountStatus(acc.adAccountId, value);
+                            }
                             e.target.value = '';
                           }}
                           className="text-[10px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-1 text-slate-700 dark:text-slate-200 font-medium"
@@ -673,6 +725,44 @@ function AdAccountsView({
         scrollable
       >
         <form onSubmit={handleCreateAccountSubmit} className="p-6 space-y-4" id="form-add-account">
+          {addDuplicateError && (
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 p-3.5 animate-fade-in">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <AlertTriangle size={16} className="text-rose-500 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-rose-700 dark:text-rose-400">Ad Account Already Exists</p>
+                  <p className="text-[11px] text-rose-600 dark:text-rose-500/80 mt-0.5 break-words">
+                    An ad account with AD ACCOUNT ID <strong className="font-extrabold">{addDuplicateError}</strong> already exists {addDuplicateSource === 'social' ? 'in the Load Social Ad Account entries' : 'in the inventory'}.
+                  </p>
+                  <p className="text-[11px] text-rose-600 dark:text-rose-500/80 mt-0.5">
+                    The existing account should be used/edited instead of creating a duplicate.
+                  </p>
+                </div>
+              </div>
+              <div className="flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const existing =
+                      (addDuplicateSource === 'social'
+                        ? socialAdAccounts
+                        : adAccounts
+                      ).find(
+                        (a) => (a.adAccountId || '').trim() === (addDuplicateError || '').trim(),
+                      );
+                    setShowAddModal(false);
+                    setAddDuplicateError('');
+                    setAddDuplicateSource(null);
+                    if (existing) handleOpenEditModal(existing);
+                  }}
+                >
+                  Edit existing
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Ad Account Name</label>
@@ -696,7 +786,7 @@ function AdAccountsView({
                 placeholder="e.g. 1596456534457495"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
                 value={newAccountId}
-                onChange={(e) => setNewAccountId(e.target.value)}
+                onChange={(e) => { setNewAccountId(e.target.value); setAddDuplicateError(''); }}
               />
               <FieldError error={addFormErrors.accountId} />
             </div>

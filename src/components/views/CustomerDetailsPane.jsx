@@ -10,6 +10,7 @@ import {
   Save,
   ArrowUpRight,
   Trash2,
+  UserX,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Pagination from '@/components/common/Pagination';
@@ -26,6 +27,7 @@ function CustomerDetailsPane({
   onRequestAssign,
   onDelete,
   onNotesSave,
+  onUnassignAdAccount,
 }) {
   const [activeTab, setActiveTab] = useState('accounts');
   const [editingNotes, setEditingNotes] = useState(false);
@@ -241,6 +243,17 @@ function CustomerDetailsPane({
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center text-[10px]">
                       <span className="text-slate-400">Platform: <PlatformText platform={acc.platform} className="font-semibold text-[10px]" /></span>
                       <span className="text-slate-400">Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">৳{acc.dollarRate}</span></span>
+                    </div>
+
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onUnassignAdAccount(acc.adAccountId)}
+                        leftIcon={<UserX size={11} />}
+                      >
+                        Unassign
+                      </Button>
                     </div>
                   </div>
                 ))}

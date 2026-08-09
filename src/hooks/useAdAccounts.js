@@ -237,6 +237,48 @@ export function useAdAccounts(triggerToast) {
     [adAccounts, triggerToast],
   );
 
+  const unassignAdAccount = useCallback(
+    async (adAccountId) => {
+      const prev = adAccounts.find(a => a._id === adAccountId || a.adAccountId === adAccountId);
+
+      // Optimistic unassign — return to the available pool instantly, rolled back on failure.
+      if (prev) {
+        setAdAccounts(prevList =>
+          prevList.map(a =>
+            a._id === prev._id || a.adAccountId === prev.adAccountId
+              ? { ...a, accountStatus: 'Available', assignedCustomer: '', uid: '' }
+              : a,
+          ),
+        );
+      }
+
+      try {
+        const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(adAccountId)}/unassign`, {
+          method: 'POST',
+        });
+        const saved = data.adAccount;
+        setAdAccounts(prevList =>
+          prevList.map(a => (a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a)),
+        );
+        triggerToast(
+          'success',
+          'Ad Account Unassigned',
+          `${saved.adAccountName} returned to the available pool.`,
+        );
+        return saved;
+      } catch (err) {
+        if (prev) {
+          setAdAccounts(prevList =>
+            prevList.map(a => (a._id === prev._id || a.adAccountId === prev.adAccountId ? prev : a)),
+          );
+        }
+        triggerToast('error', 'Unassign Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [adAccounts, triggerToast],
+  );
+
   const refetch = useCallback(() => {
     setLoading(true);
     return fetchAdAccounts();
@@ -253,6 +295,7 @@ export function useAdAccounts(triggerToast) {
     bulkUpdateStatus,
     markAccountSold,
     assignAdAccount,
+    unassignAdAccount,
     refetch,
   };
 }
