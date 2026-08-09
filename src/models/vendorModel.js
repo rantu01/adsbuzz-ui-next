@@ -1,6 +1,7 @@
 import { getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
 import { INITIAL_VENDORS } from "@/data/seedData";
+import { VENDOR_TYPES } from "@/constants/vendorTypes";
 
 const VENDOR_STATUS = [
   "Active",
@@ -10,7 +11,6 @@ const VENDOR_STATUS = [
   "Inactive",
   "Need Support",
 ];
-const VENDOR_PLATFORMS = ["Facebook", "TikTok", "Google", "Snapchat"];
 
 function round2(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -33,7 +33,7 @@ function normalizePayment(entry) {
 function sanitize(input = {}) {
   const id = String(input.id || "").trim();
   const name = String(input.name || "").trim();
-  const platform = VENDOR_PLATFORMS.includes(input.platform) ? input.platform : "Facebook";
+  const vendorType = VENDOR_TYPES.includes(input.vendorType) ? input.vendorType : "Others";
   const status = VENDOR_STATUS.includes(input.status) ? input.status : "Active";
   const email = String(input.email || "").trim();
   const phone = String(input.phone || "").trim();
@@ -44,7 +44,7 @@ function sanitize(input = {}) {
     ? input.paymentHistory.map(normalizePayment)
     : [];
 
-  return { id, name, platform, status, email, phone, outstandingBalanceUSD, paymentHistory };
+  return { id, name, vendorType, status, email, phone, outstandingBalanceUSD, paymentHistory };
 }
 
 export async function seedVendors() {
@@ -84,7 +84,7 @@ export async function listVendors({ search = "" } = {}) {
       (v) =>
         v.name?.toLowerCase().includes(q) ||
         v.id?.toLowerCase().includes(q) ||
-        v.platform?.toLowerCase().includes(q)
+        v.vendorType?.toLowerCase().includes(q)
     );
   }
   return result.map(mapVendor);
@@ -123,7 +123,7 @@ export async function updateVendor(id, data) {
 
   const allowed = [
     "name",
-    "platform",
+    "vendorType",
     "status",
     "email",
     "phone",
@@ -134,7 +134,7 @@ export async function updateVendor(id, data) {
   for (const key of allowed) {
     if (!(key in data)) continue;
     const value = data[key];
-    if (key === "platform") patch.platform = VENDOR_PLATFORMS.includes(value) ? value : existing.platform;
+    if (key === "vendorType") patch.vendorType = VENDOR_TYPES.includes(value) ? value : existing.vendorType;
     else if (key === "status") patch.status = VENDOR_STATUS.includes(value) ? value : existing.status;
     else if (key === "outstandingBalanceUSD") patch.outstandingBalanceUSD = Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : existing.outstandingBalanceUSD;
     else if (key === "paymentHistory") patch.paymentHistory = Array.isArray(value) ? value.map(normalizePayment) : existing.paymentHistory;
@@ -172,4 +172,14 @@ export async function recordVendorPayment(id, { amountUSD, paymentMethod, date, 
   const doc = result.value || result;
   if (!doc) return null;
   return { ...mapVendor(doc), _id: doc._id };
+}
+
+export async function deleteVendor(id) {
+  if (!id) return null;
+  const collection = await getCollection("vendors");
+  const existing = await collection.findOne({ id });
+  if (!existing) return null;
+
+  await collection.deleteOne({ id });
+  return { ...mapVendor(existing), _id: existing._id };
 }

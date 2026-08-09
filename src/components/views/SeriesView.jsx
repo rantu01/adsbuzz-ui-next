@@ -1,17 +1,20 @@
 'use client';
 import { memo, useState } from 'react';
-import { Plus, FileEdit } from 'lucide-react';
+import { Plus, FileEdit, Trash2 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import StatCard from '@/components/common/StatCard';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Button from '@/components/ui/Button';
-import SearchBar from '@/components/ui/SearchBar';
 import ErrorBanner from '@/components/ui/ErrorBanner';
+import SearchBar from '@/components/ui/SearchBar';
 
-function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, error, onRetry }) {
+function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteSeries, error, onRetry }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteBlocked, setDeleteBlocked] = useState(false);
 
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
@@ -57,6 +60,35 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, error, on
   const openEditModal = (s) => {
     setEditSeriesData({ ...s });
     setShowEditModal(true);
+  };
+
+  const openDeleteModal = (s) => {
+    setDeleteBlocked(false);
+    if (linkedAccounts.length > 0) {
+      setDeleteBlocked(true);
+      setShowDeleteModal(false);
+      return;
+    }
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!activeSeries || !onDeleteSeries) return;
+    const deletedId = activeSeries.seriesId;
+    try {
+      await onDeleteSeries(deletedId);
+    } catch {
+      // Error toast raised by the hook/context.
+    } finally {
+      setShowDeleteModal(false);
+      setDeleteBlocked(false);
+      const remaining = series.filter(s => s.seriesId !== deletedId);
+      if (remaining.length > 0) {
+        setSelectedSeriesId(remaining[0].seriesId);
+      } else {
+        setSelectedSeriesId('');
+      }
+    }
   };
 
   const totalSeries = series.length;
@@ -177,16 +209,34 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, error, on
                   <span className="text-[10px] uppercase font-bold text-brand-orange bg-brand-orange/10 px-2.5 py-1 rounded-md">
                     Series Profile
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openEditModal(activeSeries)}
-                    leftIcon={<FileEdit size={11} />}
-                  >
-                    Edit
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openDeleteModal(activeSeries)}
+                      leftIcon={<Trash2 size={11} />}
+                      className="border-rose-300 dark:border-rose-800 text-rose-600 hover:bg-rose-50 dark:text-rose-400"
+                    >
+                      Delete Series
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditModal(activeSeries)}
+                      leftIcon={<FileEdit size={11} />}
+                    >
+                      Edit
+                    </Button>
                 </div>
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white mt-3 flex items-center justify-between">
+              </div>
+              {deleteBlocked && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-800 flex items-start gap-2.5 mt-2">
+                  <span className="text-rose-600 dark:text-rose-400 text-xs font-semibold">
+                    Please Unassign Ad Accounts From This Series and Try Again Later.
+                  </span>
+                </div>
+              )}
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white mt-3 flex items-center justify-between">
                   <span>{activeSeries.seriesName}</span>
                   <span className="text-xs font-mono font-black text-white bg-gradient-to-r from-brand-blue to-[#2980b9] dark:from-brand-orange dark:to-brand-orange-dark px-2.5 py-1 rounded-md shadow-xs ring-1 ring-brand-blue/30 dark:ring-brand-orange/30">
                     {activeSeries.seriesId}
@@ -367,6 +417,17 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, error, on
           </div>
         </form>
       </Modal>
+
+      {/* Delete Series Confirmation */}
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Series?"
+        message={`This will permanently remove ${activeSeries?.seriesName} (${activeSeries?.seriesId}) from the series registry. This action cannot be undone.`}
+        confirmLabel="Delete Series"
+        variant="danger"
+      />
     </div>
   );
 }

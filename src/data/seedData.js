@@ -781,7 +781,7 @@ export const INITIAL_VENDORS = [
   {
     id: "VEND-FB-AGENCY",
     name: "Facebook Global Advertising LLC",
-    platform: "Facebook",
+    vendorType: "USD Seller",
     outstandingBalanceUSD: 14200,
     email: "agency-support@fb-partners.com",
     phone: "+1 (800) 555-0199",
@@ -794,7 +794,7 @@ export const INITIAL_VENDORS = [
   {
     id: "VEND-TT-SPARK",
     name: "TikTok Spark Partner Program",
-    platform: "TikTok",
+    vendorType: "USDT Seller",
     outstandingBalanceUSD: 5800,
     email: "partner@tiktok-ads.com",
     phone: "+65 6777 8888",
@@ -806,7 +806,7 @@ export const INITIAL_VENDORS = [
   {
     id: "VEND-GG-MCC",
     name: "Google Partners APAC",
-    platform: "Google",
+    vendorType: "Partners",
     outstandingBalanceUSD: 2400,
     email: "billing-mcc@google.com",
     phone: "+65 6211 1111",

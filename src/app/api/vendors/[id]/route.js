@@ -1,6 +1,6 @@
 import { asyncHandler, ok, notFound } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
-import { getVendorById, updateVendor, recordVendorPayment } from "@/models/vendorModel";
+import { getVendorById, updateVendor, recordVendorPayment, deleteVendor } from "@/models/vendorModel";
 
 export const GET = asyncHandler(async (request, { params }) => {
   const { id } = await params;
@@ -31,4 +31,16 @@ export const PATCH = asyncHandler(async (request, { params }) => {
 
   const vendor = await updateVendor(id, body);
   return ok({ message: "Vendor updated.", vendor });
+});
+
+export const DELETE = asyncHandler(async (request, { params }) => {
+  const { id } = await params;
+
+  const existing = await getVendorById(id);
+  if (!existing) {
+    return notFound("Vendor not found.");
+  }
+
+  await deleteVendor(id);
+  return ok({ message: "Vendor deleted.", vendor: existing });
 });

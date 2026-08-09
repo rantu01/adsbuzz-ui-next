@@ -85,10 +85,35 @@ export function useVendors(triggerToast) {
     [triggerToast],
   );
 
-  const refetch = useCallback(() => {
+   const refetch = useCallback(() => {
     setLoading(true);
     return fetchVendors();
   }, [fetchVendors]);
 
-  return { vendors, loading, error, addVendor, updateVendor, payVendor, refetch };
+  const deleteVendor = useCallback(
+    async (vendorId) => {
+      const prev = vendors.find(v => v.id === vendorId);
+      if (!prev) return null;
+
+      setVendors(prevList => prevList.filter(v => v.id !== vendorId));
+
+      try {
+        const data = await apiFetch(`/api/vendors/${encodeURIComponent(vendorId)}`, {
+          method: 'DELETE',
+        });
+        const removed = data.vendor;
+        triggerToast('info', 'Vendor Removed', `${removed.name} (${removed.id}) was deleted.`);
+        return removed;
+      } catch (err) {
+        setVendors(prevList =>
+          prevList.some(v => v.id === vendorId) ? prevList : [prev, ...prevList],
+        );
+        triggerToast('error', 'Vendor Delete Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [vendors, triggerToast],
+  );
+
+  return { vendors, loading, error, addVendor, updateVendor, payVendor, deleteVendor, refetch };
 }

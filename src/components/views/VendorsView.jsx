@@ -1,24 +1,28 @@
-'use client';
+ 'use client';
 import { memo, useState } from 'react';
-import { Plus, FileEdit, DollarSign, User, Check } from 'lucide-react';
-import PlatformText from '@/components/common/PlatformText';
+import { Plus, FileEdit, DollarSign, User, Check, Trash2, History } from 'lucide-react';
+import { VENDOR_TYPES } from '@/constants/vendorTypes';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Button from '@/components/ui/Button';
-import SearchBar from '@/components/ui/SearchBar';
 import ErrorBanner from '@/components/ui/ErrorBanner';
+import SearchBar from '@/components/ui/SearchBar';
 
-function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymentMethods, error, onRetry }) {
+function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDeleteVendor, paymentMethods, error, onRetry }) {
   const [search, setSearch] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState(vendors[0]?.id || '');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAllPaymentsModal, setShowAllPaymentsModal] = useState(false);
   const [payVendorData, setPayVendorData] = useState(null);
   const [payAmount, setPayAmount] = useState('');
   const [payChannel, setPayChannel] = useState(paymentMethods[0] ?? '');
+  const [deleteVendorData, setDeleteVendorData] = useState(null);
 
+  const [vendorType, setVendorType] = useState(VENDOR_TYPES[5]);
   const [name, setName] = useState('');
-  const [plat, setPlat] = useState('Facebook');
   const [status, setStatus] = useState('Active');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -40,11 +44,10 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name) return;
     onAddVendor({
       id: `VEND-${Date.now().toString().slice(-4)}`,
       name,
-      platform: plat,
+      vendorType,
       outstandingBalanceUSD: 0,
       paymentHistory: [],
       status,
@@ -54,7 +57,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
     setName('');
     setEmail('');
     setPhone('');
-    setPlat('Facebook');
+    setVendorType(VENDOR_TYPES[5]);
     setStatus('Active');
     setShowModal(false);
   };
@@ -122,6 +125,42 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
     setShowPayModal(true);
   };
 
+  const openDeleteModal = (v) => {
+    setDeleteVendorData(v);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteVendorData || !onDeleteVendor) return;
+    const deletedId = deleteVendorData.id;
+    try {
+      await onDeleteVendor(deletedId);
+    } catch {
+      // Error toast raised by the hook/context.
+    } finally {
+      setShowDeleteModal(false);
+      setDeleteVendorData(null);
+      const remaining = vendors.filter(v => v.id !== deletedId);
+      if (remaining.length > 0) {
+        setSelectedVendorId(remaining[0].id);
+      } else {
+        setSelectedVendorId('');
+      }
+    }
+  };
+
+  const allVendorPayments = vendors
+    .filter(v => Array.isArray(v.paymentHistory) && v.paymentHistory.length > 0)
+    .flatMap(v =>
+      v.paymentHistory.map((ph) => ({
+        vendorId: v.id,
+        vendorName: v.name,
+        vendorType: v.vendorType,
+        ...ph,
+      })),
+    )
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
   return (
     <div className="space-y-6 animate-fade-in">
       <ErrorBanner error={error} onRetry={onRetry} />
@@ -165,7 +204,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
               >
                 <div>
                   <h4 className="text-xs font-bold text-slate-900 dark:text-white">{v.name}</h4>
-                  <div className="text-[10px] text-slate-400 mt-0.5"><PlatformText platform={v.platform} className="text-[10px]" /></div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Vendor Type: <span className="font-semibold text-slate-600 dark:text-slate-300">{v.vendorType}</span></div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm inline-block ${
@@ -192,32 +231,49 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
           </div>
         </div>
 
-        {activeVendor && (
-          <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6" id="vendor-details-pane">
-            <div className="pb-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeVendor.name}</h2>
-                <p className="text-xs text-slate-400 mt-1">Platform: <PlatformText platform={activeVendor.platform} className="text-xs font-semibold" /> | Status: <span className="font-bold text-slate-700 dark:text-slate-300">{activeVendor.status}</span></p>
+          {activeVendor && (
+            <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6" id="vendor-details-pane">
+              <div className="pb-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">{activeVendor.name}</h2>
+                  <p className="text-xs text-slate-400 mt-1">Vendor Type: <span className="font-semibold text-slate-700 dark:text-slate-300">{activeVendor.vendorType}</span> | Status: <span className="font-bold text-slate-700 dark:text-slate-300">{activeVendor.status}</span></p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAllPaymentsModal(true)}
+                    leftIcon={<History size={11} />}
+                  >
+                    View All Payments
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openPayModal(activeVendor)}
+                    leftIcon={<DollarSign size={11} />}
+                  >
+                    Pay Vendor
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEditModal(activeVendor)}
+                    leftIcon={<FileEdit size={11} />}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openDeleteModal(activeVendor)}
+                    leftIcon={<Trash2 size={11} />}
+                    className="border-rose-300 dark:border-rose-800 text-rose-600 hover:bg-rose-50 dark:text-rose-400"
+                  >
+                    Delete Vendor
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openPayModal(activeVendor)}
-                  leftIcon={<DollarSign size={11} />}
-                >
-                  Pay Vendor
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openEditModal(activeVendor)}
-                  leftIcon={<FileEdit size={11} />}
-                >
-                  Edit
-                </Button>
-              </div>
-            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl bg-surface-green dark:bg-surface-green border border-border-green dark:border-border-green">
@@ -308,15 +364,14 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
         <form onSubmit={handleSubmit} className="space-y-4" id="form-add-vendor">
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vendor Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. APAC Wholesaler A" className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white" />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. APAC Wholesaler A" className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white" />
           </div>
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Platform</label>
-            <select value={plat} onChange={(e) => setPlat(e.target.value)} className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium">
-              <option value="Facebook">Facebook</option>
-              <option value="TikTok">TikTok</option>
-              <option value="Google">Google</option>
-              <option value="Snapchat">Snapchat</option>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vendor Type</label>
+            <select value={vendorType} onChange={(e) => setVendorType(e.target.value)} className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium">
+              {VENDOR_TYPES.map((vt) => (
+                <option key={vt} value={vt}>{vt}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -416,23 +471,21 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vendor Name</label>
             <input
               type="text"
-              required
               value={editVendorData?.name ?? ''}
               onChange={(e) => editVendorData && setEditVendorData({ ...editVendorData, name: e.target.value })}
               className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Platform</label>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vendor Type</label>
             <select
-              value={editVendorData?.platform ?? 'Facebook'}
-              onChange={(e) => editVendorData && setEditVendorData({ ...editVendorData, platform: e.target.value })}
+              value={editVendorData?.vendorType ?? VENDOR_TYPES[5]}
+              onChange={(e) => editVendorData && setEditVendorData({ ...editVendorData, vendorType: e.target.value })}
               className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
             >
-              <option value="Facebook">Facebook</option>
-              <option value="TikTok">TikTok</option>
-              <option value="Google">Google</option>
-              <option value="Snapchat">Snapchat</option>
+              {VENDOR_TYPES.map((vt) => (
+                <option key={vt} value={vt}>{vt}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -474,6 +527,65 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, paymen
             <Button type="submit">Save Changes</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Vendor Confirmation */}
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setDeleteVendorData(null); }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Vendor?"
+        message={`This will permanently remove ${deleteVendorData?.name} (${deleteVendorData?.id}) from the vendor roster. This action cannot be undone.`}
+        confirmLabel="Delete Vendor"
+        variant="danger"
+      />
+
+      {/* View All Vendor Payments Modal */}
+      <Modal
+        isOpen={showAllPaymentsModal}
+        onClose={() => setShowAllPaymentsModal(false)}
+        title="All Vendor Payment History"
+        description="Complete ledger of settlement payments recorded across all vendors."
+        size="lg"
+        scrollable
+      >
+        <div className="space-y-3">
+          {allVendorPayments.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No payment records on file.</p>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <table className="w-full text-[10px]">
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                  <tr>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Date</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Vendor</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Vendor Type</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Payment Method</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Reference</th>
+                    <th className="text-right font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Amount (USD)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allVendorPayments.map((ph, index) => (
+                    <tr key={index} className="border-t border-slate-100 dark:border-slate-800">
+                      <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
+                      <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-medium truncate max-w-[140px]" title={ph.vendorName}>{ph.vendorName}</td>
+                      <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.vendorType || '—'}</td>
+                      <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
+                      <td className="px-2 py-1.5 text-slate-500 dark:text-slate-500 font-mono truncate max-w-[120px]" title={ph.transactionId}>{ph.transactionId || '—'}</td>
+                      <td className="px-2 py-1.5 text-right font-bold text-emerald-600">${ph.amountUSD || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+              Total: ${allVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0).toLocaleString()}
+            </span>
+          </div>
+        </div>
       </Modal>
     </div>
   );

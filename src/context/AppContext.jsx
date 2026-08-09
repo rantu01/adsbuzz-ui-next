@@ -122,6 +122,7 @@ export function AppProvider({ children }) {
     addVendor,
     updateVendor: rawUpdateVendor,
     payVendor: rawPayVendor,
+    deleteVendor: rawDeleteVendor,
     refetch: refetchVendors,
   } = useVendors(triggerToast);
   const {
@@ -129,6 +130,7 @@ export function AppProvider({ children }) {
     error: seriesError,
     addSeries,
     updateSeries: rawUpdateSeries,
+    deleteSeries: rawDeleteSeries,
     refetch: refetchSeries,
   } = useSeries(triggerToast);
   const {
@@ -266,9 +268,21 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const handleDeleteVendor = async (id) => {
+    const result = await rawDeleteVendor(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Vendor", `${result.name} (${result.id}) removed from vendor roster.`, "system");
+    return result;
+  };
+
   const handleUpdateSeries = async (series) => {
     const result = await rawUpdateSeries(series);
     if (result) logActivityFx("Rakibul R.", "Updated Series", `Series ${result.seriesName} updated.`, "system");
+    return result;
+  };
+
+  const handleDeleteSeries = async (seriesId) => {
+    const result = await rawDeleteSeries(seriesId);
+    if (result) logActivityFx("Rakibul R.", "Deleted Series", `${result.seriesName} (${result.seriesId}) removed from registry.`, "system");
     return result;
   };
 
@@ -633,8 +647,10 @@ export function AppProvider({ children }) {
     handleUpdateVendor,
     addVendor,
     handlePayVendor,
+    handleDeleteVendor,
     handleUpdateSeries,
     addSeries,
+    handleDeleteSeries,
     handleUpdateSaleSetup,
     addSetup,
     handleUpdateBaseRate,

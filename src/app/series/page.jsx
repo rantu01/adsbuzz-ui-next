@@ -14,6 +14,7 @@ export default function SeriesPage() {
       adAccounts={app.adAccounts}
       onUpdateSeries={app.handleUpdateSeries}
       onAddSeries={app.addSeries}
+      onDeleteSeries={app.handleDeleteSeries}
     />
   );
 }

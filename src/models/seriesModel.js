@@ -104,3 +104,25 @@ export async function updateSeries(seriesId, data) {
   const { _id, ...rest } = updated;
   return { ...rest, id: _id };
 }
+
+export async function deleteSeries(seriesId) {
+  const collection = await getCollection("series");
+  const existing = await collection.findOne({ seriesId });
+  if (!existing) return null;
+
+  const adAccountsCollection = await getCollection("adAccounts");
+  const assignedAdAccount = await adAccountsCollection.findOne({ seriesId });
+  if (assignedAdAccount) {
+    throw new Error("SERIES_IN_USE");
+  }
+
+  const socialAdAccountsCollection = await getCollection("socialAdAccounts");
+  const assignedSocialAccount = await socialAdAccountsCollection.findOne({ seriesId });
+  if (assignedSocialAccount) {
+    throw new Error("SERIES_IN_USE");
+  }
+
+  await collection.deleteOne({ seriesId });
+  const { _id, ...rest } = existing;
+  return { ...rest, id: _id };
+}

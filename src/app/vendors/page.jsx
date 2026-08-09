@@ -14,6 +14,7 @@ export default function VendorsPage() {
       onUpdateVendor={app.handleUpdateVendor}
       onAddVendor={app.addVendor}
       onPayVendor={app.handlePayVendor}
+      onDeleteVendor={app.handleDeleteVendor}
       paymentMethods={app.settings.paymentMethods}
     />
   );

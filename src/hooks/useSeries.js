@@ -72,5 +72,30 @@ export function useSeries(triggerToast) {
     return fetchSeries();
   }, [fetchSeries]);
 
-  return { series, loading, error, addSeries, updateSeries, refetch };
+  const deleteSeries = useCallback(
+    async (seriesId) => {
+      const prev = series.find(s => s.seriesId === seriesId);
+      if (!prev) return null;
+
+      setSeries(prevS => prevS.filter(s => s.seriesId !== seriesId));
+
+      try {
+        const data = await apiFetch(`/api/series/${encodeURIComponent(seriesId)}`, {
+          method: 'DELETE',
+        });
+        const removed = data.series;
+        triggerToast('info', 'Series Removed', `${removed.seriesName} (${removed.seriesId}) was deleted.`);
+        return removed;
+      } catch (err) {
+        setSeries(prevS =>
+          prevS.some(s => s.seriesId === seriesId) ? prevS : [prev, ...prevS],
+        );
+        triggerToast('error', 'Series Delete Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [series, triggerToast],
+  );
+
+  return { series, loading, error, addSeries, updateSeries, deleteSeries, refetch };
 }
