@@ -2,6 +2,7 @@ const DEFAULT_HEADERS = { 'Content-Type': 'application/json' };
 
 export async function apiFetch(url, options = {}) {
   const res = await fetch(url, {
+    cache: 'no-store',
     ...options,
     headers: { ...DEFAULT_HEADERS, ...(options.headers || {}) },
   });

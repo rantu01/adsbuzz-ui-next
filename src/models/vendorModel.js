@@ -47,6 +47,9 @@ function sanitize(input = {}) {
   return { id, name, vendorType, status, email, phone, outstandingBalanceUSD, paymentHistory };
 }
 
+const SEED_VENDOR_IDS = INITIAL_VENDORS.map(v => v.id);
+const SEED_PAYMENT_TX_IDS = ["TXN-FB-90234", "TXN-FB-90884", "TXN-TT-44321", "TXN-GG-1122"];
+
 export async function seedVendors() {
   const collection = await getCollection("vendors");
   await collection.createIndex({ id: 1 }, { unique: true });
@@ -64,6 +67,17 @@ export async function seedVendors() {
     );
     if (result.upsertedCount > 0) seeded += 1;
   }
+
+  // Migration: strip any pre-seeded payment entries from existing vendor documents.
+  // This removes only the original seed transaction IDs, preserving any real
+  // payments that were recorded through the UI.
+  if (SEED_PAYMENT_TX_IDS.length > 0) {
+    await collection.updateMany(
+      { id: { $in: SEED_VENDOR_IDS } },
+      { $pull: { paymentHistory: { transactionId: { $in: SEED_PAYMENT_TX_IDS } } } },
+    );
+  }
+
   logger.info(`seedVendors: seeded ${seeded} vendors.`);
   return { seeded };
 }

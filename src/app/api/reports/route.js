@@ -1,6 +1,8 @@
 import { asyncHandler, ok } from "@/utils/http";
 import { getMonthlyReport } from "@/models/reportModel";
 
+export const dynamic = 'force-dynamic';
+
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month") || "";

@@ -785,11 +785,7 @@ export const INITIAL_VENDORS = [
     outstandingBalanceUSD: 14200,
     email: "agency-support@fb-partners.com",
     phone: "+1 (800) 555-0199",
-    status: "Active",
-    paymentHistory: [
-      { date: "2026-06-15", amountUSD: 25000, paymentMethod: "Wire Transfer (EBL)", transactionId: "TXN-FB-90234" },
-      { date: "2026-06-30", amountUSD: 30000, paymentMethod: "Wire Transfer (EBL)", transactionId: "TXN-FB-90884" }
-    ]
+    status: "Active"
   },
   {
     id: "VEND-TT-SPARK",
@@ -798,10 +794,7 @@ export const INITIAL_VENDORS = [
     outstandingBalanceUSD: 5800,
     email: "partner@tiktok-ads.com",
     phone: "+65 6777 8888",
-    status: "Active",
-    paymentHistory: [
-      { date: "2026-06-18", amountUSD: 15000, paymentMethod: "Payoneer Direct", transactionId: "TXN-TT-44321" }
-    ]
+    status: "Active"
   },
   {
     id: "VEND-GG-MCC",
@@ -810,10 +803,7 @@ export const INITIAL_VENDORS = [
     outstandingBalanceUSD: 2400,
     email: "billing-mcc@google.com",
     phone: "+65 6211 1111",
-    status: "Active",
-    paymentHistory: [
-      { date: "2026-06-25", amountUSD: 8000, paymentMethod: "Corporate Billing Card", transactionId: "TXN-GG-1122" }
-    ]
+    status: "Active"
   }
 ];
 

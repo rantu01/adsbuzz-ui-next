@@ -4,6 +4,8 @@ import { useApp } from '@/context/AppContext';
 import DashboardView from '@/components/views/DashboardView';
 import { useDashboard } from '@/hooks/useDashboard';
 
+export const dynamic = 'force-dynamic';
+
 export default function DashboardPage() {
   const app = useApp();
   const { stats: serverStats, dashboard, error: dashboardError, refetch: refetchDashboard } = useDashboard();

@@ -2,6 +2,8 @@ import { asyncHandler, ok, notFound } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import { getVendorById, updateVendor, recordVendorPayment, deleteVendor } from "@/models/vendorModel";
 
+export const dynamic = 'force-dynamic';
+
 export const GET = asyncHandler(async (request, { params }) => {
   const { id } = await params;
   const vendor = await getVendorById(id);

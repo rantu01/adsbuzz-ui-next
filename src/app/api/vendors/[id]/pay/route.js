@@ -2,6 +2,8 @@ import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, requirePositiveNumber, optionalString } from "@/utils/validate";
 import { getVendorById, recordVendorPayment } from "@/models/vendorModel";
 
+export const dynamic = 'force-dynamic';
+
 export const POST = asyncHandler(async (request, { params }) => {
   const { id } = await params;
   const body = await readJsonBody(request);

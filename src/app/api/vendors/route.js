@@ -2,6 +2,8 @@ import { asyncHandler, ok, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import { listVendors, createVendor } from "@/models/vendorModel";
 
+export const dynamic = 'force-dynamic';
+
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
   const vendors = await listVendors({

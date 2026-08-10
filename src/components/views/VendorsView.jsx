@@ -149,16 +149,13 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     }
   };
 
-  const allVendorPayments = vendors
-    .filter(v => Array.isArray(v.paymentHistory) && v.paymentHistory.length > 0)
-    .flatMap(v =>
-      v.paymentHistory.map((ph) => ({
-        vendorId: v.id,
-        vendorName: v.name,
-        vendorType: v.vendorType,
-        ...ph,
-      })),
-    )
+   const selectedVendorPayments = (activeVendor?.paymentHistory ?? [])
+    .map((ph) => ({
+      vendorId: activeVendor.id,
+      vendorName: activeVendor.name,
+      vendorType: activeVendor.vendorType,
+      ...ph,
+    }))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   return (
@@ -245,7 +242,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                     onClick={() => setShowAllPaymentsModal(true)}
                     leftIcon={<History size={11} />}
                   >
-                    View All Payments
+                     View Payments
                   </Button>
                   <Button
                     variant="outline"
@@ -540,17 +537,17 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
         variant="danger"
       />
 
-      {/* View All Vendor Payments Modal */}
+      {/* View Selected Vendor Payments Modal */}
       <Modal
         isOpen={showAllPaymentsModal}
         onClose={() => setShowAllPaymentsModal(false)}
-        title="All Vendor Payment History"
-        description="Complete ledger of settlement payments recorded across all vendors."
+        title="Payment History"
+        description={`Settlement payments recorded for ${activeVendor?.name ?? 'this vendor'}.`}
         size="lg"
         scrollable
       >
         <div className="space-y-3">
-          {allVendorPayments.length === 0 ? (
+          {selectedVendorPayments.length === 0 ? (
             <p className="text-xs text-slate-400 italic">No payment records on file.</p>
           ) : (
             <div className="max-h-[60vh] overflow-y-auto">
@@ -558,19 +555,15 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
                   <tr>
                     <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Date</th>
-                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Vendor</th>
-                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Vendor Type</th>
                     <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Payment Method</th>
                     <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Reference</th>
                     <th className="text-right font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Amount (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allVendorPayments.map((ph, index) => (
+                  {selectedVendorPayments.map((ph, index) => (
                     <tr key={index} className="border-t border-slate-100 dark:border-slate-800">
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
-                      <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-medium truncate max-w-[140px]" title={ph.vendorName}>{ph.vendorName}</td>
-                      <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.vendorType || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-500 dark:text-slate-500 font-mono truncate max-w-[120px]" title={ph.transactionId}>{ph.transactionId || '—'}</td>
                       <td className="px-2 py-1.5 text-right font-bold text-emerald-600">${ph.amountUSD || 0}</td>
@@ -582,7 +575,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
           )}
           <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-              Total: ${allVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0).toLocaleString()}
+              Total: ${selectedVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0).toLocaleString()}
             </span>
           </div>
         </div>

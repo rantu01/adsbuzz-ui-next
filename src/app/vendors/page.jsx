@@ -3,6 +3,8 @@
 import { useApp } from '@/context/AppContext';
 import VendorsView from '@/components/views/VendorsView';
 
+export const dynamic = 'force-dynamic';
+
 export default function VendorsPage() {
   const app = useApp();
 
