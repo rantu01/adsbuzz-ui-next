@@ -34,16 +34,19 @@ const CustomerRow = memo(function CustomerRow({ cust, isSelected, stats, onSelec
         <div className="h-6 w-6 rounded-md bg-brand-orange text-white font-black text-[9px] flex items-center justify-center flex-shrink-0 shadow-xs">
           {cust.avatar || cust.name.slice(0, 2).toUpperCase()}
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1">
-            <h3 className={`text-xs font-bold truncate ${isSelected ? 'text-slate-950' : 'text-slate-900 dark:text-white'}`}>{cust.name}</h3>
-            {cust.favorite && <Star size={9} className="text-amber-500 fill-amber-500" />}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1">
+              <h3 className={`text-xs font-bold truncate ${isSelected ? 'text-slate-950' : 'text-slate-900 dark:text-white'}`}>{cust.name}</h3>
+              {cust.favorite && <Star size={9} className="text-amber-500 fill-amber-500" />}
+            </div>
+            <p className={`text-[10px] font-mono font-bold mt-0.5 ${isSelected ? 'text-brand-blue' : 'text-brand-blue dark:text-blue-400'}`}>
+              ID: {cust.id || '—'}
+            </p>
+            <p className={`text-[10px] font-mono truncate mt-0.5 ${isSelected ? 'text-slate-600' : 'text-slate-500 dark:text-slate-400'}`}>
+              Group: {cust.groupId || 'GC-GENERIC'}
+            </p>
+            <p className={`text-[10px] truncate mt-0.5 ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>{cust.companyName}</p>
           </div>
-          <p className={`text-[10px] font-mono font-bold mt-0.5 ${isSelected ? 'text-brand-blue' : 'text-brand-blue dark:text-blue-400'}`}>
-            Group ID: {cust.groupId || 'GC-GENERIC'}
-          </p>
-          <p className={`text-[10px] truncate mt-0.5 ${isSelected ? 'text-slate-600' : 'text-slate-400'}`}>{cust.companyName}</p>
-        </div>
       </div>
       <div className="text-right flex-shrink-0 pl-2">
         <p className={`text-xs font-black ${isSelected ? 'text-slate-950' : 'text-slate-800 dark:text-slate-200'}`}>
@@ -99,9 +102,10 @@ function CustomersView({
   const [addFormErrors, setAddFormErrors] = useState({});
   const [editFormErrors, setEditFormErrors] = useState({});
 
-  // Assign Ad Account state
+   // Assign Ad Account state
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignTargetAccountId, setAssignTargetAccountId] = useState('');
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
   const [assigning, setAssigning] = useState(false);
 
   // Delete Customer state
@@ -147,6 +151,41 @@ function CustomersView({
     [customerStats],
   );
 
+  // Group ID uniqueness helpers (Task 3)
+  const groupIds = useMemo(
+    () => new Set(customers.map((c) => c.groupId).filter(Boolean)),
+    [customers],
+  );
+
+  const groupIdIsUnique = useCallback(
+    (groupId, excludeId = null) => {
+      const candidate = (groupId || '').trim().toUpperCase();
+      if (!candidate) return true;
+      if (!groupIds.has(candidate)) return true;
+      // If the only match belongs to the customer being edited, it's still unique.
+      if (excludeId) {
+        const owner = customers.find((c) => c.groupId === candidate);
+        return !owner || owner.id === excludeId;
+      }
+      return false;
+    },
+    [groupIds, customers],
+  );
+
+  const suggestUniqueGroupId = useCallback(
+    (name) => {
+      const base = (name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
+      let candidate = `GC-${base || 'CUST'}`;
+      let suffix = 1;
+      while (!groupIdIsUnique(candidate)) {
+        candidate = `GC-${base || 'CUST'}-${suffix}`;
+        suffix += 1;
+      }
+      return candidate;
+    },
+    [groupIdIsUnique],
+  );
+
   const filteredCustomers = useMemo(() => {
     const q = searchTerm.toLowerCase();
     return customers.filter(c => {
@@ -154,7 +193,8 @@ function CustomersView({
                             c.name.toLowerCase().includes(q) ||
                             (c.companyName || '').toLowerCase().includes(q) ||
                             (c.email || '').toLowerCase().includes(q) ||
-                            (c.groupId && c.groupId.toLowerCase().includes(q));
+                            (c.groupId && c.groupId.toLowerCase().includes(q)) ||
+                            (c.id && c.id.toLowerCase().includes(q));
       const matchesStatus = statusFilter === 'All' ? true : c.status === statusFilter;
       const matchesFav = favoriteFilter ? c.favorite === true : true;
       return matchesSearch && matchesStatus && matchesFav;
@@ -187,6 +227,7 @@ function CustomersView({
 
   const handleOpenAssignModal = useCallback(() => {
     setAssignTargetAccountId('');
+    setAssignSearchTerm('');
     setShowAssignModal(true);
   }, []);
 
@@ -233,55 +274,64 @@ function CustomersView({
     onUpdateCustomerNotes(custId, text);
   }, [onUpdateCustomerNotes]);
 
-  const handleCreateCustomerSubmit = async (e) => {
-    e.preventDefault();
-    const errors = validate(
-      {
-        name: newCustName,
-        groupId: newCustGroupId,
-        email: newCustEmail,
-        phone: newCustPhone,
-        company: newCustCompany,
-        monthlySpend: newCustMonthlySpend,
-      },
-      {
-        name: [required('Full corporate name is required'), maxLength(120)],
-        groupId: maxLength(30, 'Group ID must be 30 characters or fewer'),
-        email: [required('Email address is required'), email()],
-        phone: phone(),
-        company: [required('Company name is required'), maxLength(120)],
-        monthlySpend: positiveNumber('Monthly spend must be greater than 0'),
-      },
-    );
-    if (hasErrors(errors)) {
-      setAddFormErrors(errors);
-      return;
-    }
-    setAddFormErrors({});
-    const generatedGroupId = newCustGroupId.trim() || `GC-${newCustName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase()}`;
-    try {
-      await onAddCustomer({
-        name: newCustName,
-        groupId: generatedGroupId,
-        email: newCustEmail,
-        phone: newCustPhone,
-        companyName: newCustCompany,
-        status: 'Active',
-        creditLimitUSD: Number(newCustMonthlySpend)
-      });
-      // Only reset and close the modal once the customer was actually persisted.
-      setNewCustName('');
-      setNewCustGroupId('');
-      setNewCustEmail('');
-      setNewCustPhone('');
-      setNewCustCompany('');
-      setNewCustMonthlySpend(1000);
-      setShowAddModal(false);
-    } catch {
-      // The error toast is raised by the hook (useCustomers.addCustomer).
-      // Keep the modal open so the user can correct and retry.
-    }
-  };
+   const handleCreateCustomerSubmit = async (e) => {
+     e.preventDefault();
+     const errors = validate(
+       {
+         name: newCustName,
+         groupId: newCustGroupId,
+         email: newCustEmail,
+         phone: newCustPhone,
+         company: newCustCompany,
+         monthlySpend: newCustMonthlySpend,
+       },
+       {
+         name: [required('Full corporate name is required'), maxLength(120)],
+         groupId: maxLength(30, 'Group ID must be 30 characters or fewer'),
+         email: [required('Email address is required'), email()],
+         phone: phone(),
+         company: [required('Company name is required'), maxLength(120)],
+         monthlySpend: positiveNumber('Monthly spend must be greater than 0'),
+       },
+     );
+     if (hasErrors(errors)) {
+       setAddFormErrors(errors);
+       return;
+     }
+
+     let groupId = newCustGroupId.trim();
+     if (groupId && !groupIdIsUnique(groupId)) {
+       setAddFormErrors({ groupId: 'This Group ID is already in use. Pick another.' });
+       return;
+     }
+     if (!groupId) {
+       groupId = suggestUniqueGroupId(newCustName);
+     }
+
+     setAddFormErrors({});
+     try {
+       await onAddCustomer({
+         name: newCustName,
+         groupId: groupId,
+         email: newCustEmail,
+         phone: newCustPhone,
+         companyName: newCustCompany,
+         status: 'Active',
+         creditLimitUSD: Number(newCustMonthlySpend)
+       });
+       // Only reset and close the modal once the customer was actually persisted.
+       setNewCustName('');
+       setNewCustGroupId('');
+       setNewCustEmail('');
+       setNewCustPhone('');
+       setNewCustCompany('');
+       setNewCustMonthlySpend(1000);
+       setShowAddModal(false);
+     } catch {
+       // The error toast is raised by the hook (useCustomers.addCustomer).
+       // Keep the modal open so the user can correct and retry.
+     }
+   };
 
   const handleOpenEditModal = useCallback(() => {
     if (selectedCustomer) {
@@ -313,6 +363,10 @@ function CustomersView({
     );
     if (hasErrors(errors)) {
       setEditFormErrors(errors);
+      return;
+    }
+    if (!groupIdIsUnique(editCustData.groupId, editCustData.id)) {
+      setEditFormErrors({ groupId: 'This Group ID is already in use by another customer.' });
       return;
     }
     setEditFormErrors({});
@@ -384,7 +438,7 @@ function CustomersView({
               <input
                 id="customer-search"
                 type="text"
-                placeholder="Search by name, company, email..."
+                placeholder="Search by name, company, email, group or customer ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-blue text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
@@ -545,11 +599,14 @@ function CustomersView({
               <input
                 id="new-cust-group-id"
                 type="text"
-                placeholder="e.g. GC-BIJOY"
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
+                placeholder={newCustName ? `e.g. ${suggestUniqueGroupId(newCustName)}` : "e.g. GC-BIJOY"}
+                className={`w-full text-xs p-2.5 border ${newCustGroupId && !groupIdIsUnique(newCustGroupId) ? 'border-red-400 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 ${newCustGroupId && !groupIdIsUnique(newCustGroupId) ? 'focus:ring-red-500' : 'focus:ring-blue-500'} dark:text-slate-100 font-mono`}
                 value={newCustGroupId}
-                onChange={(e) => setNewCustGroupId(e.target.value)}
+                onChange={(e) => { setNewCustGroupId(e.target.value); if (addFormErrors.groupId) setAddFormErrors((p) => ({ ...p, groupId: undefined })); }}
               />
+              {newCustGroupId && !groupIdIsUnique(newCustGroupId) && (
+                <p className="mt-0.5 text-[10px] text-red-500 font-semibold">This Group ID is already taken.</p>
+              )}
               <FieldError error={addFormErrors.groupId} />
             </div>
             <div>
@@ -643,10 +700,13 @@ function CustomersView({
                 id="edit-cust-group-id"
                 type="text"
                 required
-                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
+                className={`w-full text-xs p-2.5 border ${editCustData?.groupId && !groupIdIsUnique(editCustData.groupId, editCustData.id) ? 'border-red-400 focus:ring-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 ${editCustData?.groupId && !groupIdIsUnique(editCustData.groupId, editCustData.id) ? 'focus:ring-red-500' : 'focus:ring-blue-500'} dark:text-slate-100 font-mono`}
                 value={editCustData?.groupId || ''}
                 onChange={(e) => editCustData && setEditCustData({ ...editCustData, groupId: e.target.value })}
               />
+              {editCustData?.groupId && !groupIdIsUnique(editCustData.groupId, editCustData.id) && (
+                <p className="mt-0.5 text-[10px] text-red-500 font-semibold">This Group ID is already taken by another customer.</p>
+              )}
               <FieldError error={editFormErrors.groupId} />
             </div>
 
@@ -740,7 +800,7 @@ function CustomersView({
       {/* Assign Ad Account Modal */}
       <Modal
         isOpen={showAssignModal}
-        onClose={() => { setShowAssignModal(false); setAssignTargetAccountId(''); }}
+        onClose={() => { setShowAssignModal(false); setAssignTargetAccountId(''); setAssignSearchTerm(''); }}
         title="Assign Ad Account"
         description={selectedCustomer ? `Allocate an available ad account to ${selectedCustomer.name}` : undefined}
         size="md"
@@ -756,25 +816,79 @@ function CustomersView({
           ) : (
             <>
               <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Select Ad Account</label>
-                <select
-                  id="assign-account-select"
-                  className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-semibold"
-                  value={assignTargetAccountId}
-                  onChange={(e) => setAssignTargetAccountId(e.target.value)}
-                >
-                  <option value="">Choose an ad account...</option>
-                  {assignableAdAccounts.map((acc) => (
-                    <option key={acc._id || acc.adAccountId} value={acc.adAccountId}>
-                      {acc.adAccountName} (ID: {acc.adAccountId})
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Search Ad Account</label>
+                <div className="relative">
+                  <input
+                    id="assign-account-search"
+                    type="text"
+                    placeholder="Search by name or ID..."
+                    value={assignSearchTerm}
+                    onChange={(e) => setAssignSearchTerm(e.target.value)}
+                    className="w-full text-xs pl-8 pr-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100 placeholder:text-slate-400"
+                  />
+                  <Search className="absolute left-2.5 top-2.5 text-slate-400" size={13} />
+                </div>
               </div>
+
+              <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl">
+                {assignableAdAccounts
+                  .filter((acc) => {
+                    if (!assignSearchTerm.trim()) return true;
+                    const q = assignSearchTerm.toLowerCase();
+                    const nameMatch = (acc.adAccountName || '').toLowerCase().includes(q);
+                    const idMatch = (acc.adAccountId || '').toLowerCase().includes(q);
+                    const platformMatch = (acc.platform || '').toLowerCase().includes(q);
+                    return nameMatch || idMatch || platformMatch;
+                  })
+                  .map((acc) => {
+                    const isSelected = assignTargetAccountId === acc.adAccountId;
+                    return (
+                      <div
+                        key={acc._id || acc.adAccountId}
+                        onClick={() => setAssignTargetAccountId(acc.adAccountId)}
+                        className={`p-2.5 cursor-pointer transition-all border-b border-slate-100 dark:border-slate-800 last:border-0 ${
+                          isSelected
+                            ? 'bg-brand-blue/10 border-brand-blue dark:bg-blue-900/30'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className={`text-xs font-bold truncate ${isSelected ? 'text-brand-blue' : 'text-slate-800 dark:text-slate-200'}`}>{acc.adAccountName}</p>
+                            <p className="text-[10px] font-mono text-slate-400 dark:text-slate-400">ID: {acc.adAccountId}</p>
+                          </div>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            acc.accountStatus === 'Active'
+                              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300'
+                          }`}>
+                            {acc.platform}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <p className="mt-1 text-[10px] text-brand-blue font-semibold">Selected</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                {assignSearchTerm.trim() && assignableAdAccounts.filter((acc) => {
+                  const q = assignSearchTerm.toLowerCase();
+                  return (
+                    (acc.adAccountName || '').toLowerCase().includes(q) ||
+                    (acc.adAccountId || '').toLowerCase().includes(q) ||
+                    (acc.platform || '').toLowerCase().includes(q)
+                  );
+                }).length === 0 && (
+                  <div className="p-4 text-center text-slate-400 dark:text-slate-500 text-[11px]">
+                    No matching ad accounts found.
+                  </div>
+                )}
+              </div>
+
               {assignTargetAccountId && (
                 <div className="p-3 rounded-xl bg-surface-blue-light dark:bg-surface-blue-light border border-border-blue-light dark:border-border-blue-light text-xs text-brand-blue-deep dark:text-brand-blue-deep">
                   {(() => {
-                    const acc = assignableAdAccounts.find(a => (a._id || a.adAccountId) === assignTargetAccountId || a.adAccountId === assignTargetAccountId);
+                    const acc = assignableAdAccounts.find(a => a.adAccountId === assignTargetAccountId);
                     if (!acc) return null;
                     return (
                       <div className="space-y-1">
@@ -789,7 +903,7 @@ function CustomersView({
             </>
           )}
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button type="button" variant="ghost" onClick={() => { setShowAssignModal(false); setAssignTargetAccountId(''); }}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => { setShowAssignModal(false); setAssignTargetAccountId(''); setAssignSearchTerm(''); }}>Cancel</Button>
             <Button
               type="button"
               onClick={handleConfirmAssign}

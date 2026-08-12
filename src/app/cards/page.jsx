@@ -15,6 +15,7 @@ export default function CardsPage() {
       onUpdateCard={app.updateCard}
       onAddCard={app.addCard}
       onToggleCardStatus={app.handleToggleCardStatus}
+      onDeleteCard={app.handleDeleteCard}
     />
   );
 }

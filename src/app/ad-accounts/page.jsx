@@ -26,8 +26,9 @@ function AdAccountsPageInner() {
       onUpdateSocialAdAccount={app.handleUpdateSocialAdAccount}
       onDeleteAdAccount={app.handleDeleteAdAccount}
       onDeleteSocialAdAccount={app.handleDeleteSocialAdAccount}
-      onAssignAdAccount={app.handleAssignAdAccount}
-      onUpdateAccountStatus={app.handleUpdateAccountStatus}
+       onAssignAdAccount={app.handleAssignAdAccount}
+       onUnassignAdAccount={app.handleUnassignAdAccount}
+       onUpdateAccountStatus={app.handleUpdateAccountStatus}
       onBulkUpdateStatus={app.handleBulkUpdateStatus}
       autoOpenAddModal={autoOpenAdd || app.pendingOpenAddAccount}
     />

@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
+import { normalizeCustomerId } from "@/utils/customerIds";
 
 const DEFAULT_DOLLAR_RATE = 132;
 const DEFAULT_GROUP_CODE = "GC-700";
@@ -66,7 +67,7 @@ export function toUiAccount(doc) {
     assignAdAccount: doc.assignAdAccount || "",
     productType: doc.productType || "",
     fundAccountStatus: doc.fundAccountStatus ?? true,
-    assignedCustomer: assigned ? (doc.assignedCustomer || doc.uid || "") : "",
+    assignedCustomer: assigned ? normalizeCustomerId(doc.assignedCustomer || doc.uid || "") || (doc.assignedCustomer || doc.uid || "") : "",
     status: doc.status || (assigned ? "active" : "available"),
     uid: doc.uid || "",
     _id: String(doc._id),

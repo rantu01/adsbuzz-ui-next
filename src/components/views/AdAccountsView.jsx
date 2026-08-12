@@ -37,6 +37,7 @@ function AdAccountsView({
   onDeleteAdAccount,
   onDeleteSocialAdAccount,
   onAssignAdAccount,
+  onUnassignAdAccount,
   onUpdateAccountStatus,
   onBulkUpdateStatus,
   autoOpenAddModal = false,
@@ -77,6 +78,7 @@ function AdAccountsView({
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignCustomerId, setAssignCustomerId] = useState('');
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
 
   // Form validation state
   const [addFormErrors, setAddFormErrors] = useState({});
@@ -99,12 +101,6 @@ function AdAccountsView({
   const getEffectiveAccountStatus = (acc) => {
     if (isProblemAccountStatus(acc.accountStatus)) return acc.accountStatus;
     return acc.assignedCustomer || acc.accountStatus === 'Active' ? 'Sold' : acc.accountStatus;
-  };
-
-  const getAccountStatusTextClass = (status) => {
-    if (status === 'Available' || status === 'Sold') return 'account-status-success';
-    if (isProblemAccountStatus(status)) return 'account-status-danger';
-    return 'text-brand-blue-dark dark:text-brand-blue-dark';
   };
 
   // Combine existing ad accounts (untouched source collection) with the
@@ -322,6 +318,7 @@ function AdAccountsView({
   const openAssignModal = (account) => {
     setAssignTarget(account);
     setAssignCustomerId(account.assignedCustomer || '');
+    setAssignSearchTerm('');
     setShowAssignModal(true);
   };
 
@@ -331,12 +328,23 @@ function AdAccountsView({
     setShowAssignModal(false);
     setAssignTarget(null);
     setAssignCustomerId('');
+    setAssignSearchTerm('');
+  };
+
+  const handleUnassignAccount = (acc) => {
+    if (!acc || !onUnassignAdAccount) return;
+    onUnassignAdAccount(acc.adAccountId);
   };
 
   const getCustomerName = (custId) => {
     if (!custId) return 'Available / Unassigned';
     const c = customers.find(cust => cust.id === custId);
     return c ? c.name : custId;
+  };
+
+  const getAssignedCustomer = (custId) => {
+    if (!custId) return null;
+    return customers.find(cust => cust.id === custId) || null;
   };
 
   const totalAdAccounts = adAccounts.length;
@@ -532,19 +540,20 @@ function AdAccountsView({
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
                 </th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Ad Account Name / ID</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Platform</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Admin ID</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">BM Name / ID</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Billing Card</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Status</th>
-                <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Actions</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Ad Account Name / ID</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Platform</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">BM Name / ID</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Billing Card</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">User</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Status</th>
+                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
               {pagedAccounts.map((acc) => {
-                const isChecked = selectedAccountIds.includes(acc.adAccountId);
-                const effectiveStatus = getEffectiveAccountStatus(acc);
+                 const isChecked = selectedAccountIds.includes(acc.adAccountId);
+                 const effectiveStatus = getEffectiveAccountStatus(acc);
+                 const assignedCustomer = getAssignedCustomer(acc.assignedCustomer);
                 return (
                   <tr key={acc.adAccountId} className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors ${
                     isChecked ? 'bg-blue-50/10 dark:bg-blue-950/5' : ''
@@ -575,16 +584,6 @@ function AdAccountsView({
                         <PlatformText platform={acc.platform} variant="badge" />
                       </span>
                     </td>
-                    <td className="py-3.5 text-center font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {acc.adminId ? (
-                        <span className="inline-flex items-center gap-1">
-                          <User size={11} className="text-slate-400 shrink-0" />
-                          {acc.adminId}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 italic text-[11px]">-</span>
-                      )}
-                    </td>
                     <td className="py-3.5 text-center">
                       <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate max-w-[150px] mx-auto" title={acc.bmName || 'N/A'}>
                         {acc.bmName || 'N/A'}
@@ -605,8 +604,22 @@ function AdAccountsView({
                         <span className="text-slate-400 italic text-[11px]">-</span>
                       )}
                     </td>
+                    <td className="py-3.5 text-center">
+                      {assignedCustomer ? (
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <span className="font-semibold text-slate-900 dark:text-white text-xs truncate max-w-[140px]" title={assignedCustomer.name}>
+                            {assignedCustomer.name}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mt-0.5" title={assignedCustomer.groupId}>
+                            {assignedCustomer.groupId}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">-</span>
+                      )}
+                    </td>
                     <td className="py-3.5 text-center font-bold text-xs">
-                      <span className={getAccountStatusTextClass(effectiveStatus)}>
+                      <span className="inline-flex items-center justify-center min-w-[90px] bg-brand-orange text-white text-[10px] font-bold px-3 py-1 rounded-full shadow">
                         {effectiveStatus}
                       </span>
                     </td>
@@ -621,14 +634,25 @@ function AdAccountsView({
                           >
                             Edit
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openAssignModal(acc)}
-                            leftIcon={<User size={11} />}
-                          >
-                            Assign
-                          </Button>
+                          {acc.assignedCustomer ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUnassignAccount(acc)}
+                              leftIcon={<User size={11} />}
+                            >
+                              Unassign
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openAssignModal(acc)}
+                              leftIcon={<User size={11} />}
+                            >
+                              Assign
+                            </Button>
+                          )}
                         </div>
                         <select
                           id={`quick-action-${acc.adAccountId}`}
@@ -1096,9 +1120,9 @@ function AdAccountsView({
       {/* Assign Ad Account Modal */}
       <Modal
         isOpen={showAssignModal && !!assignTarget}
-        onClose={() => { setShowAssignModal(false); setAssignTarget(null); setAssignCustomerId(''); }}
+        onClose={() => { setShowAssignModal(false); setAssignTarget(null); setAssignCustomerId(''); setAssignSearchTerm(''); }}
         title="Assign Ad Account"
-        description={assignTarget ? `Select a customer to assign ${assignTarget.adAccountName} (${assignTarget.adAccountId}).` : undefined}
+        description={assignTarget ? `Select a user to assign ${assignTarget.adAccountName} (${assignTarget.adAccountId}).` : undefined}
         size="md"
         variant="animated"
       >
@@ -1108,6 +1132,21 @@ function AdAccountsView({
           id="form-assign-account"
         >
           <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Search User by Name</label>
+            <div className="relative">
+              <input
+                id="assign-user-search"
+                type="text"
+                placeholder="Type to search users..."
+                value={assignSearchTerm}
+                onChange={(e) => setAssignSearchTerm(e.target.value)}
+                className="w-full text-xs pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+              />
+              <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+            </div>
+          </div>
+
+          <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Assign To Customer</label>
             <select
               id="assign-customer-id"
@@ -1116,17 +1155,34 @@ function AdAccountsView({
               onChange={(e) => setAssignCustomerId(e.target.value)}
             >
               <option value="">Select Customer...</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-              ))}
+              {assignSearchTerm === '' ? (
+                customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                ))
+              ) : (
+                customers
+                  .filter(c =>
+                    c.name.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
+                    (c.groupId || '').toLowerCase().includes(assignSearchTerm.toLowerCase())
+                  )
+                  .map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                  ))
+              )}
             </select>
             {customers.length === 0 && (
               <p className="text-[11px] text-slate-400 italic mt-1">No customers available to assign.</p>
             )}
+            {customers.length > 0 && assignSearchTerm !== '' && customers.filter(c =>
+              c.name.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
+              (c.groupId || '').toLowerCase().includes(assignSearchTerm.toLowerCase())
+            ).length === 0 && (
+              <p className="text-[11px] text-slate-400 italic mt-1">No users match your search.</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => setShowAssignModal(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => { setShowAssignModal(false); setAssignTarget(null); setAssignCustomerId(''); setAssignSearchTerm(''); }}>Cancel</Button>
             <Button type="submit" disabled={!assignCustomerId}>Confirm Assignment</Button>
           </div>
         </form>

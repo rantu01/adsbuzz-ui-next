@@ -5,7 +5,8 @@ import { listActivities, createActivity } from "@/models/activityModel";
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
   const limit = Number(searchParams.get("limit")) || 100;
-  const activities = await listActivities({ limit });
+  const customerId = searchParams.get("customerId") || "";
+  const activities = await listActivities({ limit, customerId });
   return ok({ activities, total: activities.length });
 });
 

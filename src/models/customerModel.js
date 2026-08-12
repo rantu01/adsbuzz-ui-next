@@ -1,5 +1,6 @@
 import { getDb, getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
+import { normalizeCustomerId, formatCustomerId } from "@/utils/customerIds";
 import { ensureLegacyInvoicesSynced } from "@/models/invoiceModel";
 
 export const CUSTOMER_STATUS = ["Active", "Inactive", "Lost"];
@@ -14,6 +15,7 @@ let initialSyncPromise = null;
 function ensureInitialSync() {
   if (!initialSyncPromise) {
     initialSyncPromise = (async () => {
+      await migrateLegacyCustomerIds();
       await syncCustomersFromUsers();
       await ensureLegacyInvoicesSynced();
     })().catch((error) => {
@@ -22,6 +24,58 @@ function ensureInitialSync() {
     });
   }
   return initialSyncPromise;
+}
+
+/**
+ * One-time, idempotent migration that renames any legacy `CUST-*` customer
+ * ids (left over from the old user-sync or seed data) to the canonical
+ * `ADB\d{6}` format, and updates every cross-collection reference so links
+ * between customers, ad accounts and invoices stay intact.
+ */
+let migrationDone = false;
+export async function migrateLegacyCustomerIds() {
+  if (migrationDone) return { migrated: 0, skipped: true };
+  migrationDone = true;
+
+  try {
+    const db = await getDb();
+    const customersCollection = db.collection("customers");
+    const adAccountsCollection = db.collection("adAccounts");
+    const invoicesCollection = db.collection("invoices");
+
+    const legacyCustomers = await customersCollection
+      .find({ id: { $not: { $regex: "^ADB\\d{6}$", $options: "i" } } })
+      .project({ id: 1 })
+      .toArray();
+
+    const remap = {};
+    let migrated = 0;
+    for (const cust of legacyCustomers) {
+      const newId = normalizeCustomerId(cust.id);
+      if (newId && newId !== cust.id) {
+        remap[cust.id] = newId;
+        migrated += 1;
+      }
+    }
+
+    for (const [oldId, newId] of Object.entries(remap)) {
+      await customersCollection.updateOne({ id: oldId }, { $set: { id: newId, updatedAt: new Date() } });
+      await adAccountsCollection.updateMany(
+        { assignedCustomer: oldId },
+        { $set: { assignedCustomer: newId, updatedAt: new Date() } },
+      );
+      await invoicesCollection.updateMany(
+        { customerId: oldId },
+        { $set: { customerId: newId, updatedAt: new Date() } },
+      );
+    }
+
+    logger.info(`migrateLegacyCustomerIds: ${migrated} customer ids normalised.`);
+    return { migrated, skipped: false, remap };
+  } catch (error) {
+    logger.error("migrateLegacyCustomerIds failed.", error);
+    return { migrated: 0, skipped: false, error: error.message };
+  }
 }
 
 function toDateString(value) {
@@ -56,11 +110,26 @@ function slugify(value, fallback = "") {
   return slug || fallback;
 }
 
+/**
+ * Derive a canonical `ADB\d{6}` customer id from a synced user record.
+ * Preserves an explicit `customId` (normalised if legacy) or builds one
+ * from the user's `numericId` so every customer id is consistent.
+ */
+function normalizeIdFromUser(user) {
+  if (user.customId) {
+    return normalizeCustomerId(user.customId) || String(user.customId);
+  }
+  if (user.numericId != null && String(user.numericId).trim() !== "") {
+    return formatCustomerId(Number(user.numericId));
+  }
+  return formatCustomerId(0);
+}
+
 function mapUserToCustomer(user) {
   const rate = Number(user.dollarRate) > 0 ? Number(user.dollarRate) : DEFAULT_DOLLAR_RATE;
   const balanceUSD = Number(user.availableBalance || 0);
   return {
-    id: user.customId || `CUST-${user.numericId || "0000"}`,
+    id: normalizeIdFromUser(user),
     uid: user.uid || null,
     name: user.displayName || user.email || "Unnamed Customer",
     email: user.email || "",
@@ -154,15 +223,18 @@ export async function listCustomers({ search = "", status = "", favorite = "" } 
   let cursor = collection.find(filter).sort({ createdAt: 1, name: 1 });
   const customers = await cursor.toArray();
 
-  let items = customers;
+  // Normalise every id on read so legacy CUST-* values can never leak to the UI.
+  const items = customers.map((c) => ({ ...c, id: normalizeCustomerId(c.id) || c.id }));
+
   if (search) {
     const q = search.toLowerCase();
-    items = items.filter(
+    return items.filter(
       (c) =>
         c.name?.toLowerCase().includes(q) ||
         c.email?.toLowerCase().includes(q) ||
         c.companyName?.toLowerCase().includes(q) ||
-        c.groupId?.toLowerCase().includes(q)
+        c.groupId?.toLowerCase().includes(q) ||
+        (c.id || "").toLowerCase().includes(q),
     );
   }
 
@@ -173,16 +245,36 @@ export async function getCustomerById(id) {
   if (!id) return null;
   await ensureInitialSync();
   const collection = await getCollection("customers");
-  return collection.findOne({ id });
+  const normalized = normalizeCustomerId(id) || id;
+  // Try the canonical id first, then fall back to the raw value for safety.
+  const doc =
+    (normalized !== id && (await collection.findOne({ id: normalized }))) ||
+    (await collection.findOne({ id: id }));
+  return doc ? { ...doc, id: normalizeCustomerId(doc.id) || doc.id } : null;
 }
 
 export async function createCustomer(data = {}) {
+  await ensureInitialSync();
   const collection = await getCollection("customers");
   const id = await getNextCustomerId();
 
-  const generatedGroupId =
-    data.groupId?.trim() ||
-    (data.name ? `GC-${slugify(data.name, data.name.slice(0, 6))}` : "GC-GENERIC");
+  const explicitGroupId = data.groupId?.trim() || "";
+  let groupId = explicitGroupId;
+
+  if (explicitGroupId) {
+    // An explicit group id must be unique — reject duplicates rather than
+    // silently renaming so the user is forced to pick a fresh one.
+    const taken = await collection.findOne({ groupId: explicitGroupId });
+    if (taken) {
+      const err = new Error(`Group ID "${explicitGroupId}" is already in use.`);
+      err.code = "DUPLICATE_GROUP_ID";
+      throw err;
+    }
+  } else {
+    // Auto-generate a unique group id derived from the customer name.
+    const base = data.name ? `GC-${slugify(data.name, data.name?.slice(0, 6))}` : "GC-GENERIC";
+    groupId = await ensureUniqueGroupId(base);
+  }
 
   const name = String(data.name || "").trim();
   const email = String(data.email || "").trim().toLowerCase();
@@ -199,7 +291,7 @@ export async function createCustomer(data = {}) {
     balanceBDT: 0,
     balanceUSD: 0,
     creditLimitUSD: Number(data.creditLimitUSD) > 0 ? Number(data.creditLimitUSD) : 0,
-    groupId: generatedGroupId,
+    groupId,
     notes: "",
     avatar: initials(name) || "",
     favorite: false,
@@ -209,8 +301,57 @@ export async function createCustomer(data = {}) {
   };
 
   await collection.insertOne(customer);
-  logger.info(`createCustomer: created ${customer.id}`);
+  logger.info(`createCustomer: created ${customer.id} (${customer.groupId})`);
   return customer;
+}
+
+/**
+ * Guarantees a group id is unique within the customers collection.
+ * If the proposed id is already taken, a numeric suffix is appended
+ * until a free slot is found (e.g. GC-BIJOY -> GC-BIJOY-2).
+ */
+export async function ensureUniqueGroupId(groupId, excludeId = null) {
+  if (!groupId) return groupId;
+  const collection = await getCollection("customers");
+  const proposal = String(groupId).trim();
+  const taken = await collection.findOne(
+    excludeId
+      ? { groupId: proposal, id: { $ne: excludeId } }
+      : { groupId: proposal },
+  );
+  if (!taken) return proposal;
+
+  // find the highest existing numeric suffix and increment
+  const escaped = proposal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const existing = await collection
+    .find({ groupId: { $regex: `^${escaped}(-\\d+)?$` } })
+    .project({ groupId: 1 })
+    .toArray();
+  const suffixes = existing
+    .map((c) => {
+      const m = c.groupId.match(/-(\d+)$/);
+      return m ? Number(m[1]) : 0;
+    })
+    .filter((n) => Number.isFinite(n));
+  const next = (suffixes.length ? Math.max(...suffixes) : 0) + 1;
+  return `${proposal}-${next}`;
+}
+
+/**
+ * Returns true when the group id is NOT already in use by another customer.
+ */
+export async function isGroupIdUnique(groupId, excludeId = null) {
+  if (!groupId) return true;
+  await ensureInitialSync();
+  const collection = await getCollection("customers");
+  const query = { groupId: String(groupId).trim() };
+  if (excludeId) query.id = { $ne: excludeId };
+  const doc = await collection.findOne(query);
+  return !doc;
+}
+
+export async function checkGroupIdUnique(groupId, excludeId = null) {
+  return isGroupIdUnique(groupId, excludeId);
 }
 
 const EDITABLE_FIELDS = [
@@ -227,6 +368,7 @@ const EDITABLE_FIELDS = [
 
 export async function updateCustomer(id, data = {}) {
   if (!id) return null;
+  await ensureInitialSync();
   const collection = await getCollection("customers");
   const existing = await collection.findOne({ id });
   if (!existing) return null;
@@ -235,7 +377,20 @@ export async function updateCustomer(id, data = {}) {
   for (const field of EDITABLE_FIELDS) {
     if (data[field] !== undefined) {
       if (field === "status" && !CUSTOMER_STATUS.includes(data.status)) continue;
-      update[field] = field === "creditLimitUSD" ? Number(data[field]) || 0 : data[field];
+      if (field === "groupId") {
+        const proposed = String(data.groupId || "").trim();
+        if (proposed) {
+          const taken = await collection.findOne({ groupId: proposed, id: { $ne: id } });
+          if (taken) {
+            const err = new Error(`Group ID "${proposed}" is already in use.`);
+            err.code = "DUPLICATE_GROUP_ID";
+            throw err;
+          }
+          update[field] = proposed;
+        }
+      } else {
+        update[field] = field === "creditLimitUSD" ? Number(data[field]) || 0 : data[field];
+      }
     }
   }
 

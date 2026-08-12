@@ -145,6 +145,15 @@ export async function toggleCardStatus(id) {
   return { ...mapCard(updated), _id: updated._id };
 }
 
+export async function deleteCard(id) {
+  const collection = await getCollection("cards");
+  const existing = await collection.findOne({ id });
+  if (!existing) return null;
+
+  await collection.deleteOne({ id });
+  return { ...mapCard(existing), _id: existing._id };
+}
+
 export async function applyCardLoad(cardName, topupAmountUSD) {
   const collection = await getCollection("cards");
   const existing = await collection.findOne({ cardName });

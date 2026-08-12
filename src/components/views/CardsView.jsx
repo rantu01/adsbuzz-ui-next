@@ -1,10 +1,12 @@
 'use client';
 import { memo, useState } from 'react';
-import { Shield, Activity, Plus, ToggleLeft, ToggleRight, Edit2 } from 'lucide-react';
+import { Shield, Activity, Plus, ToggleLeft, ToggleRight, Edit2, Trash2 } from 'lucide-react';
 import StatCard from '@/components/common/StatCard';
 import PlatformText from '@/components/common/PlatformText';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import SearchBar from '@/components/ui/SearchBar';
 import Button from '@/components/ui/Button';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import FieldError from '@/components/ui/FieldError';
@@ -73,20 +75,49 @@ function CardsView({
   onAddCard,
   onUpdateCard,
   onToggleCardStatus,
+  onDeleteCard,
   error,
   onRetry
 }) {
   const [selectedCardId, setSelectedCardId] = useState(cards[0]?.id || '');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteCardData, setShowDeleteCardData] = useState(false);
+  const [deleteCardData, setDeleteCardData] = useState(null);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteCardData || !onDeleteCard) return;
+    const deletedId = deleteCardData.id;
+    try {
+      await onDeleteCard(deletedId);
+    } catch {
+      // Error toast raised by the hook/context.
+    } finally {
+      setShowDeleteCardData(false);
+      setDeleteCardData(null);
+      const remaining = cards.filter(c => c.id !== deletedId);
+      setSelectedCardId(remaining.length > 0 ? remaining[0].id : '');
+    }
+  };
+
+  const handleDeleteCardCancel = () => {
+    setShowDeleteCardData(false);
+    setDeleteCardData(null);
+  };
+
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 6;
 
-  const totalPages = Math.max(1, Math.ceil(cards.length / ITEMS_PER_PAGE));
+  const filteredCards = cards.filter(c =>
+    c.cardName.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredCards.length / ITEMS_PER_PAGE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const pagedCards = cards.slice(
+  const pagedCards = filteredCards.slice(
     (safeCurrentPage - 1) * ITEMS_PER_PAGE,
     safeCurrentPage * ITEMS_PER_PAGE,
   );
@@ -235,6 +266,15 @@ function CardsView({
         {/* Left Side: Interactive Credit Card List (span 5) */}
         <div className="lg:col-span-5 space-y-4">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Wallet Cards</p>
+          <SearchBar
+            maxWidthClass="w-full"
+            placeholder="Search cards by name..."
+            value={searchTerm}
+            onChange={(value) => {
+              setSearchTerm(value);
+              setCurrentPage(1);
+            }}
+          />
           <div className="space-y-4" id="cards-list-box">
             {pagedCards.map((card) => {
               const isSelected = selectedCardId === card.id;
@@ -270,8 +310,21 @@ function CardsView({
                           leftIcon={<Edit2 size={11} />}
                           title="Edit Card"
                         >
-                          Edit
-                        </Button>
+Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteCardData(card);
+                          setShowDeleteCardData(true);
+                        }}
+                        leftIcon={<Trash2 size={11} />}
+                        className="border-rose-300 dark:border-rose-800 text-rose-600 hover:bg-rose-50 dark:text-rose-400"
+                      >
+                        Delete
+                      </Button>
                       {(() => {
                         const Icon = getCardTypeIcon(card.cardType);
                         return <Icon.render />;
@@ -303,12 +356,12 @@ function CardsView({
           </div>
 
           {/* Pagination Controls */}
-          {cards.length > ITEMS_PER_PAGE && (
+          {filteredCards.length > ITEMS_PER_PAGE && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Showing {(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1}–
-                {Math.min(safeCurrentPage * ITEMS_PER_PAGE, cards.length)} of{' '}
-                <span className="font-semibold text-slate-700 dark:text-slate-200">{cards.length}</span>{' '}
+                {Math.min(safeCurrentPage * ITEMS_PER_PAGE, filteredCards.length)} of{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{filteredCards.length}</span>{' '}
                 funding cards
               </p>
               <div className="flex items-center gap-1.5">
@@ -628,6 +681,17 @@ function CardsView({
           </div>
         </form>
       </Modal>
+
+      {/* Delete Card Confirmation */}
+      <ConfirmDialog
+        isOpen={showDeleteCardData}
+        onClose={handleDeleteCardCancel}
+        onConfirm={handleConfirmDelete}
+        title="Delete Card?"
+        message={`This will permanently remove ${deleteCardData?.cardName} from your funding card list. This action cannot be undone.`}
+        confirmLabel="Delete Card"
+        variant="danger"
+      />
 
     </div>
   );

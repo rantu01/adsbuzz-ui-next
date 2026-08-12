@@ -15,6 +15,7 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteS
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteBlocked, setDeleteBlocked] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('All');
 
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
@@ -27,7 +28,7 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteS
   const filtered = series.filter(s => s.seriesName.toLowerCase().includes(search.toLowerCase()) || s.seriesId.toLowerCase().includes(search.toLowerCase()));
 
   const activeSeries = series.find(s => s.seriesId === selectedSeriesId) || series[0];
-  const linkedAccounts = adAccounts ? adAccounts.filter(acc => acc.seriesId === activeSeries?.seriesId) : [];
+  const linkedAccounts = adAccounts ? adAccounts.filter(acc => acc.seriesId === activeSeries?.seriesId && (statusFilter === 'All' || acc.accountStatus === statusFilter)) : [];
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -278,8 +279,22 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteS
 
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Associated Ad Accounts ({linkedAccounts.length})
+                  Associated Ad Accounts
                 </h4>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1"
+                  >
+                    <option value="All">All</option>
+                    <option value="Active">Active</option>
+                    <option value="Disabled">Disabled</option>
+                    <option value="Sold">Sold</option>
+                    <option value="Terminated">Terminated</option>
+                  </select>
+                  <span>{linkedAccounts.length}</span>
+                </div>
                 {linkedAccounts.length === 0 ? (
                   <p className="text-xs text-slate-400 italic bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 text-center">
                     No active ad accounts associated with this series on file.

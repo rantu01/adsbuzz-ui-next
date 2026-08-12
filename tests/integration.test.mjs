@@ -5,6 +5,7 @@ import { getDb, closeDb } from '@/lib/db';
 import * as settingsRoute from '@/app/api/settings/route';
 import * as customersRoute from '@/app/api/customers/route';
 import * as cardsRoute from '@/app/api/cards/route';
+import * as cardDetailRoute from '@/app/api/cards/[id]/route';
 import * as invoicesRoute from '@/app/api/invoices/route';
 import * as topupsRoute from '@/app/api/topups/route';
 import * as approveRoute from '@/app/api/invoices/[invoiceNo]/approve/route';
@@ -95,6 +96,74 @@ test('POST /api/cards rejects duplicate card names', async () => {
     makeRequest('/api/cards', { method: 'POST', body: { cardName: 'TEST DBBL 9999' } }),
   );
   assert.equal(res.status, 409);
+});
+
+test('PATCH /api/cards/:id updates a card', async () => {
+  const res = await cardsRoute.POST(
+    makeRequest('/api/cards', {
+      method: 'POST',
+      body: { id: 'CARD-PATCH-001', cardName: 'PATCH ME CARD', cardType: 'Visa', cardPlatform: 'WISE', cardInitial: 'PM', status: 'Active' },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const { card } = await res.json();
+
+  const patchRes = await cardDetailRoute.PATCH(
+    makeRequest(`/api/cards/${card.id}`, { method: 'PATCH', body: { cardName: 'PATCH ME CARD UPDATED', cardPlatform: 'BYBIT' } }),
+    { params: Promise.resolve({ id: card.id }) },
+  );
+  assert.equal(patchRes.status, 200);
+  const patched = await patchRes.json();
+  assert.equal(patched.card.cardName, 'PATCH ME CARD UPDATED');
+  assert.equal(patched.card.cardPlatform, 'BYBIT');
+});
+
+test('PATCH /api/cards/:id with statusOnly toggles status', async () => {
+  const res = await cardsRoute.POST(
+    makeRequest('/api/cards', {
+      method: 'POST',
+      body: { id: 'CARD-PATCH-002', cardName: 'TOGGLE ME CARD', cardType: 'Visa', cardPlatform: 'RIZON', cardInitial: 'TM', status: 'Active' },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const { card } = await res.json();
+
+  const patchRes = await cardDetailRoute.PATCH(
+    makeRequest(`/api/cards/${card.id}`, { method: 'PATCH', body: { statusOnly: true } }),
+    { params: Promise.resolve({ id: card.id }) },
+  );
+  assert.equal(patchRes.status, 200);
+  const patched = await patchRes.json();
+  assert.notEqual(patched.card.status, 'Active');
+});
+
+test('DELETE /api/cards/:id removes a card', async () => {
+  const res = await cardsRoute.POST(
+    makeRequest('/api/cards', {
+      method: 'POST',
+      body: { id: 'CARD-DELETE-001', cardName: 'DELETE ME CARD', cardType: 'Mastercard', cardPlatform: 'RIZON', cardInitial: 'DM', status: 'Active' },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const { card } = await res.json();
+
+  const delRes = await cardDetailRoute.DELETE(
+    makeRequest(`/api/cards/${card.id}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: card.id }) },
+  );
+  assert.equal(delRes.status, 200);
+
+  const listRes = await cardsRoute.GET(makeRequest('/api/cards'));
+  const list = await listRes.json();
+  assert.ok(!list.cards.some((c) => c.id === card.id));
+});
+
+test('DELETE /api/cards/:id returns 404 for unknown card', async () => {
+  const res = await cardDetailRoute.DELETE(
+    makeRequest('/api/cards/DOES-NOT-EXIST', { method: 'DELETE' }),
+    { params: Promise.resolve({ id: 'DOES-NOT-EXIST' }) },
+  );
+  assert.equal(res.status, 404);
 });
 
 test('E2E: create sale invoice, then approve topup via audit queue', async () => {

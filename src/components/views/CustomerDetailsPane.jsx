@@ -11,10 +11,15 @@ import {
   ArrowUpRight,
   Trash2,
   UserX,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  UserRound,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Pagination from '@/components/common/Pagination';
 import Button from '@/components/ui/Button';
+import { useCustomerActivities } from '@/hooks/useCustomerActivities';
 
 const INVOICE_PAGE_SIZE = 10;
 
@@ -33,6 +38,16 @@ function CustomerDetailsPane({
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState('');
   const [invoicePage, setInvoicePage] = useState(1);
+
+  const { activities: historyActivities, loading: historyLoading } = useCustomerActivities(customer?.id);
+
+  const TYPE_ICON = {
+    sale: <ArrowUpRight size={11} className="text-brand-orange" />,
+    account: <Layers size={11} className="text-brand-blue" />,
+    payment: <CheckCircle size={11} className="text-emerald-500" />,
+    customer: <UserRound size={11} className="text-amber-500" />,
+    system: <AlertCircle size={11} className="text-slate-400" />,
+  };
 
   // Reset drawer-local state whenever the selected customer changes.
   useEffect(() => {
@@ -197,6 +212,16 @@ function CustomerDetailsPane({
           }`}
         >
           Profile CRM Notes
+        </button>
+        <button
+          onClick={() => setActiveTab('activity')}
+          className={`flex-1 py-2.5 text-[11px] font-semibold text-center border-b-2 transition-all cursor-pointer ${
+            activeTab === 'activity'
+              ? 'border-brand-blue text-brand-blue bg-white dark:bg-slate-900'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          Activity / History ({historyActivities.length})
         </button>
       </div>
 
@@ -372,6 +397,56 @@ function CustomerDetailsPane({
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Tab 4: Activity / History (full customer journey) */}
+        {activeTab === 'activity' && (
+          <div className="space-y-4">
+            {historyLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex gap-3 items-start animate-pulse">
+                    <div className="h-5 w-5 rounded-full bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-2.5 w-40 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-2 w-56 rounded bg-slate-100 dark:bg-slate-800" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : historyActivities.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-100 dark:border-slate-800 rounded-xl">
+                <Clock className="mx-auto mb-2 opacity-40" size={32} />
+                <p className="text-xs">No activity recorded for this customer yet.</p>
+                <p className="text-[10px] mt-1">Account assignments, top-ups and profile changes will appear here.</p>
+              </div>
+            ) : (
+              <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-2.5 pl-3 space-y-5 pb-2">
+                {historyActivities.map((act) => {
+                  const Icon = TYPE_ICON[act.type] || <Clock size={11} className="text-slate-400" />;
+                  return (
+                    <div key={act.id || act._id} className="relative pl-3">
+                      <span className="absolute -left-3 top-0.5 flex items-center justify-center h-5 w-5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                        {Icon}
+                      </span>
+                      <div className="ml-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{act.action}</p>
+                          <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">{act.time || ''}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed break-words">
+                          {act.details}
+                        </p>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          by <span className="font-medium text-slate-600 dark:text-slate-300">{act.user || 'System'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,14 +1,30 @@
  'use client';
 import { memo, useState } from 'react';
-import { Plus, FileEdit, DollarSign, User, Check, Trash2, History } from 'lucide-react';
+import { Plus, FileEdit, DollarSign, User, Check, Trash2, History, Edit3, CalendarDays } from 'lucide-react';
 import { VENDOR_TYPES } from '@/constants/vendorTypes';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Button from '@/components/ui/Button';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import SearchBar from '@/components/ui/SearchBar';
+import StatCard from '@/components/common/StatCard';
 
-function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDeleteVendor, paymentMethods, error, onRetry }) {
+function formatBdt(value, rate) {
+  const usd = Number(value) || 0;
+  return Math.round(usd * (Number(rate) || 0)).toLocaleString();
+}
+
+function bdtToUsd(bdt, rate) {
+  const bdtVal = Number(bdt) || 0;
+  const rateVal = Number(rate) || 0;
+  return rateVal > 0 ? bdtVal / rateVal : 0;
+}
+
+function toBdt(value, rate) {
+  return Math.round(Number(value || 0) * Number(rate || 0));
+}
+
+function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDeleteVendor, paymentMethods, error, onRetry, dollarRate = 0 }) {
   const [search, setSearch] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState(vendors[0]?.id || '');
   const [showModal, setShowModal] = useState(false);
@@ -28,6 +44,11 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const [phone, setPhone] = useState('');
 
   const [editVendorData, setEditVendorData] = useState(null);
+  const [editPaymentData, setEditPaymentData] = useState(null);
+  const [deletePaymentData, setDeletePaymentData] = useState(null);
+
+  const [overviewMonth, setOverviewMonth] = useState('');
+  const [overviewVendor, setOverviewVendor] = useState('');
 
   const filtered = vendors.filter(v => v.name.toLowerCase().includes(search.toLowerCase()) || v.id.toLowerCase().includes(search.toLowerCase()));
   const activeVendor = vendors.find(v => v.id === selectedVendorId) || vendors[0];
@@ -41,6 +62,43 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const vendorTotalPaid = activeVendor
     ? activeVendor.paymentHistory.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0)
     : 0;
+
+  const getAllPayments = () =>
+    vendors.flatMap(v =>
+      (v.paymentHistory || []).map(ph => ({
+        ...ph,
+        vendorId: v.id,
+        vendorName: v.name,
+        vendorStatus: v.status,
+      }))
+    );
+
+  const allVendorPayments = getAllPayments();
+  const totalVendorPaymentUSD = allVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+  const totalVendorPaymentMonthUSD = allVendorPayments
+    .filter(ph => ph.date && ph.date.startsWith(currentMonth))
+    .reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+  const totalActiveVendors = vendors.filter(v => v.status === 'Active' || v.status === 'Available').length;
+
+  const vendorMonthTotals = {};
+  vendors.forEach(v => {
+    const monthPaid = (v.paymentHistory || [])
+      .filter(ph => ph.date && ph.date.startsWith(currentMonth))
+      .reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+    if (monthPaid > 0) vendorMonthTotals[v.id] = { name: v.name, total: monthPaid };
+  });
+  const topVendor = Object.values(vendorMonthTotals).sort((a, b) => b.total - a.total)[0] || null;
+
+  const overviewPayments = allVendorPayments.filter(ph => {
+    const matchesMonth = overviewMonth === '' || (ph.date && ph.date.startsWith(overviewMonth));
+    const matchesVendor = overviewVendor === '' || ph.vendorId === overviewVendor;
+    return matchesMonth && matchesVendor;
+  });
+  const overviewTotalUSD = overviewPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+
+  const availableMonths = Array.from(
+    new Set(allVendorPayments.filter(ph => ph.date).map(ph => ph.date.slice(0, 7)))
+  ).sort((a, b) => b.localeCompare(a));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -77,21 +135,23 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     if (!payVendorData) return;
     if (!payAmount) return;
 
-    const parsedAmount = Number(payAmount);
+    const parsedBdt = Number(payAmount);
     const selectedChannel = payChannel?.trim();
 
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return;
+    if (!Number.isFinite(parsedBdt) || parsedBdt <= 0) return;
     if (!selectedChannel) return;
+
+    const parsedAmountUSD = bdtToUsd(parsedBdt, dollarRate);
 
     if (onPayVendor) {
       onPayVendor(payVendorData.id, {
-        amountUSD: parsedAmount,
+        amountUSD: parsedAmountUSD,
         paymentMethod: selectedChannel,
       });
     } else {
       const newPaymentEntry = {
         date: new Date().toISOString().slice(0, 10),
-        amountUSD: parsedAmount,
+        amountUSD: parsedAmountUSD,
         paymentMethod: selectedChannel,
         transactionId: `PAY-${Date.now().toString().slice(-6)}`,
       };
@@ -99,7 +159,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
       const updatedVendor = {
         ...payVendorData,
         paymentHistory: [...payVendorData.paymentHistory, newPaymentEntry],
-        outstandingBalanceUSD: Math.max(0, payVendorData.outstandingBalanceUSD - parsedAmount),
+        outstandingBalanceUSD: Math.max(0, payVendorData.outstandingBalanceUSD - parsedAmountUSD),
       };
 
       if (onUpdateVendor) {
@@ -128,6 +188,41 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const openDeleteModal = (v) => {
     setDeleteVendorData(v);
     setShowDeleteModal(true);
+  };
+
+  const openEditPaymentModal = (vendor, payment, index) => {
+    setEditPaymentData({
+      ...payment,
+      editAmountBDT: toBdt(payment.amountUSD, dollarRate),
+      editMethod: payment.paymentMethod || '',
+      editDate: payment.date || '',
+      editTxnId: payment.transactionId || '',
+      vendorId: vendor.id,
+      vendorName: vendor.name,
+      index,
+    });
+  };
+
+  const handleEditPaymentSubmit = (e) => {
+    e.preventDefault();
+    if (!editPaymentData || !activeVendor || !onUpdateVendor) return;
+
+    const { index, editAmountBDT, editMethod, editDate, editTxnId } = editPaymentData;
+    const original = activeVendor.paymentHistory[index];
+    if (!original) return;
+
+    const newAmountUSD = bdtToUsd(editAmountBDT, dollarRate);
+
+    const updatedHistory = [...activeVendor.paymentHistory];
+    updatedHistory[index] = {
+      date: editDate || original.date,
+      amountUSD: newAmountUSD,
+      paymentMethod: editMethod || original.paymentMethod,
+      transactionId: editTxnId || original.transactionId,
+    };
+
+    onUpdateVendor({ ...activeVendor, paymentHistory: updatedHistory });
+    setEditPaymentData(null);
   };
 
   const handleConfirmDelete = async () => {
@@ -174,6 +269,38 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
           Onboard Vendor
         </Button>
       </div>
+
+      {/* Vendor Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+         <StatCard
+           title="TOTAL VENDOR PAYMENT"
+           value={`৳${formatBdt(totalVendorPaymentUSD, dollarRate)}`}
+           variant="blue"
+           subtext="All-time vendor settlements"
+           icon={<DollarSign size={20} />}
+         />
+         <StatCard
+           title="VENDOR PAYMENT (CURRENT MONTH)"
+           value={`৳${formatBdt(totalVendorPaymentMonthUSD, dollarRate)}`}
+           variant="emerald"
+           subtext={`Month: ${currentMonth}`}
+           icon={<DollarSign size={20} />}
+         />
+         <StatCard
+           title="TOTAL ACTIVE VENDOR"
+           value={totalActiveVendors}
+           variant="amber"
+           subtext="Active & available partners"
+           icon={<User size={20} />}
+         />
+         <StatCard
+           title="TOP VENDOR"
+           value={topVendor ? topVendor.name : '—'}
+           variant="indigo"
+           subtext={topVendor ? `৳${formatBdt(topVendor.total, dollarRate)} paid this month` : 'No payments this month'}
+           icon={<DollarSign size={20} />}
+         />
+       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <div id="vendor-list-card" className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
@@ -278,19 +405,19 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                   <DollarSign size={12} className="text-brand-blue-dark dark:text-brand-blue-dark" />
                   <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75">Paid In (Current Month)</p>
                 </div>
-                <p className="text-sm font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">
-                  ${vendorPaidThisMonth.toLocaleString()}
-                </p>
-              </div>
+                 <p className="text-sm font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">
+                   ৳{formatBdt(vendorPaidThisMonth, dollarRate)}
+                 </p>
+               </div>
 
-              <div className="p-3.5 rounded-xl bg-surface-orange dark:bg-surface-orange border border-border-orange dark:border-border-orange">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <DollarSign size={12} className="text-brand-blue-dark dark:text-brand-blue-dark" />
-                  <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75">Total Paid (All-time)</p>
-                </div>
-                <p className="text-sm font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">
-                  ${vendorTotalPaid.toLocaleString()}
-                </p>
+               <div className="p-3.5 rounded-xl bg-surface-orange dark:bg-surface-orange border border-border-orange dark:border-border-orange">
+                 <div className="flex items-center gap-1.5 mb-1.5">
+                   <DollarSign size={12} className="text-brand-blue-dark dark:text-brand-blue-dark" />
+                   <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75">Total Paid (All-time)</p>
+                 </div>
+                 <p className="text-sm font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">
+                   ৳{formatBdt(vendorTotalPaid, dollarRate)}
+                 </p>
               </div>
             </div>
 
@@ -334,20 +461,125 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 <p className="text-xs text-slate-400 italic">No bank wire settlement logs on file for this partner.</p>
               ) : (
                 <div className="space-y-2.5">
-                  {activeVendor.paymentHistory.map((ph, index) => (
-                    <div key={index} className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 flex justify-between text-xs">
-                      <div>
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">{ph.paymentMethod}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Ref: {ph.transactionId} on {ph.date}</p>
-                      </div>
-                      <span className="font-bold text-emerald-600">${ph.amountUSD}</span>
-                    </div>
-                  ))}
-                </div>
+                   {activeVendor.paymentHistory.map((ph, index) => (
+                     <div key={index} className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs">
+                       <div>
+                         <p className="font-semibold text-slate-800 dark:text-slate-200">{ph.paymentMethod}</p>
+                         <p className="text-[10px] text-slate-400 mt-0.5">Ref: {ph.transactionId} on {ph.date}</p>
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <span className="font-bold text-emerald-600">৳{formatBdt(ph.amountUSD, dollarRate)}</span>
+                         <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={(e) => { e.stopPropagation(); openEditPaymentModal(activeVendor, ph, index); }}
+                           leftIcon={<Edit3 size={10} />}
+                           className="h-5 text-[9px] px-1.5"
+                         >
+                           Edit
+                         </Button>
+                         <Button
+                           variant="ghost"
+                           size="sm"
+                           onClick={(e) => { e.stopPropagation(); setDeletePaymentData({ vendorId: activeVendor.id, index }); }}
+                           leftIcon={<Trash2 size={10} />}
+                           className="h-5 text-[9px] px-1.5 border-rose-300 dark:border-rose-800 text-rose-600 hover:bg-rose-50 dark:text-rose-400"
+                         >
+                           Delete
+                         </Button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
               )}
             </div>
           </div>
         )}
+      </div>
+
+      {/* Vendor Payment Overview */}
+      <div id="vendor-payment-overview" className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Vendor Payment Overview</h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">Filter vendor payments by month and vendor.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <CalendarDays size={14} className="absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
+              <select
+                id="overview-month-filter"
+                value={overviewMonth}
+                onChange={(e) => setOverviewMonth(e.target.value)}
+                className="text-[11px] pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none text-slate-700 dark:text-slate-200 font-medium"
+              >
+                <option value="">All Months</option>
+                {availableMonths.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="relative">
+              <User size={14} className="absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
+              <select
+                id="overview-vendor-filter"
+                value={overviewVendor}
+                onChange={(e) => setOverviewVendor(e.target.value)}
+                className="text-[11px] pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none text-slate-700 dark:text-slate-200 font-medium"
+              >
+                <option value="">All Vendors</option>
+                {vendors.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {overviewPayments.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No payment records match the selected filters.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px]">
+                <thead className="bg-slate-50 dark:bg-slate-800/40">
+                  <tr>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-2">Date</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-2">Vendor</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-2">Payment Method</th>
+                    <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-2">Reference</th>
+                    <th className="text-right font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-2">Amount (BDT)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overviewPayments
+                    .slice()
+                    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+                    .map((ph, idx) => (
+                      <tr key={idx} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold">{ph.vendorName}</td>
+                        <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-500 dark:text-slate-500 font-mono truncate max-w-[130px]" title={ph.transactionId}>{ph.transactionId || '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-bold text-emerald-600">৳{formatBdt(ph.amountUSD || 0, dollarRate)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {overviewPayments.length > 0 && (
+            <div className="flex justify-end gap-6 pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                Records: <span className="font-bold text-slate-700 dark:text-slate-200">{overviewPayments.length}</span>
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                Total: <span className="font-bold text-emerald-600">৳{formatBdt(overviewTotalUSD, dollarRate)}</span>
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Add Vendor Modal */}
@@ -423,7 +655,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Amount to Pay (USD)</label>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Amount to Pay (BDT)</label>
             <input
               type="number"
               required
@@ -431,7 +663,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
               step="0.01"
               value={payAmount}
               onChange={(e) => setPayAmount(e.target.value)}
-              placeholder="0.00"
+              placeholder="৳0.00"
               className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
             />
           </div>
@@ -547,7 +779,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
         scrollable
       >
         <div className="space-y-3">
-          {selectedVendorPayments.length === 0 ? (
+{selectedVendorPayments.length === 0 ? (
             <p className="text-xs text-slate-400 italic">No payment records on file.</p>
           ) : (
             <div className="max-h-[60vh] overflow-y-auto">
@@ -557,7 +789,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                     <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Date</th>
                     <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Payment Method</th>
                     <th className="text-left font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Reference</th>
-                    <th className="text-right font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Amount (USD)</th>
+                    <th className="text-right font-bold text-slate-500 dark:text-slate-400 uppercase px-2 py-1.5">Amount (BDT)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -566,7 +798,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-500 dark:text-slate-500 font-mono truncate max-w-[120px]" title={ph.transactionId}>{ph.transactionId || '—'}</td>
-                      <td className="px-2 py-1.5 text-right font-bold text-emerald-600">${ph.amountUSD || 0}</td>
+                      <td className="px-2 py-1.5 text-right font-bold text-emerald-600">৳{formatBdt(ph.amountUSD || 0, dollarRate)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -575,11 +807,87 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
           )}
           <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-              Total: ${selectedVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0).toLocaleString()}
+              Total: ৳{formatBdt(selectedVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0), dollarRate)}
             </span>
           </div>
         </div>
       </Modal>
+
+      {/* Edit Payment Modal */}
+      <Modal
+        isOpen={!!editPaymentData}
+        onClose={() => setEditPaymentData(null)}
+        title="Edit Payment Record"
+        description={editPaymentData ? `Editing payment for ${editPaymentData.vendorName}.` : undefined}
+        size="sm"
+        showCloseButton={false}
+      >
+        <form onSubmit={handleEditPaymentSubmit} className="space-y-4" id="form-edit-payment">
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Amount (BDT)</label>
+            <input
+              type="number"
+              required
+              min="0.01"
+              value={editPaymentData?.editAmountBDT ?? ''}
+              onChange={(e) => editPaymentData && setEditPaymentData({ ...editPaymentData, editAmountBDT: e.target.value })}
+              placeholder="৳0.00"
+              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Method</label>
+            <input
+              type="text"
+              value={editPaymentData?.editMethod ?? ''}
+              onChange={(e) => editPaymentData && setEditPaymentData({ ...editPaymentData, editMethod: e.target.value })}
+              placeholder="e.g. Wire Transfer"
+              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Date</label>
+            <input
+              type="date"
+              value={editPaymentData?.editDate ?? ''}
+              onChange={(e) => editPaymentData && setEditPaymentData({ ...editPaymentData, editDate: e.target.value })}
+              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Transaction ID</label>
+            <input
+              type="text"
+              value={editPaymentData?.editTxnId ?? ''}
+              onChange={(e) => editPaymentData && setEditPaymentData({ ...editPaymentData, editTxnId: e.target.value })}
+              placeholder="e.g. PAY-123456"
+              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-mono"
+            />
+          </div>
+          <div className="custom-modal-footer flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => setEditPaymentData(null)}>Cancel</Button>
+            <Button type="submit">Save Payment</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Payment Confirmation */}
+      <ConfirmDialog
+        isOpen={!!deletePaymentData}
+        onClose={() => setDeletePaymentData(null)}
+        onConfirm={() => {
+          const d = deletePaymentData;
+          setDeletePaymentData(null);
+          if (d && activeVendor && activeVendor.id === d.vendorId && onUpdateVendor) {
+            const updatedHistory = activeVendor.paymentHistory.filter((_, i) => i !== d.index);
+            onUpdateVendor({ ...activeVendor, paymentHistory: updatedHistory });
+          }
+        }}
+        title="Delete Payment?"
+        message={`This will permanently remove this payment record from ${activeVendor?.name ?? 'the vendor'}. This action cannot be undone.`}
+        confirmLabel="Delete Payment"
+        variant="danger"
+      />
     </div>
   );
 }

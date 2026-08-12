@@ -40,7 +40,7 @@ export const INITIAL_CARDS = [
 
 export const INITIAL_CUSTOMERS = [
   {
-    id: "CUST-BIJOY",
+    id: "ADB550001",
     name: "Bijoy Group Ltd",
     email: "billing@bijoygroup.com",
     phone: "+880 1711-223344",
@@ -56,7 +56,7 @@ export const INITIAL_CUSTOMERS = [
     favorite: true
   },
   {
-    id: "CUST-RUPOSI",
+    id: "ADB550002",
     name: "Ruposikonna Brand",
     email: "ads@ruposikonna.com",
     phone: "+880 1822-556677",
@@ -72,7 +72,7 @@ export const INITIAL_CUSTOMERS = [
     favorite: true
   },
   {
-    id: "CUST-BOOSTPAPA",
+    id: "ADB550003",
     name: "BoostPapa Agency",
     email: "hello@boostpapa.agency",
     phone: "+880 1911-889900",
@@ -88,7 +88,7 @@ export const INITIAL_CUSTOMERS = [
     favorite: true
   },
   {
-    id: "CUST-NEHAN",
+    id: "ADB550004",
     name: "Nehan Commerce",
     email: "nehan.bazar@gmail.com",
     phone: "+880 1611-334455",
@@ -103,7 +103,7 @@ export const INITIAL_CUSTOMERS = [
     avatar: "NC"
   },
   {
-    id: "CUST-EXPRESS",
+    id: "ADB550005",
     name: "Express IT Group",
     email: "media@expressit.tech",
     phone: "+880 1511-778899",
@@ -119,7 +119,7 @@ export const INITIAL_CUSTOMERS = [
     favorite: true
   },
   {
-    id: "CUST-HENNA",
+    id: "ADB550006",
     name: "Henna Lovers BD",
     email: "hennalovers@outlook.com",
     phone: "+880 1733-445566",
@@ -134,7 +134,7 @@ export const INITIAL_CUSTOMERS = [
     avatar: "HL"
   },
   {
-    id: "CUST-MOZUMDER",
+    id: "ADB550007",
     name: "Mozumder Ad Agency",
     email: "billing@mozumder.agency",
     phone: "+880 1844-998877",
@@ -149,7 +149,7 @@ export const INITIAL_CUSTOMERS = [
     avatar: "MA"
   },
   {
-    id: "CUST-TANHA",
+    id: "ADB550008",
     name: "Tanha Mart BD",
     email: "tanhamartbd@gmail.com",
     phone: "+880 1955-112233",
@@ -163,7 +163,7 @@ export const INITIAL_CUSTOMERS = [
     avatar: "TM"
   },
   {
-    id: "CUST-TRENDS",
+    id: "ADB550009",
     name: "Trends by Hena",
     email: "hena@trendsbd.com",
     phone: "+880 1766-332211",
@@ -192,7 +192,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "ADSBUZZ EBL - 1342",
-    assignedCustomer: "CUST-EXPRESS",
+    assignedCustomer: "ADB550005",
     seriesId: "S-90S"
   },
   {
@@ -208,7 +208,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-02",
     bmName: "Evergreen Media LLC",
     billingCard: "MD EBL - 2802",
-    assignedCustomer: "CUST-EXPRESS",
+    assignedCustomer: "ADB550005",
     seriesId: "S-VH"
   },
   {
@@ -224,7 +224,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "ADSBUZZ DBBL - 7473",
-    assignedCustomer: "CUST-MOZUMDER",
+    assignedCustomer: "ADB550007",
     seriesId: "S-VH"
   },
   {
@@ -240,7 +240,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "ADSBUZZ EBL - 1342",
-    assignedCustomer: "CUST-BIJOY",
+    assignedCustomer: "ADB550001",
     seriesId: "S-BIJOY"
   },
   {
@@ -256,7 +256,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-TT-BUZZ-01",
     bmName: "TikTok Spark Ads Buzz",
     billingCard: "SN-NRBC - 4394",
-    assignedCustomer: "CUST-BOOSTPAPA",
+    assignedCustomer: "ADB550003",
     seriesId: "S-TT-ADV"
   },
   {
@@ -272,7 +272,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-TT-BUZZ-01",
     bmName: "TikTok Spark Ads Buzz",
     billingCard: "SN-NRBC - 4394",
-    assignedCustomer: "CUST-BOOSTPAPA",
+    assignedCustomer: "ADB550003",
     seriesId: "S-TT-ADV"
   },
   {
@@ -288,7 +288,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-02",
     bmName: "Evergreen Media LLC",
     billingCard: "MD IBBL - 6808",
-    assignedCustomer: "CUST-RUPOSI",
+    assignedCustomer: "ADB550002",
     seriesId: "S-BIJOY"
   },
   {
@@ -304,7 +304,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-LAMHA-01",
     bmName: "Lamha Digital Hub",
     billingCard: "MD EBL - 2802",
-    assignedCustomer: "CUST-HENNA",
+    assignedCustomer: "ADB550006",
     seriesId: "S-90S"
   },
   {
@@ -320,7 +320,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "ADSBUZZ EBL - 1342",
-    assignedCustomer: "CUST-BOOSTPAPA",
+    assignedCustomer: "ADB550003",
     seriesId: "S-90S"
   },
   {
@@ -336,7 +336,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-02",
     bmName: "Evergreen Media LLC",
     billingCard: "SN-NRBC - 4394",
-    assignedCustomer: "CUST-MOZUMDER",
+    assignedCustomer: "ADB550007",
     seriesId: "S-90S"
   },
   {
@@ -352,7 +352,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "ADSBUZZ EBL - 1342",
-    assignedCustomer: "CUST-CUTEFASHION",
+    assignedCustomer: "ADB550010",
     seriesId: "S-VH"
   },
   {
@@ -368,7 +368,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "MD EBL - 2802",
-    assignedCustomer: "CUST-BIJOY",
+    assignedCustomer: "ADB550001",
     seriesId: "S-BIJOY"
   },
   {
@@ -384,7 +384,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-02",
     bmName: "Evergreen Media LLC",
     billingCard: "ADSBUZZ EBL - 1342",
-    assignedCustomer: "CUST-TRENDS",
+    assignedCustomer: "ADB550009",
     seriesId: "S-90S"
   },
   {
@@ -400,7 +400,7 @@ export const INITIAL_AD_ACCOUNTS = [
     bmId: "BM-BUZZ-01",
     bmName: "AdsBuzz Agency Hub",
     billingCard: "MD EBL - 2802",
-    assignedCustomer: "CUST-TANHA",
+    assignedCustomer: "ADB550008",
     seriesId: "S-90S"
   },
   {
@@ -480,7 +480,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY",
+    customerId: "ADB550001",
     note: "Launch day boost"
   },
   {
@@ -497,7 +497,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY"
+    customerId: "ADB550001"
   },
   {
     invoiceNo: "ADB 202415021",
@@ -513,7 +513,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "MD IBBL-6808",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-RUPOSI"
+    customerId: "ADB550002"
   },
   {
     invoiceNo: "ADB 202415030",
@@ -529,7 +529,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "SN-NRBC - 4394",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BOOSTPAPA",
+    customerId: "ADB550003",
     note: "Agency bulk allocation"
   },
   {
@@ -546,7 +546,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-NEHAN"
+    customerId: "ADB550004"
   },
   {
     invoiceNo: "ADB 202415124",
@@ -562,7 +562,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "MD EBL - 2802",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-HENNA"
+    customerId: "ADB550006"
   },
   {
     invoiceNo: "ADB 202415136",
@@ -578,7 +578,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "SN-NRBC - 4394",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BOOSTPAPA"
+    customerId: "ADB550003"
   },
   {
     invoiceNo: "ADB 202415208",
@@ -594,7 +594,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY"
+    customerId: "ADB550001"
   },
   {
     invoiceNo: "ADB 202415499",
@@ -610,7 +610,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "CELFIN-1672",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-EXPRESS"
+    customerId: "ADB550005"
   },
   {
     invoiceNo: "ADB 202415670",
@@ -626,7 +626,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "SN-NRBC - 4394",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BOOSTPAPA",
+    customerId: "ADB550003",
     note: "Reseller top up"
   },
   {
@@ -643,7 +643,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-TRENDS"
+    customerId: "ADB550009"
   },
   {
     invoiceNo: "ADB 202416118",
@@ -659,7 +659,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "None",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY"
+    customerId: "ADB550001"
   },
   {
     invoiceNo: "ADB 202416249",
@@ -675,7 +675,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-MOZUMDER"
+    customerId: "ADB550007"
   },
   {
     invoiceNo: "ADB 202416390",
@@ -691,7 +691,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "None",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY"
+    customerId: "ADB550001"
   },
   {
     invoiceNo: "ADB 202416591",
@@ -707,7 +707,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "None",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY"
+    customerId: "ADB550001"
   },
   {
     invoiceNo: "ADB 202416712",
@@ -723,7 +723,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "None",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-BIJOY"
+    customerId: "ADB550001"
   },
   {
     invoiceNo: "ADB 202416720",
@@ -739,7 +739,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "None",
     topupStatus: "Successfull",
     approvalStatus: "Approved",
-    customerId: "CUST-MSIMART"
+    customerId: "ADB550011"
   },
   {
     invoiceNo: "ADB-TEMP-001",
@@ -755,7 +755,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "ADSBUZZ EBL - 1342",
     topupStatus: "Pending",
     approvalStatus: "Pending",
-    customerId: "CUST-NEHAN",
+    customerId: "ADB550004",
     note: "Urgent evening boost requested"
   },
   {
@@ -772,7 +772,7 @@ export const INITIAL_INVOICES = [
     paymentMethod: "NAGAD-1672",
     topupStatus: "Pending",
     approvalStatus: "Pending",
-    customerId: "CUST-BOOSTPAPA",
+    customerId: "ADB550003",
     note: "Wallet load for reselling"
   }
 ];

@@ -16,7 +16,8 @@ function sanitize(input = {}) {
   const action = String(input.action || "").trim();
   const details = String(input.details || "").trim();
   const type = ACTIVITY_TYPES.includes(input.type) ? input.type : "system";
-  return { user, action, details, type };
+  const customerId = String(input.customerId || "").trim();
+  return { user, action, details, type, ...(customerId && { customerId }) };
 }
 
 export async function seedActivities() {
@@ -42,11 +43,15 @@ function mapActivity({ _id, ...rest }) {
   return { ...rest };
 }
 
-export async function listActivities({ limit = 100 } = {}) {
+export async function listActivities({ limit = 100, customerId = "" } = {}) {
   await seedActivities();
   const collection = await getCollection("activities");
+  const filter = {};
+  if (customerId) {
+    filter.customerId = String(customerId);
+  }
   const items = await collection
-    .find({})
+    .find(filter)
     .sort({ createdAt: -1 })
     .limit(Number(limit) || 100)
     .toArray();

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/utils/api';
 
-export function useActivities() {
+export function useActivities(customerId = "") {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchActivities = useCallback(async () => {
     try {
-      const data = await apiFetch('/api/activities');
+      const qs = new URLSearchParams();
+      if (customerId) qs.set("customerId", customerId);
+      const data = await apiFetch(`/api/activities?${qs.toString()}`);
       setActivities(data.activities || []);
       setError(null);
     } catch (err) {
@@ -16,7 +18,7 @@ export function useActivities() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [customerId]);
 
   useEffect(() => {
     fetchActivities();

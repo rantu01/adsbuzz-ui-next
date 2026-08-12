@@ -5,6 +5,7 @@ import { getSettings } from "@/models/settingsModel";
 import { markAccountSold } from "@/models/adAccountModel";
 import { applyCardLoad, getCardByName } from "@/models/cardModel";
 import { applyCustomerCredit } from "@/models/customerModel";
+import { normalizeCustomerId } from "@/utils/customerIds";
 import { round2, dateOnly, detectPlatform, invoiceNoFromLegacyId, computePaymentStatus } from "@/utils/invoiceMath";
 
 export const DEFAULT_DOLLAR_RATE = 132;
@@ -222,7 +223,8 @@ async function getNextInvoiceNo() {
 }
 
 function mapInvoice({ _id, ...rest }) {
-  return { ...rest };
+  const customerId = normalizeCustomerId(rest.customerId);
+  return { ...rest, customerId: customerId || rest.customerId };
 }
 
 export async function createInvoice(data = {}) {

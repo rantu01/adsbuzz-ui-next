@@ -113,6 +113,7 @@ export function AppProvider({ children }) {
     addCard,
     updateCard: rawUpdateCard,
     toggleCardStatus: rawToggleCardStatus,
+    deleteCard: rawDeleteCard,
     applyCardLoad,
     refetch: refetchCards,
   } = useCards(triggerToast);
@@ -150,61 +151,64 @@ export function AppProvider({ children }) {
   } = useSettings(triggerToast);
   const { activities, error: activitiesError, addActivity, refetch: refetchActivities } = useActivities();
 
-  const logActivityFx = (user, action, details, type) => {
-    addActivity({ time: "Just now", user, action, details, type });
+  const logActivityFx = (user, action, details, type, customerId) => {
+    addActivity({ time: "Just now", user, action, details, type, ...(customerId && { customerId }) });
   };
 
   // Wrapped mutation handlers so every action also writes to the activity feed
   const wrapCustomerUpdate = (result, name, type) => {
-    if (result) logActivityFx("Rakibul Riyet", name, `${result.name || ""} (${result.id || ""})`.trim(), type);
+    if (result) logActivityFx("Rakibul R.", name, `${result.name || ""} (${result.id || ""})`.trim(), type, result.id);
     return result;
   };
 
   const handleApproveInvoice = async (invoiceNo) => {
     const result = await rawApproveInvoice(invoiceNo);
-    logActivityFx("Finance Auditor", "Approved Invoice", `Invoice ${invoiceNo} approved and settled.`, "payment");
+    const customerId = result?.customerId || "";
+    logActivityFx("Finance Auditor", "Approved Invoice", `Invoice ${invoiceNo} approved and settled.`, "payment", customerId);
     return result;
   };
 
   const handleRejectInvoice = async (invoiceNo) => {
     const result = await rawRejectInvoice(invoiceNo);
-    logActivityFx("Finance Auditor", "Rejected Invoice", `Invoice ${invoiceNo} rejected.`, "payment");
+    const customerId = result?.customerId || "";
+    logActivityFx("Finance Auditor", "Rejected Invoice", `Invoice ${invoiceNo} rejected.`, "payment", customerId);
     return result;
   };
 
   const handleSyncTopupStatus = async (invoiceNo, status) => {
     const result = await rawSyncTopupStatus(invoiceNo, status);
-    logActivityFx("System Scheduler", "Topup Status Sync", `Invoice ${invoiceNo} synced (${status}).`, "system");
+    const customerId = result?.customerId || "";
+    logActivityFx("System Scheduler", "Topup Status Sync", `Invoice ${invoiceNo} synced (${status}).`, "system", customerId);
     return result;
   };
 
   const handleUpdateInvoice = async (inv) => {
     const result = await rawUpdateInvoice(inv);
-    logActivityFx("Rakibul R.", "Updated Invoice", `Invoice ${inv?.invoiceNo} edited.`, "payment");
+    logActivityFx("Rakibul R.", "Updated Invoice", `Invoice ${inv?.invoiceNo} edited.`, "payment", inv?.customerId);
     return result;
   };
 
   const handleUpdateCustomer = async (cust) => {
     const result = await rawUpdateCustomer(cust);
-    wrapCustomerUpdate(result, "Updated Customer", "customer");
+    wrapCustomerUpdate(result, "Updated Customer", "customer", cust.id);
     return result;
   };
 
   const handleUpdateCustomerNotes = async (id, notes) => {
     const result = await rawUpdateCustomerNotes(id, notes);
-    if (result) logActivityFx("Rakibul R.", "Updated CRM Notes", `Customer ${result.id} notes updated.`, "customer");
+    if (result) logActivityFx("Rakibul R.", "Updated CRM Notes", `Customer ${result.id} notes updated.`, "customer", result.id);
     return result;
   };
 
   const handleToggleFavorite = async (id) => {
     const result = await rawToggleFavorite(id);
-    if (result) logActivityFx("Rakibul R.", "Toggled Favorite", `Customer ${result.id} favorite toggled.`, "customer");
+    if (result) logActivityFx("Rakibul R.", "Toggled Favorite", `Customer ${result.id} favorite toggled.`, "customer", result.id);
     return result;
   };
 
   const handleDeleteCustomer = async (id) => {
     const result = await rawDeleteCustomer(id);
-    if (result) logActivityFx("Rakibul R.", "Deleted Customer", `${result.name} (${result.id}) removed from CRM.`, "customer");
+    if (result) logActivityFx("Rakibul R.", "Deleted Customer", `${result.name} (${result.id}) removed from CRM.`, "customer", result.id);
     return result;
   };
 
@@ -222,13 +226,13 @@ export function AppProvider({ children }) {
 
   const handleAssignAdAccount = async (adAccountId, customerId) => {
     const result = await rawAssignAdAccount(adAccountId, customerId);
-    if (result) logActivityFx("Rakibul R.", "Assigned Ad Account", `${result.adAccountName} assigned to customer ${customerId}.`, "account");
+    if (result) logActivityFx("Rakibul R.", "Assigned Ad Account", `${result.adAccountName} assigned to customer ${customerId}.`, "account", customerId);
     return result;
   };
 
   const handleUnassignAdAccount = async (adAccountId) => {
     const result = await rawUnassignAdAccount(adAccountId);
-    if (result) logActivityFx("Rakibul R.", "Unassigned Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account");
+    if (result) logActivityFx("Rakibul R.", "Unassigned Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account", result.assignedCustomer);
     return result;
   };
 
@@ -253,6 +257,12 @@ export function AppProvider({ children }) {
   const handleToggleCardStatus = async (id) => {
     const result = await rawToggleCardStatus(id);
     if (result) logActivityFx("Rakibul R.", "Toggled Card Status", `Card ${result.cardName} set to ${result.status}.`, "system");
+    return result;
+  };
+
+  const handleDeleteCard = async (id) => {
+    const result = await rawDeleteCard(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Card", `Card ${result.cardName} removed.`, "system");
     return result;
   };
 
@@ -367,6 +377,7 @@ export function AppProvider({ children }) {
       action: "Onboarded Customer",
       details: `Created profile for ${customerData.name} (${customerData.companyName})`,
       type: 'customer',
+      customerId: newCustomer?.id || "",
     });
     return newCustomer;
   };
@@ -446,6 +457,7 @@ export function AppProvider({ children }) {
       action: "Completed Topup",
       details: `${invoiceNo} - Loaded $${(saleData.topupAmountUSD || 0).toFixed(1)} to ${saleData.adAccountName}`,
       type: 'sale',
+      customerId: saleData.customerId || "",
     });
 
     triggerToast(
@@ -643,6 +655,7 @@ export function AppProvider({ children }) {
     handleSyncTopupStatus,
     updateCard,
     handleToggleCardStatus,
+    handleDeleteCard,
     addCard,
     handleUpdateVendor,
     addVendor,

@@ -117,5 +117,28 @@ export function useCards(triggerToast) {
     return fetchCards();
   }, [fetchCards]);
 
-  return { cards, loading, error, addCard, updateCard, toggleCardStatus, applyCardLoad, refetch };
+  const deleteCard = useCallback(
+    async (cardId) => {
+      const prev = cards.find(c => c.id === cardId);
+      if (!prev) return null;
+
+      setCards(prevCards => prevCards.filter(c => c.id !== cardId));
+
+      try {
+        const data = await apiFetch(`/api/cards/${encodeURIComponent(cardId)}`, {
+          method: 'DELETE',
+        });
+        const removed = data.card;
+        return removed;
+      } catch (err) {
+        setCards(prevCards =>
+          prevCards.some(c => c.id === cardId) ? prevCards : [prev, ...prevCards],
+        );
+        throw err;
+      }
+    },
+    [cards,],
+  );
+
+  return { cards, loading, error, addCard, updateCard, toggleCardStatus, applyCardLoad, deleteCard, refetch };
 }

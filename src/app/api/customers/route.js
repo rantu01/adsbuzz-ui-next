@@ -3,6 +3,7 @@ import { readJsonBody, requireFields, optionalString } from "@/utils/validate";
 import {
   listCustomers,
   createCustomer,
+  checkGroupIdUnique,
 } from "@/models/customerModel";
 import { getPagination, paginate } from "@/utils/pagination";
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/cache";
@@ -10,13 +11,23 @@ import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/cache";
 const CACHE_PREFIX = "GET:/api/customers";
 
 export const GET = asyncHandler(async (request) => {
+  const { searchParams } = new URL(request.url);
+
+  // Lightweight uniqueness probe used by the customer forms live as the user
+  // types their desired Group ID.
+  const probe = searchParams.get("checkGroupId");
+  if (probe) {
+    const excludeRaw = searchParams.get("excludeId");
+    const unique = await checkGroupIdUnique(probe, excludeRaw || undefined);
+    return ok({ groupId: probe, unique });
+  }
+
   const key = `${CACHE_PREFIX}:${request.url}`;
   const cached = cacheGet(key);
   if (cached) {
     return ok(cached);
   }
 
-  const { searchParams } = new URL(request.url);
   const customers = await listCustomers({
     search: searchParams.get("search") || "",
     status: searchParams.get("status") || "",
@@ -52,15 +63,23 @@ export const POST = asyncHandler(async (request) => {
     throw new ApiError(HttpStatus.BAD_REQUEST, "A valid email is required.");
   }
 
-  const customer = await createCustomer({
-    name,
-    email,
-    phone: body.phone,
-    companyName,
-    groupId: body.groupId,
-    status: body.status,
-    creditLimitUSD: body.creditLimitUSD,
-  });
+  let customer;
+  try {
+    customer = await createCustomer({
+      name,
+      email,
+      phone: body.phone,
+      companyName,
+      groupId: body.groupId,
+      status: body.status,
+      creditLimitUSD: body.creditLimitUSD,
+    });
+  } catch (err) {
+    if (err?.code === "DUPLICATE_GROUP_ID") {
+      throw new ApiError(HttpStatus.CONFLICT, err.message, { code: "DUPLICATE_GROUP_ID" });
+    }
+    throw err;
+  }
 
   cacheInvalidate(CACHE_PREFIX);
 
