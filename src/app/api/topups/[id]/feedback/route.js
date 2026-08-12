@@ -1,21 +1,21 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, optionalString } from "@/utils/validate";
-import { rejectInvoice } from "@/models/invoiceModel";
+import { submitFeedback } from "@/models/invoiceModel";
 import { getRequestActor } from "@/utils/auditActor";
 
 export const PATCH = asyncHandler(async (request, { params }) => {
   const { id } = await params;
   const body = await readJsonBody(request);
 
-  const reason = optionalString(body.reason, 1000);
-  if (!reason) {
-    throw new ApiError(HttpStatus.BAD_REQUEST, "A reject reason is required.");
+  const feedback = optionalString(body.feedback ?? body.reason, 2000);
+  if (!feedback) {
+    throw new ApiError(HttpStatus.BAD_REQUEST, "Feedback text is required.");
   }
 
   const actor = await getRequestActor(request);
-  const invoice = await rejectInvoice(id, { reason, actor });
+  const invoice = await submitFeedback(id, { feedback, actor });
   if (!invoice) {
     return notFound("Topup invoice not found.");
   }
-  return ok({ message: "Topup rejected. Waiting for customer feedback.", invoice });
+  return ok({ message: "Feedback submitted. Moving to final approval review.", invoice });
 });

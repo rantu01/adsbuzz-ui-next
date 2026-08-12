@@ -68,6 +68,8 @@ export function toUiAccount(doc) {
     productType: doc.productType || "",
     fundAccountStatus: doc.fundAccountStatus ?? true,
     assignedCustomer: assigned ? normalizeCustomerId(doc.assignedCustomer || doc.uid || "") || (doc.assignedCustomer || doc.uid || "") : "",
+    assignedAt: doc.assignedAt ? new Date(doc.assignedAt).toISOString() : null,
+    unassignedAt: doc.unassignedAt ? new Date(doc.unassignedAt).toISOString() : null,
     status: doc.status || (assigned ? "active" : "available"),
     uid: doc.uid || "",
     _id: String(doc._id),
@@ -253,14 +255,21 @@ export async function markAccountSold(identifier, customerId) {
   const doc = await getAdAccountByIdentifier(identifier);
   if (!doc) return null;
 
+  const nextCustomer = String(customerId || "") || doc.assignedCustomer || "";
+  // Keep the original assignment timestamp when the same customer keeps buying,
+  // so account topup history stays anchored to the moment it was first assigned
+  // to this customer rather than the most recent sale.
+  const isSameCustomer = Boolean(doc.assignedCustomer) && doc.assignedCustomer === nextCustomer;
+  const assignedAt = isSameCustomer && doc.assignedAt ? doc.assignedAt : new Date();
+
   await collection.updateOne(
     { _id: doc._id },
     {
       $set: {
         accountStatus: "Sold",
         status: "active",
-        assignedCustomer: String(customerId || "") || doc.assignedCustomer || "",
-        assignedAt: new Date(),
+        assignedCustomer: nextCustomer,
+        assignedAt,
         updatedAt: new Date(),
       },
     }

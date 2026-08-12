@@ -7,6 +7,13 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import SearchBar from '@/components/ui/SearchBar';
 
+const SETUP_TYPE_OPTIONS = [
+  { value: 'Ad Account Sales Setup', label: 'Ad Account Sales Setup' },
+  { value: 'Others Sale Setup', label: 'Others Sale Setup' },
+];
+
+const STATUS_OPTIONS = ['Active', 'Terminated', 'Replace'];
+
 // Reusable searchable select — keyboard navigable, auto-closes on select
 function SearchableSelect({
   options, value, onChange, placeholder, disabled, emptyText = 'No options'
@@ -29,7 +36,8 @@ function SearchableSelect({
     (o.sub || '').toLowerCase().includes(query.toLowerCase())
   );
 
-  const selected = options.find(o => o.value === value);
+  // If a value is set, always display something meaningful instead of "Select..."
+  const selected = options.find(o => o.value === value) || (value ? { value, label: String(value) } : null);
 
   const handleKeyDown = (e) => {
     if (disabled) return;
@@ -117,19 +125,22 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
   const [showEditModal, setShowEditModal] = useState(false);
 
   // Add-form state
-  const [formCustomerId, setFormCustomerId] = useState('');
-  const [formGroupId, setFormGroupId] = useState('');
-  const [formUserId, setFormUserId] = useState('USER-NEW');
-  const [formServiceType, setFormServiceType] = useState('Ad Account Topup');
-  const [formAdAccountId, setFormAdAccountId] = useState('');
-  const [formAdName, setFormAdName] = useState('');
-  const [formServiceDetails, setFormServiceDetails] = useState('');
-  const [formServiceFee, setFormServiceFee] = useState(0);
-  const [formStatus, setFormStatus] = useState('Active');
+  const [form, setForm] = useState({
+    groupId: '',
+    serviceType: 'Ad Account Sales Setup',
+    adAccountId: '',
+    service: '',
+    serviceDetails: '',
+    serviceFee: '',
+    status: 'Active',
+  });
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Edit-form state
   const [editSetupData, setEditSetupData] = useState(null);
+  const [editErrors, setEditErrors] = useState({});
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   // Only Active customers
   const activeCustomers = customers.filter(c => c.status === 'Active');
@@ -139,102 +150,147 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     .filter(c => !!c.groupId)
     .map(c => ({ value: c.groupId, label: c.groupId, sub: c.name }));
 
-  // Ad accounts belonging to selected customer (Add form)
-  const formCustomerAdAccounts = formCustomerId
-    ? adAccounts.filter(a => a.assignedCustomer === formCustomerId)
+  // ---- Add-form derived values ----
+  const addCustomer = activeCustomers.find(c => c.groupId === form.groupId);
+  const addCustomerAccounts = addCustomer
+    ? adAccounts.filter(a => a.assignedCustomer === addCustomer.id)
     : [];
-  const adAccountOptions = formCustomerAdAccounts.map(a => ({
+  const addAccountOptions = addCustomerAccounts.map(a => ({
     value: a.adAccountId,
     label: a.adAccountName,
     sub: `${a.adAccountId} • ${a.platform}`
   }));
-  const selectedAdAccount = formCustomerAdAccounts.find(a => a.adAccountId === formAdAccountId);
-  const derivedRate = selectedAdAccount?.dollarRate ?? 132;
-  const derivedSpend = selectedAdAccount?.monthlySpending ?? 0;
+  const addSelectedAccount = addCustomerAccounts.find(a => a.adAccountId === form.adAccountId);
+  const isAddOthers = form.serviceType === 'Others Sale Setup';
 
-  const filtered = setups.filter(s =>
-    s.adName.toLowerCase().includes(search.toLowerCase()) ||
-    s.groupId.toLowerCase().includes(search.toLowerCase())
+  // ---- Edit-form derived values ----
+  const isEditOthers = ['Others', 'Others Sale Setup'].includes(editSetupData?.serviceType);
+  const editCustomer = editSetupData
+    ? customers.find(c => c.groupId === editSetupData.groupId)
+    : null;
+  const editCustomerAccounts = editCustomer
+    ? adAccounts.filter(a => a.assignedCustomer === editCustomer.id)
+    : [];
+
+  let editAccountOptions = editCustomerAccounts.map(a => ({
+    value: a.adAccountId,
+    label: a.adAccountName,
+    sub: `${a.adAccountId} • ${a.platform}`
+  }));
+  // Always keep the currently saved ad account selectable so it renders correctly.
+  if (editSetupData?.adAccountId && !editAccountOptions.some(o => o.value === editSetupData.adAccountId)) {
+    const current = adAccounts.find(a => a.adAccountId === editSetupData.adAccountId);
+    editAccountOptions = [
+      ...editAccountOptions,
+      current
+        ? { value: current.adAccountId, label: current.adAccountName, sub: `${current.adAccountId} • ${current.platform}` }
+        : { value: editSetupData.adAccountId, label: editSetupData.adAccountId, sub: editSetupData.adAccountId },
+    ];
+  }
+  const filtered = (setups || []).filter(s =>
+    String(s.adName || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(s.groupId || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const resetForm = () => {
-    setFormCustomerId('');
-    setFormGroupId('');
-    setFormUserId('USER-NEW');
-    setFormServiceType('Ad Account Topup');
-    setFormAdAccountId('');
-    setFormAdName('');
-    setFormServiceDetails('');
-    setFormServiceFee(0);
-    setFormStatus('Active');
+    setForm({
+      groupId: '',
+      serviceType: 'Ad Account Sales Setup',
+      adAccountId: '',
+      service: '',
+      serviceDetails: '',
+      serviceFee: '',
+      status: 'Active',
+    });
     setFormErrors({});
     setSubmitting(false);
   };
 
-  const clearError = (key) => {
+  const clearAddError = (key) => {
     if (formErrors[key]) setFormErrors(prev => ({ ...prev, [key]: undefined }));
   };
 
+  const clearEditError = (key) => {
+    if (editErrors[key]) setEditErrors(prev => ({ ...prev, [key]: undefined }));
+  };
+
   const handleGroupIdChange = (gid) => {
-    setFormGroupId(gid);
-    clearError('groupId');
-    const c = activeCustomers.find(x => x.groupId === gid);
-    if (c) {
-      setFormCustomerId(c.id);
-      setFormAdAccountId('');
-      setFormAdName('');
-      clearError('adAccountId');
-    }
+    setForm(prev => ({ ...prev, groupId: gid, adAccountId: '' }));
+    clearAddError('groupId');
+    clearAddError('adAccountId');
   };
 
   const handleAdAccountChange = (accId) => {
-    setFormAdAccountId(accId);
-    clearError('adAccountId');
+    setForm(prev => ({ ...prev, adAccountId: accId }));
+    clearAddError('adAccountId');
+  };
+
+  const handleEditAdAccountChange = (accId) => {
     const a = adAccounts.find(x => x.adAccountId === accId);
-    if (a) setFormAdName(a.adAccountName);
+    setEditSetupData(prev => ({
+      ...prev,
+      adAccountId: accId,
+      adName: a?.adAccountName || prev.adName,
+      platform: a?.platform || prev.platform,
+      dollarRate: a?.dollarRate ?? prev.dollarRate,
+      monthlySpending: a?.monthlySpending ?? prev.monthlySpending,
+    }));
+    clearEditError('adAccountId');
   };
 
   const buildPayload = () => {
-    if (!formGroupId) return null;
-    if (formServiceType === 'Ad Account Topup') {
-      if (!formAdAccountId) return null;
-      const a = adAccounts.find(x => x.adAccountId === formAdAccountId);
-      if (!a) return null;
+    if (!form.groupId) return null;
+    if (isAddOthers) {
+      if (!form.service.trim() || !form.serviceDetails.trim() || Number(form.serviceFee) <= 0) return null;
+      const service = form.service.trim();
       return {
-        groupId: formGroupId,
-        userId: formUserId,
-        adName: formAdName || a.adAccountName,
-        adAccountId: formAdAccountId,
-        platform: a.platform,
-        dollarRate: a.dollarRate,
-        monthlySpending: a.monthlySpending,
-        status: formStatus,
-        serviceType: 'Ad Account Topup'
-      };
-    } else {
-      if (!formServiceDetails || !formServiceFee) return null;
-      return {
-        groupId: formGroupId,
-        userId: formUserId,
-        adName: formServiceDetails,
-        adAccountId: '',
-        platform: 'Facebook',
-        dollarRate: 0,
-        monthlySpending: 0,
-        status: formStatus,
-        serviceType: 'Others',
-        serviceDetails: formServiceDetails,
-        serviceFee: Number(formServiceFee)
+        groupId: form.groupId,
+        serviceType: 'Others Sale Setup',
+        service,
+        serviceDetails: form.serviceDetails.trim(),
+        serviceFee: Number(form.serviceFee),
+        adName: service,
+        status: form.status,
       };
     }
+    if (!form.adAccountId) return null;
+    const a = addSelectedAccount || adAccounts.find(x => x.adAccountId === form.adAccountId);
+    if (!a) return null;
+    return {
+      groupId: form.groupId,
+      serviceType: 'Ad Account Sales Setup',
+      adAccountId: form.adAccountId,
+      adName: a.adAccountName,
+      platform: a.platform,
+      dollarRate: a.dollarRate,
+      monthlySpending: a.monthlySpending,
+      status: form.status,
+    };
   };
 
   const validateAddForm = () => {
     const errors = {};
-    if (!formGroupId) errors.groupId = 'Select a Group ID code.';
-    if (formServiceType === 'Ad Account Topup' && !formAdAccountId) errors.adAccountId = 'Select an ad account for this customer.';
-    if (formServiceType === 'Others' && !formServiceDetails.trim()) errors.serviceDetails = 'Enter service details.';
-    if (formServiceType === 'Others' && Number(formServiceFee) <= 0) errors.serviceFee = 'Enter a valid service fee.';
+    if (!form.groupId) errors.groupId = 'Select a Group ID code.';
+    if (isAddOthers) {
+      if (!form.service.trim()) errors.service = 'Enter the service.';
+      if (!form.serviceDetails.trim()) errors.serviceDetails = 'Enter service details.';
+      if (Number(form.serviceFee) <= 0) errors.serviceFee = 'Enter a valid service fee.';
+    } else {
+      if (!form.adAccountId) errors.adAccountId = 'Select an ad account for this customer.';
+    }
+    return errors;
+  };
+
+  const validateEditForm = () => {
+    if (!editSetupData) return {};
+    const errors = {};
+    if (isEditOthers) {
+      if (!String(editSetupData.service || '').trim()) errors.service = 'Enter the service.';
+      if (!String(editSetupData.serviceDetails || '').trim()) errors.serviceDetails = 'Enter service details.';
+      if (Number(editSetupData.serviceFee) <= 0) errors.serviceFee = 'Enter a valid service fee.';
+    } else {
+      if (!editSetupData.adAccountId) errors.adAccountId = 'Select an ad account for this customer.';
+    }
     return errors;
   };
 
@@ -260,18 +316,29 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     }
   };
 
-  const handleEditSubmit = (e) => {
+  const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!editSetupData) return;
-    if (onUpdateSetup) {
-      onUpdateSetup(editSetupData);
+    const errors = validateEditForm();
+    setEditErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    setEditSubmitting(true);
+    try {
+      await onUpdateSetup(editSetupData);
+      setShowEditModal(false);
+      setEditSetupData(null);
+    } catch (err) {
+      // Failure toast is already shown by the hook — keep the modal open.
+    } finally {
+      setEditSubmitting(false);
     }
-    setShowEditModal(false);
-    setEditSetupData(null);
   };
 
   const openEditModal = (s) => {
     setEditSetupData({ ...s });
+    setEditErrors({});
+    setEditSubmitting(false);
     setShowEditModal(true);
   };
 
@@ -280,43 +347,32 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     setShowModal(true);
   };
 
-  // Determine customer ID for edit-form (derive from groupId)
-  const getEditCustomerId = (s) => {
-    if (!s) return '';
-    const c = customers.find(x => x.groupId === s.groupId);
-    return c?.id || '';
-  };
-
   // ---- Shared form renderer for Add / Edit ----
-  const renderForm = (
-    data,
-    setData,
-    isEdit
-  ) => {
-    const isOthers = isEdit
-      ? data?.serviceType === 'Others'
-      : formServiceType === 'Others';
+  const renderForm = (isEdit) => {
+    const errors = isEdit ? editErrors : formErrors;
+    const data = isEdit ? editSetupData : form;
+    const isOthers = isEdit ? isEditOthers : isAddOthers;
 
-    const eCustomerId = isEdit ? getEditCustomerId(data) : formCustomerId;
-    const eGroupId = isEdit ? (data?.groupId || '') : formGroupId;
-    const eAdAccountId = isEdit ? (data?.adAccountId || '') : formAdAccountId;
-    const eServiceDetails = isEdit ? (data?.serviceDetails || '') : formServiceDetails;
-    const eServiceFee = isEdit ? (data?.serviceFee || 0) : formServiceFee;
+    const groupId = data?.groupId || '';
+    const serviceType = data?.serviceType || 'Ad Account Sales Setup';
+    const status = STATUS_OPTIONS.includes(data?.status) ? data.status : (data?.status || 'Active');
+    const adAccountId = data?.adAccountId || '';
+    const service = data?.service || '';
+    const serviceDetails = data?.serviceDetails || '';
+    const serviceFee = data?.serviceFee ?? '';
 
-    // Ad accounts filtered by customer (for edit, look up by groupId)
-    const eCustomerAdAccounts = eCustomerId
-      ? adAccounts.filter(a => a.assignedCustomer === eCustomerId)
-      : adAccounts.filter(a => a.adAccountId === eAdAccountId); // fallback: at least show current acc
+    const customer = isEdit ? editCustomer : addCustomer;
+    const accountOptions = isEdit ? editAccountOptions : addAccountOptions;
+    const accountSelectDisabled = isEdit
+      ? (!editCustomer && !adAccountId)
+      : (!addCustomer || adAccountsLoading);
 
-    const eAdAccountOptions = eCustomerAdAccounts.map(a => ({
-      value: a.adAccountId,
-      label: a.adAccountName,
-      sub: `${a.adAccountId} • ${a.platform}`
-    }));
-
-    const editSelectedAcc = eCustomerAdAccounts.find(a => a.adAccountId === eAdAccountId);
-    const eRateVal = editSelectedAcc?.dollarRate ?? data?.dollarRate ?? 132;
-    const eSpendVal = editSelectedAcc?.monthlySpending ?? data?.monthlySpending ?? 0;
+    const rate = isEdit
+      ? (data?.dollarRate ?? 0)
+      : (addSelectedAccount?.dollarRate ?? '');
+    const spend = isEdit
+      ? (data?.monthlySpending ?? 0)
+      : (addSelectedAccount?.monthlySpending ?? '');
 
     return (
       <form
@@ -327,121 +383,84 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
         {/* Row 1: Group ID (searchable) + Customer (auto) */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Group ID Code</label>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Select Group ID</label>
             {isEdit ? (
               <input
                 type="text"
-                value={eGroupId}
+                value={groupId}
                 readOnly
-                className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 font-mono cursor-not-allowed"
+                className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-mono cursor-not-allowed"
               />
             ) : (
               <>
                 <SearchableSelect
                   options={groupIdOptions}
-                  value={formGroupId}
+                  value={groupId}
                   onChange={handleGroupIdChange}
                   placeholder={customersLoading ? 'Loading group IDs...' : 'Select Group ID...'}
                   emptyText={customersLoading ? 'Loading...' : 'No active clients with Group ID found'}
                   disabled={customersLoading}
                 />
-                {formErrors.groupId && (
-                  <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.groupId}</p>
+                {errors.groupId && (
+                  <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.groupId}</p>
                 )}
               </>
             )}
           </div>
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Customer</label>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Customer Information</label>
             <div className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 font-semibold">
               {(() => {
-                const c = customers.find(x => x.groupId === eGroupId);
-                if (customersLoading) return <span className="text-slate-400 font-normal">Loading customers...</span>;
-                return c ? `${c.name} (${c.companyName})` : <span className="text-slate-400 font-normal">Select a Group ID first</span>;
+                if (customersLoading && !customer) return <span className="text-slate-400 font-normal">Loading customers...</span>;
+                return customer
+                  ? `${customer.name} (${customer.companyName})`
+                  : <span className="text-slate-400 font-normal">Select a Group ID first</span>;
               })()}
             </div>
           </div>
         </div>
 
-        {/* Service Type */}
+        {/* Select Service Type */}
         <div>
-          <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Service Type</label>
-          {isEdit ? (
-            <select
-              value={data?.serviceType || 'Ad Account Topup'}
-              onChange={(e) => setData({ ...data, serviceType: e.target.value })}
-              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
-            >
-              <option value="Ad Account Topup">Ad Account Top-up</option>
-              <option value="Others">Others</option>
-            </select>
-          ) : (
-            <select
-              value={formServiceType}
-              onChange={(e) => setFormServiceType(e.target.value)}
-              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
-            >
-              <option value="Ad Account Topup">Ad Account Top-up</option>
-              <option value="Others">Others</option>
-            </select>
-          )}
+          <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Select Service Type</label>
+          <select
+            value={serviceType}
+            disabled={isEdit}
+            onChange={(e) => {
+              setForm(prev => ({ ...prev, serviceType: e.target.value, adAccountId: '' }));
+              clearAddError('adAccountId');
+            }}
+            className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {SETUP_TYPE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
 
-        {/* If Ad Account Topup */}
+        {/* Ad Account Sales Setup fields */}
         {!isOthers && (
           <>
             <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Select Ad Account</label>
-              {isEdit ? (
-                <SearchableSelect
-                  options={eAdAccountOptions}
-                  value={eAdAccountId}
-                  onChange={(v) => {
-                    const a = adAccounts.find(x => x.adAccountId === v);
-                    setData({
-                      ...data,
-                      adAccountId: v,
-                      adName: a?.adAccountName || data.adName,
-                      platform: a?.platform || data.platform,
-                      dollarRate: a?.dollarRate || data.dollarRate,
-                      monthlySpending: a?.monthlySpending || data.monthlySpending
-                    });
-                  }}
-                  placeholder={eCustomerId ? 'Select ad account...' : 'Select a customer first'}
-                  disabled={!eCustomerId}
-                  emptyText="No ad accounts found for this customer"
-                />
-              ) : (
-                <div>
-                  <SearchableSelect
-                    options={adAccountOptions}
-                    value={formAdAccountId}
-                    onChange={handleAdAccountChange}
-                    placeholder={formCustomerId ? (adAccountsLoading ? 'Loading ad accounts...' : 'Select ad account...') : 'Select a customer first'}
-                    disabled={!formCustomerId || adAccountsLoading}
-                    emptyText="No ad accounts found for this customer"
-                  />
-                  {formErrors.adAccountId && (
-                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.adAccountId}</p>
-                  )}
-                </div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Assign Ad Account</label>
+              <SearchableSelect
+                options={accountOptions}
+                value={adAccountId}
+                onChange={isEdit ? handleEditAdAccountChange : handleAdAccountChange}
+                placeholder={isEdit ? 'Select ad account...' : (addCustomer ? (adAccountsLoading ? 'Loading ad accounts...' : 'Select ad account...') : 'Select a customer first')}
+                disabled={accountSelectDisabled}
+                emptyText="No ad accounts assigned to this customer"
+              />
+              {errors.adAccountId && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.adAccountId}</p>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Platform</label>
-                <input
-                  type="text"
-                  value={isEdit ? (data?.platform || '') : (selectedAdAccount?.platform || '')}
-                  readOnly
-                  className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold cursor-not-allowed"
-                />
-              </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Dollar Rate (৳)</label>
                 <input
                   type="number"
-                  value={isEdit ? eRateVal : derivedRate}
+                  value={rate}
                   readOnly
                   className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold cursor-not-allowed"
                 />
@@ -450,7 +469,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Monthly Spending ($)</label>
                 <input
                   type="number"
-                  value={isEdit ? eSpendVal : (selectedAdAccount ? derivedSpend : '')}
+                  value={spend}
                   readOnly
                   className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold cursor-not-allowed"
                 />
@@ -459,114 +478,81 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
           </>
         )}
 
-        {/* If Others */}
+        {/* Others Sale Setup fields */}
         {isOthers && (
           <>
             <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Service</label>
+              <input
+                type="text"
+                value={service}
+                onChange={(e) => {
+                  if (isEdit) setEditSetupData(prev => ({ ...prev, service: e.target.value }));
+                  else setForm(prev => ({ ...prev, service: e.target.value }));
+                  if (isEdit) clearEditError('service'); else clearAddError('service');
+                }}
+                placeholder="e.g. Creative Design, Landing Page..."
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+              {errors.service && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.service}</p>
+              )}
+            </div>
+            <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Service Details</label>
-              {isEdit ? (
-                <input
-                  type="text"
-                  value={eServiceDetails}
-                  onChange={(e) => setData({ ...data, serviceDetails: e.target.value, adName: e.target.value })}
-                  required
-                  placeholder="e.g. Creative Design, Landing Page..."
-                  className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-                />
-              ) : (
-                <div>
-                  <input
-                    type="text"
-                    value={formServiceDetails}
-                    onChange={(e) => { setFormServiceDetails(e.target.value); clearError('serviceDetails'); }}
-                    required
-                    placeholder="e.g. Creative Design, Landing Page..."
-                    className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-                  />
-                  {formErrors.serviceDetails && (
-                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.serviceDetails}</p>
-                  )}
-                </div>
+              <input
+                type="text"
+                value={serviceDetails}
+                onChange={(e) => {
+                  if (isEdit) setEditSetupData(prev => ({ ...prev, serviceDetails: e.target.value }));
+                  else setForm(prev => ({ ...prev, serviceDetails: e.target.value }));
+                  if (isEdit) clearEditError('serviceDetails'); else clearAddError('serviceDetails');
+                }}
+                placeholder="e.g. Monthly creative + landing page package"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+              {errors.serviceDetails && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.serviceDetails}</p>
               )}
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Service Fee (BDT ৳)</label>
-              {isEdit ? (
-                <input
-                  type="number"
-                  value={eServiceFee}
-                  onChange={(e) => setData({ ...data, serviceFee: Number(e.target.value) })}
-                  required
-                  placeholder="e.g. 5000"
-                  className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
-                />
-              ) : (
-                <div>
-                  <input
-                    type="number"
-                    value={formServiceFee}
-                    onChange={(e) => { setFormServiceFee(Number(e.target.value)); clearError('serviceFee'); }}
-                    required
-                    placeholder="e.g. 5000"
-                    className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
-                  />
-                  {formErrors.serviceFee && (
-                    <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{formErrors.serviceFee}</p>
-                  )}
-                </div>
+              <input
+                type="number"
+                value={serviceFee}
+                onChange={(e) => {
+                  if (isEdit) setEditSetupData(prev => ({ ...prev, serviceFee: Number(e.target.value) }));
+                  else setForm(prev => ({ ...prev, serviceFee: Number(e.target.value) }));
+                  if (isEdit) clearEditError('serviceFee'); else clearAddError('serviceFee');
+                }}
+                placeholder="e.g. 5000"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
+              />
+              {errors.serviceFee && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.serviceFee}</p>
               )}
             </div>
           </>
         )}
 
-        {/* User ID (kept editable) + Status */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">User ID</label>
-            {isEdit ? (
-              <input
-                type="text"
-                value={data?.userId || ''}
-                onChange={(e) => setData({ ...data, userId: e.target.value })}
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-              />
-            ) : (
-              <input
-                type="text"
-                value={formUserId}
-                onChange={(e) => setFormUserId(e.target.value)}
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-              />
+        {/* Status */}
+        <div>
+          <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Status</label>
+          <select
+            value={status}
+            onChange={(e) => {
+              if (isEdit) setEditSetupData(prev => ({ ...prev, status: e.target.value }));
+              else setForm(prev => ({ ...prev, status: e.target.value }));
+            }}
+            className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+          >
+            {STATUS_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+            {!STATUS_OPTIONS.includes(data?.status) && data?.status && (
+              <option value={data.status}>{data.status}</option>
             )}
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Status</label>
-            {isEdit ? (
-              <select
-                value={data?.status || 'Active'}
-                onChange={(e) => setData({ ...data, status: e.target.value })}
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
-              >
-                <option value="Active">Active</option>
-                <option value="Sold">Sold</option>
-                <option value="Disable">Disable</option>
-                <option value="Need Support">Need Support</option>
-                <option value="Available">Available</option>
-              </select>
-            ) : (
-              <select
-                value={formStatus}
-                onChange={(e) => setFormStatus(e.target.value)}
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
-              >
-                <option value="Active">Active</option>
-                <option value="Sold">Sold</option>
-                <option value="Disable">Disable</option>
-                <option value="Need Support">Need Support</option>
-                <option value="Available">Available</option>
-              </select>
-            )}
-          </div>
+          </select>
         </div>
 
         <div className="custom-modal-footer flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -576,7 +562,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={!isEdit && submitting}>
+          <Button type="submit" disabled={isEdit ? editSubmitting : submitting}>
             {isEdit ? 'Save Changes' : (submitting ? 'Creating...' : 'Create')}
           </Button>
         </div>
@@ -584,19 +570,26 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     );
   };
 
+  const statusBadgeClass = (status) => {
+    if (status === 'Active') return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+    if (status === 'Terminated') return 'bg-red-500/10 text-red-600 dark:text-red-400';
+    if (status === 'Replace') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+    return 'bg-slate-500/10 text-slate-600 dark:text-slate-400';
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Active Campaign Setup</h1>
-          <p className="text-sm text-slate-500">Assign Group IDs, User IDs, and monitor monthly spending limits.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Sale Setup</h1>
+          <p className="text-sm text-slate-500">Assign Group IDs, ad accounts, and services with monthly spending limits.</p>
         </div>
         <Button
           id="btn-add-setup"
           onClick={openAddModal}
           leftIcon={<Plus size={14} />}
         >
-          New Campaign Setup
+          New Sale Setup
         </Button>
       </div>
 
@@ -624,77 +617,76 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filtered.map((s, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                  <td className="py-3 pl-4 font-bold text-slate-800 dark:text-slate-200 font-mono">{s.groupId}</td>
-                  <td className="py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${
-                      s.serviceType === 'Others'
-                        ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60'
-                        : 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60'
-                    }`}>
-                      {s.serviceType || 'Ad Account Topup'}
-                    </span>
-                  </td>
-                  <td className="py-3 font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
-                    {s.serviceType === 'Others' ? (s.serviceDetails || s.adName) : s.adName}
-                  </td>
-                  <td className="py-3">{s.serviceType === 'Others' ? <span className="text-slate-400">—</span> : <PlatformText platform={s.platform} />}</td>
-                  <td className="py-3 text-center font-bold">
-                    {s.serviceType === 'Others' ? <span className="text-slate-400">—</span> : `৳${s.dollarRate}`}
-                  </td>
-                  <td className="py-3 text-right font-semibold">
-                    {s.serviceType === 'Others'
-                      ? <span className="text-amber-700 dark:text-amber-300">৳{(s.serviceFee || 0).toLocaleString()}</span>
-                      : `$${s.monthlySpending}`}
-                  </td>
-                  <td className="py-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm inline-block ${
-                      s.status === 'Active' || s.status === 'Available' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                      s.status === 'Need Support' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                      'bg-red-500/10 text-red-600 dark:text-red-400'
-                    }`}>
-                      {s.status}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditModal(s)}
-                      leftIcon={<FileEdit size={11} />}
-                      className="ml-auto"
-                    >
-                      Edit
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((s, idx) => {
+                const isOthers = ['Others', 'Others Sale Setup'].includes(s.serviceType);
+                return (
+                  <tr key={s.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-3 pl-4 font-bold text-slate-800 dark:text-slate-200 font-mono">{s.groupId}</td>
+                    <td className="py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${
+                        isOthers
+                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60'
+                          : 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60'
+                      }`}>
+                        {isOthers ? 'Others' : 'Ad Account'}
+                      </span>
+                    </td>
+                    <td className="py-3 font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
+                      {isOthers ? (s.service || s.serviceDetails || s.adName) : s.adName}
+                    </td>
+                    <td className="py-3">{isOthers ? <span className="text-slate-400">—</span> : <PlatformText platform={s.platform} />}</td>
+                    <td className="py-3 text-center font-bold">
+                      {isOthers ? <span className="text-slate-400">—</span> : `৳${s.dollarRate}`}
+                    </td>
+                    <td className="py-3 text-right font-semibold">
+                      {isOthers
+                        ? <span className="text-amber-700 dark:text-amber-300">৳{(s.serviceFee || 0).toLocaleString()}</span>
+                        : `$${s.monthlySpending}`}
+                    </td>
+                    <td className="py-3 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm inline-block ${statusBadgeClass(s.status)}`}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditModal(s)}
+                        leftIcon={<FileEdit size={11} />}
+                        className="ml-auto"
+                      >
+                        Edit
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Add Campaign Ad Assignment Modal */}
+      {/* Add Sale Setup Modal */}
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Add Campaign Ad Assignment"
+        title="Add Sale Setup"
         size="md"
         showCloseButton={false}
       >
-        {renderForm(null, null, false)}
+        {renderForm(false)}
       </Modal>
 
-      {/* Edit Campaign Ad Assignment Modal */}
+      {/* Edit Sale Setup Modal */}
       <Modal
         isOpen={showEditModal && !!editSetupData}
         onClose={() => setShowEditModal(false)}
-        title="Edit Campaign Ad Assignment"
+        title="Edit Sale Setup"
         size="md"
         showCloseButton={false}
       >
-        {renderForm(editSetupData, setEditSetupData, true)}
+        {renderForm(true)}
       </Modal>
     </div>
   );

@@ -3,6 +3,7 @@ import { readJsonBody, requirePositiveNumber, optionalString } from "@/utils/val
 import { listInvoices, createInvoice } from "@/models/invoiceModel";
 import { getPagination, paginate } from "@/utils/pagination";
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/cache";
+import { getRequestActor } from "@/utils/auditActor";
 
 const CACHE_PREFIX = "GET:/api/invoices";
 
@@ -43,9 +44,23 @@ export const POST = asyncHandler(async (request) => {
     throw new ApiError(HttpStatus.BAD_REQUEST, "adAccountId is required for Ad Account Topup sales.");
   }
 
+  // Paid-amount rule: when no money is taken (paid amount empty/zero) the
+  // screenshot is not required but an author note MUST be recorded explaining
+  // the outstanding amount.
+  const paidAmountBDT = Number(body.paidAmountBDT || 0);
+  if (!(paidAmountBDT > 0) && !optionalString(body.note, 1000)) {
+    throw new ApiError(
+      HttpStatus.BAD_REQUEST,
+      "Author Note is required when no amount is paid (Paid Amount is empty or 0)."
+    );
+  }
+
   try {
-    const invoice = await createInvoice(body);
+    const actor = await getRequestActor(request);
+    const invoice = await createInvoice({ ...body, auditActor: actor });
     cacheInvalidate(CACHE_PREFIX);
+    // Topup totals shown on the Sales page change whenever a sale is created.
+    cacheInvalidate("GET:/api/customers");
     return ok(
       {
         message: "Sale executed. Invoice created.",

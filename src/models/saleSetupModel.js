@@ -2,7 +2,8 @@ import { getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
 import { INITIAL_SETUPS } from "@/data/seedData";
 
-const SETUP_STATUS = ["Active", "Sold", "Disable", "Need Support", "Available"];
+const SETUP_STATUS = ["Active", "Terminated", "Replace"];
+const SETUP_SERVICE_TYPES = ["Ad Account Sales Setup", "Others Sale Setup"];
 const SETUP_PLATFORMS = ["Facebook", "TikTok", "Google", "Snapchat"];
 
 function slugify(value, fallback = "") {
@@ -27,12 +28,19 @@ function ensureSeeded() {
   return seedPromise;
 }
 
+// Accepts legacy values ("Ad Account Topup"/"Others") and normalizes them to
+// the current sale-setup type names.
+function normalizeServiceType(value) {
+  const v = String(value || "");
+  return v === "Others" || v === "Others Sale Setup" ? "Others Sale Setup" : "Ad Account Sales Setup";
+}
+
 function sanitize(input = {}) {
   const groupId = String(input.groupId || "").trim();
   const userId = String(input.userId || "").trim();
   const adName = String(input.adName || "").trim();
   const adAccountId = String(input.adAccountId || "").trim();
-  const serviceType = input.serviceType === "Others" ? "Others" : "Ad Account Topup";
+  const serviceType = normalizeServiceType(input.serviceType);
   const platform = SETUP_PLATFORMS.includes(input.platform) ? input.platform : "Facebook";
   const status = SETUP_STATUS.includes(input.status) ? input.status : "Active";
 
@@ -47,6 +55,7 @@ function sanitize(input = {}) {
     monthlySpending: Number(input.monthlySpending) > 0 ? Number(input.monthlySpending) : 0,
     serviceDetails: String(input.serviceDetails || "").trim(),
     serviceFee: Number(input.serviceFee) > 0 ? Number(input.serviceFee) : 0,
+    service: String(input.service || "").trim(),
     status,
   };
 }
@@ -58,7 +67,7 @@ export async function seedSaleSetups() {
   let seeded = 0;
   for (const s of INITIAL_SETUPS) {
     const doc = {
-      id: `SETUP-${slugify(s.groupId, "G")}-${slugify(s.adAccountId, "ACC")}`,
+      id: `SETUP-${slugify(s.groupId, "G")}-${slugify(s.adAccountId || "OTHERS", "ACC")}`,
       ...sanitize(s),
       updatedAt: new Date(),
     };
@@ -74,7 +83,9 @@ export async function seedSaleSetups() {
 }
 
 function mapSetup({ _id, ...rest }) {
-  return { ...rest };
+  const mapped = { ...rest };
+  if (mapped.serviceType) mapped.serviceType = normalizeServiceType(mapped.serviceType);
+  return mapped;
 }
 
 export async function listSaleSetups({ search = "" } = {}) {
@@ -111,20 +122,24 @@ export async function createSaleSetup(data) {
   if (!setup.groupId) {
     throw new Error("GROUP_REQUIRED");
   }
-  if (setup.serviceType === "Ad Account Topup" && !setup.adAccountId) {
+  if (setup.serviceType === "Ad Account Sales Setup" && !setup.adAccountId) {
     throw new Error("ACCOUNT_REQUIRED");
   }
-  if (setup.serviceType === "Others" && !setup.serviceDetails) {
+  if (setup.serviceType === "Others Sale Setup" && !setup.serviceDetails) {
     throw new Error("DETAILS_REQUIRED");
   }
 
-  const existing = await collection.findOne({ groupId: setup.groupId, adAccountId: setup.adAccountId });
+  const duplicateQuery =
+    setup.serviceType === "Others Sale Setup"
+      ? { groupId: setup.groupId, serviceType: "Others Sale Setup", serviceDetails: setup.serviceDetails }
+      : { groupId: setup.groupId, adAccountId: setup.adAccountId };
+  const existing = await collection.findOne(duplicateQuery);
   if (existing) {
     throw new Error("DUPLICATE");
   }
 
   const doc = {
-    id: `SETUP-${slugify(setup.groupId, "G")}-${slugify(setup.adAccountId, "ACC")}-${Date.now().toString().slice(-4)}`,
+    id: `SETUP-${slugify(setup.groupId, "G")}-${slugify(setup.adAccountId || "OTHERS", "ACC")}-${Date.now().toString().slice(-4)}`,
     ...setup,
     updatedAt: new Date(),
   };
@@ -150,13 +165,14 @@ export async function updateSaleSetup(id, data) {
     "monthlySpending",
     "serviceDetails",
     "serviceFee",
+    "service",
     "status",
   ]) {
     if (!(key in data)) continue;
     const value = data[key];
     if (key === "status") patch.status = SETUP_STATUS.includes(value) ? value : existing.status;
     else if (key === "platform") patch.platform = SETUP_PLATFORMS.includes(value) ? value : existing.platform;
-    else if (key === "serviceType") patch.serviceType = value === "Others" ? "Others" : "Ad Account Topup";
+    else if (key === "serviceType") patch.serviceType = normalizeServiceType(value);
     else if (key === "dollarRate") patch.dollarRate = Number(value) > 0 ? Number(value) : 0;
     else if (key === "monthlySpending") patch.monthlySpending = Number(value) > 0 ? Number(value) : 0;
     else if (key === "serviceFee") patch.serviceFee = Number(value) > 0 ? Number(value) : 0;

@@ -19,5 +19,6 @@ export const PATCH = asyncHandler(async (request, { params }) => {
     return notFound("Invoice not found.");
   }
   cacheInvalidate("GET:/api/invoices");
+  cacheInvalidate("GET:/api/customers");
   return ok({ message: "Topup status synced.", invoice });
 });

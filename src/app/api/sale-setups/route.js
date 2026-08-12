@@ -26,10 +26,10 @@ export const POST = asyncHandler(async (request) => {
       throw new ApiError(HttpStatus.CONFLICT, "A setup for this group and ad account already exists.");
     }
     if (err.message === "ACCOUNT_REQUIRED") {
-      throw new ApiError(HttpStatus.BAD_REQUEST, "An ad account is required for Ad Account Topup setups.");
+      throw new ApiError(HttpStatus.BAD_REQUEST, "An ad account is required for Ad Account Sales Setup.");
     }
     if (err.message === "DETAILS_REQUIRED") {
-      throw new ApiError(HttpStatus.BAD_REQUEST, "Service details are required for Other services.");
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Service details are required for Others Sale Setup.");
     }
     throw err;
   }

@@ -20,11 +20,14 @@ import {
   FileEdit,
   Upload,
   Image as ImageIcon,
-  X as XIcon
+  X as XIcon,
+  Copy,
+  CopyCheck
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
+import { apiFetch } from '@/utils/api';
 
 const STEP_HEADERS = [
   { id: 1, name: 'Select Customer & Account' },
@@ -47,20 +50,33 @@ function SalesView({
   
   // Service Type & Group ID Code
   const [serviceType, setServiceType] = useState('Ad Account Topup');
-  const [groupIdCode, setGroupIdCode] = useState('GC-101');
+  const [groupIdCode, setGroupIdCode] = useState('');
 
   // Build deduplicated list of available Group IDs (from existing customers + sale setups)
   const groupIdOptions = React.useMemo(() => {
     const ids = new Set();
     customers.forEach(c => { if (c.groupId) ids.add(c.groupId); });
     invoices.forEach(inv => { if (inv.groupId) ids.add(inv.groupId); });
-    // Ensure the default value is always selectable
-    ids.add('GC-101');
     return Array.from(ids).sort();
   }, [customers, invoices]);
 
+  // Customers belonging to the selected group
+  const customersInGroup = React.useMemo(
+    () => customers.filter(c => !groupIdCode || c.groupId === groupIdCode),
+    [customers, groupIdCode]
+  );
+
+  // Live preview of the next invoice number (DB-backed, read without consuming it)
+  const [previewInvoiceNo, setPreviewInvoiceNo] = useState('');
+  useEffect(() => {
+    apiFetch('/api/invoices/next-no')
+      .then((data) => { if (data?.invoiceNo) setPreviewInvoiceNo(data.invoiceNo); })
+      .catch(() => {});
+  }, []);
+
   // Edit record modal state
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editForm, setEditForm] = useState(null);
   const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
 
   // Sales records pagination state
@@ -83,6 +99,33 @@ function SalesView({
   // Checkout State
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId || customers[0]?.id || '');
   const [platform, setSelectedPlatform] = useState('Facebook');
+
+  // When a customer is pre-selected (e.g. from the Customers page), sync the group
+  useEffect(() => {
+    if (selectedCustomerId) {
+      const c = customers.find(x => x.id === selectedCustomerId);
+      if (c && c.groupId) setGroupIdCode(c.groupId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomerId]);
+
+  // Real topup totals fetched from the customer's topup history in the database
+  const [topupSummary, setTopupSummary] = useState(null);
+  const [topupSummaryLoading, setTopupSummaryLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedCustomerId) {
+      setTopupSummary(null);
+      setTopupSummaryLoading(false);
+      return undefined;
+    }
+    setTopupSummaryLoading(true);
+    apiFetch(`/api/customers/${encodeURIComponent(selectedCustomerId)}/topup-summary`)
+      .then((data) => { if (!cancelled) setTopupSummary(data?.summary || null); })
+      .catch(() => { if (!cancelled) setTopupSummary(null); })
+      .finally(() => { if (!cancelled) setTopupSummaryLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedCustomerId]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
 
   const [validationError, setValidationError] = useState('');
@@ -97,7 +140,7 @@ function SalesView({
   // Payment Details State
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [topupStatus, setTopupStatus] = useState('Successfull');
-  const [approvalStatus, setApprovalStatus] = useState('Approved');
+  const [approvalStatus, setApprovalStatus] = useState('Pending');
   const [noteText, setNoteText] = useState('');
 
   // Payment Screenshot (data URL)
@@ -153,11 +196,14 @@ function SalesView({
   // Selected entities
   const activeCustomer = customers.find(c => c.id === selectedCustomerId);
   
-  // Accounts matching selected platform
-  const platformAccounts = adAccounts.filter(acc => 
-    acc.platform === platform && 
-    (acc.accountStatus === 'Available' || acc.assignedCustomer === selectedCustomerId)
+  // Accounts matching selected platform AND assigned to the selected customer
+  const platformAccounts = adAccounts.filter(acc =>
+    acc.platform === platform &&
+    acc.assignedCustomer === selectedCustomerId
   );
+
+  // True when the customer actually paid something (Paid Amount > 0)
+  const hasPaidAmount = Number.isFinite(paidBDT) && paidBDT > 0;
 
   // Auto-set the first account when platform changes or customer changes
   useEffect(() => {
@@ -172,6 +218,31 @@ function SalesView({
 
   // When selected account changes, update the loaded rate
   const activeAccount = adAccounts.find(acc => acc.adAccountId === selectedAccountId);
+
+  // Topups taken by the selected account AFTER it was assigned to this customer
+  const matchingAccountInvoices = React.useMemo(() => {
+    if (!activeAccount || !selectedCustomerId) return [];
+    const assignedAt = activeAccount.assignedAt ? new Date(activeAccount.assignedAt).getTime() : null;
+    return invoices.filter(inv => {
+      const sameAccount =
+        (inv.adAccountId && inv.adAccountId === activeAccount.adAccountId) ||
+        (inv.adAccountName && inv.adAccountName.toLowerCase() === activeAccount.adAccountName.toLowerCase());
+      if (!sameAccount) return false;
+      // Only topups belonging to this customer
+      if (inv.customerId && inv.customerId !== selectedCustomerId) return false;
+      // Only topups taken after the account was assigned to this customer
+      if (assignedAt) {
+        const invTime = inv.createdAtRaw
+          ? new Date(inv.createdAtRaw).getTime()
+          : inv.date
+          ? new Date(inv.date).getTime()
+          : 0;
+        if (!Number.isNaN(invTime) && invTime < assignedAt) return false;
+      }
+      return true;
+    });
+  }, [activeAccount, selectedCustomerId, invoices]);
+
   useEffect(() => {
     if (activeAccount) {
       const rate = activeAccount.dollarRate || 132;
@@ -231,7 +302,12 @@ function SalesView({
         setValidationError('Please enter a valid amount the customer paid (greater than 0).');
         return;
       }
-      if (!paymentScreenshot) {
+      if (!hasPaidAmount) {
+        if (!noteText || !noteText.trim()) {
+          setValidationError('An Author Note is required when no amount is paid (Paid Amount is empty or 0).');
+          return;
+        }
+      } else if (!paymentScreenshot) {
         setValidationError('Please upload a payment screenshot before continuing.');
         return;
       }
@@ -281,7 +357,12 @@ function SalesView({
           setValidationError('Please enter a valid amount the customer paid (greater than 0).');
           return;
         }
-        if (!paymentScreenshot) {
+        if (!hasPaidAmount) {
+          if (!noteText || !noteText.trim()) {
+            setValidationError('An Author Note is required when no amount is paid (Paid Amount is empty or 0).');
+            return;
+          }
+        } else if (!paymentScreenshot) {
           setValidationError('Please upload a payment screenshot before continuing.');
           return;
         }
@@ -313,8 +394,8 @@ function SalesView({
       dollarRate,
       topupAmountUSD,
       totalAmountBDT: totalBDT,
-      paidAmountBDT: paidBDT,
-      dueAmountBDT: dueBDT,
+      paidAmountBDT: Number.isFinite(paidBDT) ? paidBDT : 0,
+      dueAmountBDT: Number.isFinite(dueBDT) ? dueBDT : 0,
       paymentStatus: dueBDT <= 0 ? 'Paid' : paidBDT > 0 ? 'Partially Paid' : 'Due',
       paymentMethod,
       topupStatus,
@@ -332,6 +413,42 @@ function SalesView({
     setPaymentScreenshot(undefined);
     setScreenshotName('');
     setScreenshotError('');
+  };
+
+  // STEP 5 — LIVE CHECKOUT INVOICE copy
+  const [copied, setCopied] = useState(false);
+
+  const buildInvoiceText = () => {
+    const date = new Date().toLocaleDateString('en-GB');
+    const invNo = previewInvoiceNo || `ADB ${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}000`;
+    const platformName = `${platform} Ad Account`;
+    const topupLabel = topupStatus === 'Successfull' ? 'Successful' : topupStatus;
+    const paymentLabel = paymentStatusBadge.label;
+    return [
+      `Date: ${date}`,
+      `Invoice no: ${invNo}`,
+      `Group ID: ${groupIdCode || ''}`,
+      `Platform Name: ${platformName}`,
+      `Ad Account Name: ${activeAccount?.adAccountName || ''}`,
+      `Ad Account ID: ${activeAccount?.adAccountId || ''}`,
+      `USD Dollar rate: ${dollarRate}`,
+      `Amount in USD: ${topupAmountUSD}`,
+      `Amount in BDT: ${totalBDT}`,
+      `Payment Status: ${paymentLabel}`,
+      `TopUp Status: ${topupLabel}`,
+      `Paid Amount: ${Number.isFinite(paidBDT) ? paidBDT : 0}`,
+      `Due Amount: ${Number.isFinite(dueBDT) ? dueBDT : 0}`,
+    ].join('\n');
+  };
+
+  const handleCopyInvoice = () => {
+    if (typeof navigator === 'undefined') return;
+    navigator.clipboard?.writeText(buildInvoiceText())
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
   };
 
   return (
@@ -393,7 +510,7 @@ function SalesView({
                   <p className="text-xs text-slate-400 mt-0.5">Pick the client, group, platform, and ad account for this transaction.</p>
                 </div>
 
-                {/* Service Type Radio Buttons */}
+                {/* 1. Service Type */}
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Service Type</label>
                   <div className="flex gap-4 items-center">
@@ -422,19 +539,30 @@ function SalesView({
                   </div>
                 </div>
 
-                {/* Group ID Code + Platform dropdown */}
+                {/* 2. Group ID + Platform */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Group ID Code</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Group ID</label>
                     <select
+                      id="checkout-group-id"
+                      required
                       value={groupIdCode}
-                      onChange={(e) => setGroupIdCode(e.target.value)}
+                      onChange={(e) => {
+                        const gid = e.target.value;
+                        setGroupIdCode(gid);
+                        const firstInGroup = customers.find(c => c.groupId === gid);
+                        setSelectedCustomerId(firstInGroup ? firstInGroup.id : '');
+                      }}
                       className="w-full text-xs p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-medium"
                     >
+                      <option value="" disabled>Select Group ID</option>
                       {groupIdOptions.map(id => (
                         <option key={id} value={id}>{id}</option>
                       ))}
                     </select>
+                    <p className="text-[10px] text-slate-400 mt-1.5">
+                      {customersInGroup.length} customer{customersInGroup.length === 1 ? '' : 's'} in this group.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Platform</label>
@@ -451,7 +579,7 @@ function SalesView({
                   </div>
                 </div>
 
-                {/* Customer select (filtered by group if a group is selected) */}
+                {/* 3. Client Information */}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Existing Customer</label>
@@ -463,42 +591,60 @@ function SalesView({
                       onChange={(e) => setSelectedCustomerId(e.target.value)}
                     >
                       <option value="" disabled>Choose Customer</option>
-                      {customers
-                        .filter(c => !groupIdCode || c.groupId === groupIdCode)
-                        .map(c => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.companyName})</option>
-                        ))}
+                      {customersInGroup.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.companyName})</option>
+                      ))}
                     </select>
-                    <p className="text-[10px] text-slate-400 mt-1.5">
-                      Showing {customers.filter(c => !groupIdCode || c.groupId === groupIdCode).length} of {customers.length} customers in this group.
-                    </p>
                   </div>
 
                   {activeCustomer && (
                     <div className="p-4 rounded-xl border border-blue-50 dark:border-blue-950/20 bg-blue-50/20 dark:bg-blue-950/10 space-y-3">
-                      <h4 className="text-xs font-bold text-brand-blue dark:text-blue-400">Selected Client Accounts Summary</h4>
-                      <div className="grid grid-cols-2 gap-4 text-xs">
-                        <div>
-                          <p className="text-slate-400">USD Credit:</p>
-                          <p className="font-bold text-slate-800 dark:text-slate-200">${activeCustomer.balanceUSD.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-slate-400">BDT Credit:</p>
-                          <p className="font-bold text-slate-800 dark:text-slate-200">৳{activeCustomer.balanceBDT.toLocaleString()}</p>
-                        </div>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-brand-blue dark:text-blue-400">Client Information</h4>
+                        <span className="text-[10px] font-mono font-bold text-brand-blue/80 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/40">
+                          {activeCustomer.name} ({activeCustomer.companyName})
+                        </span>
                       </div>
+                      {topupSummaryLoading ? (
+                        <div className="py-3 text-center text-[11px] text-slate-400">
+                          <div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-brand-blue" />
+                          Calculating topup history...
+                        </div>
+                      ) : topupSummary ? (
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-center">
+                          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/40">
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Lifetime Topup USD</p>
+                            <p className="font-black text-slate-900 dark:text-white mt-0.5">${topupSummary.lifetimeTotalTopupUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/40">
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Lifetime Topup BDT</p>
+                            <p className="font-black text-slate-900 dark:text-white mt-0.5">৳{topupSummary.lifetimeTotalTopupBDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/40">
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Current Month USD</p>
+                            <p className="font-black text-slate-900 dark:text-white mt-0.5">${topupSummary.currentMonthTotalTopupUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                          </div>
+                          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-blue-100 dark:border-blue-900/40">
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Current Month BDT</p>
+                            <p className="font-black text-slate-900 dark:text-white mt-0.5">৳{topupSummary.currentMonthTotalTopupBDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">No topup history found for this customer yet.</p>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Ad account picker for the selected platform */}
+                {/* 4. Target Ad Account (assigned to this customer only) */}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Ad Account</label>
                     {platformAccounts.length === 0 ? (
                       <div className="p-4 text-xs text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 rounded-xl">
-                        No available or unassigned {platform} ad accounts found for this client.
-                        Go to <span className="font-bold underline cursor-pointer" onClick={onNavigateToCustomers}>Ad Accounts inventory</span> to add stock.
+                        {selectedCustomerId
+                          ? <>No {platform} ad accounts are currently assigned to this client. Go to <span className="font-bold underline cursor-pointer" onClick={onNavigateToCustomers}>Ad Accounts inventory</span> to assign one.</>
+                          : 'Please select a Group ID / customer first to see their assigned ad accounts.'}
                       </div>
                     ) : (
                       <select
@@ -517,13 +663,10 @@ function SalesView({
                     )}
                   </div>
 
+                  {/* 5. Account / Topup Information (only topups taken after assignment) */}
                   {activeAccount && (() => {
-                    const matchingInvoices = invoices.filter(inv =>
-                      (inv.adAccountId && inv.adAccountId === activeAccount.adAccountId) ||
-                      (inv.adAccountName && inv.adAccountName.toLowerCase() === activeAccount.adAccountName.toLowerCase())
-                    );
-                    const totalUSD = matchingInvoices.reduce((sum, inv) => sum + inv.topupAmountUSD, 0);
-                    const totalBDT = matchingInvoices.reduce((sum, inv) => sum + inv.totalAmountBDT, 0);
+                    const totalUSD = matchingAccountInvoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
+                    const totalBDTUsed = matchingAccountInvoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || 0), 0);
 
                     return (
                       <div className="p-3.5 rounded-xl border border-sky-200 dark:border-sky-800 space-y-2 text-[11px] bg-transparent dark:bg-transparent">
@@ -535,23 +678,27 @@ function SalesView({
                           <span className="text-sky-800 dark:text-sky-300 font-medium">Assigned Card:</span>
                           <span className="font-mono font-bold text-sky-950 dark:text-sky-100">{activeAccount.billingCard || "None Linked"}</span>
                         </div>
+                        <div className="flex justify-between items-center pb-1.5 border-b border-sky-200/80 dark:border-sky-800/80">
+                          <span className="text-sky-800 dark:text-sky-300 font-medium">Assigned To Customer:</span>
+                          <span className="font-mono font-bold text-sky-950 dark:text-sky-100">{activeCustomer?.name || activeAccount.assignedCustomer || "Unassigned"}</span>
+                        </div>
 
                         <div className="pt-1.5 border-t border-sky-200/80 dark:border-sky-800/80 space-y-2">
                           <div className="flex justify-between items-center">
-                            <span className="font-bold text-sky-900 dark:text-sky-200">Ad Account History:</span>
+                            <span className="font-bold text-sky-900 dark:text-sky-200">Topups Since Assignment:</span>
                             <span className="text-[10px] bg-sky-200/80 dark:bg-sky-800 text-sky-900 dark:text-sky-100 px-2 py-0.5 rounded font-bold">
-                              {matchingInvoices.length} {matchingInvoices.length === 1 ? 'top-up' : 'top-ups'}
+                              {matchingAccountInvoices.length} {matchingAccountInvoices.length === 1 ? 'top-up' : 'top-ups'}
                             </span>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 text-center">
                             <div className="bg-transparent dark:bg-transparent p-2.5 rounded-lg border border-sky-200 dark:border-sky-700/60 shadow-xs">
                               <p className="text-[9px] text-sky-800 dark:text-sky-300 font-bold uppercase tracking-wider">Total USD Top-up</p>
-                              <p className="text-xs font-black text-sky-950 dark:text-white mt-0.5">${totalUSD.toLocaleString()}</p>
+                              <p className="text-xs font-black text-sky-950 dark:text-white mt-0.5">${totalUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
                             </div>
                             <div className="bg-transparent dark:bg-transparent p-2.5 rounded-lg border border-sky-200 dark:border-sky-700/60 shadow-xs">
                               <p className="text-[9px] text-sky-800 dark:text-sky-300 font-bold uppercase tracking-wider">Total BDT Spent</p>
-                              <p className="text-xs font-black text-sky-950 dark:text-white mt-0.5">৳{totalBDT.toLocaleString()}</p>
+                              <p className="text-xs font-black text-sky-950 dark:text-white mt-0.5">৳{totalBDTUsed.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
                             </div>
                           </div>
                         </div>
@@ -657,9 +804,17 @@ function SalesView({
                         />
                         <span className="absolute left-3 top-3 text-slate-400 text-xs font-bold">৳</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        Outstanding due: ৳{dueBDT.toLocaleString()}
-                      </span>
+                      {/* Outstanding Due — prominent box */}
+                      <div className={`mt-2 p-2.5 rounded-xl border text-center ${
+                        Number.isFinite(dueBDT) && dueBDT > 0
+                          ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800'
+                          : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                      }`}>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Outstanding Due</p>
+                        <p className={`text-sm font-black mt-0.5 ${Number.isFinite(dueBDT) && dueBDT > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          ৳{Number.isFinite(dueBDT) ? dueBDT.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0.00'}
+                        </p>
+                      </div>
                     </div>
 
                     {/* Topup Status — sits directly under Payment Channel */}
@@ -681,7 +836,7 @@ function SalesView({
                   {/* Payment Screenshot — full width below the main grid */}
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                      Payment Screenshot <span className="text-rose-500">*</span>
+                      Payment Screenshot {hasPaidAmount ? <span className="text-rose-500">*</span> : <span className="normal-case font-semibold text-[10px] text-slate-400">(optional when no amount is paid)</span>}
                     </label>
                     {paymentScreenshot ? (
                       <div className="relative w-full border border-emerald-200 dark:border-emerald-800/60 rounded-xl overflow-hidden bg-emerald-50/40 dark:bg-emerald-950/20 p-2">
@@ -739,15 +894,29 @@ function SalesView({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Auditor Notes</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                      Author Note {!hasPaidAmount && <span className="text-rose-500">*</span>}
+                      {!hasPaidAmount && (
+                        <span className="ml-2 normal-case font-semibold text-[10px] text-amber-600 dark:text-amber-400">
+                          Required when no amount is paid
+                        </span>
+                      )}
+                    </label>
                     <input
                       id="checkout-note"
                       type="text"
-                      placeholder="e.g. Approved via EBL App transfer ref #90123"
-                      className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                      placeholder={hasPaidAmount ? "e.g. Approved via EBL App transfer ref #90123" : "e.g. Customer will settle the outstanding amount on receipt of invoice"}
+                      className={`w-full text-xs p-2.5 border rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 ${
+                        !hasPaidAmount
+                          ? 'border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                      }`}
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                     />
+                    {!hasPaidAmount && !noteText?.trim() && (
+                      <p className="text-[10px] text-rose-500 font-semibold mt-1.5">An Author Note is required when no amount is paid.</p>
+                    )}
                   </div>
 
                 </div>
@@ -772,6 +941,10 @@ function SalesView({
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Customer</p>
                       <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">{activeCustomer?.name || 'N/A'}</p>
                       <p className="text-xs text-brand-blue-deep/70 dark:text-brand-blue-deep/70 font-medium mt-0.5">{activeCustomer?.companyName}</p>
+                      <p className="text-[10px] font-mono font-bold text-brand-blue-deep/70 dark:text-brand-blue-deep/70 mt-1 inline-flex items-center gap-1.5">
+                        <span>Group ID:</span>
+                        <span className="px-1.5 py-0.5 rounded border border-border-blue dark:border-border-blue bg-surface dark:bg-surface">{groupIdCode || '—'}</span>
+                      </p>
                     </div>
                     <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Publisher Platform</p>
@@ -831,16 +1004,28 @@ function SalesView({
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Payment Channel</p>
                       <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">{paymentMethod}</p>
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold mb-1">Topup Status</p>
-                      <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-lg font-extrabold ${
+                      <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-lg font-extrabold border ${
                         topupStatus === 'Successfull'
-                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-700' :
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800' :
                         topupStatus === 'Pending'
-                          ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700'
-                          : 'bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-700'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800'
                       }`}>
                         {topupStatus === 'Successfull' ? 'Successful' : topupStatus}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold mb-1">Payment Status</p>
+                      <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-lg font-extrabold border ${
+                        paymentStatusBadge.label === 'Paid'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
+                          : paymentStatusBadge.label === 'Partially Paid'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-800'
+                      }`}>
+                        {paymentStatusBadge.label}
                       </span>
                     </div>
                   </div>
@@ -893,7 +1078,7 @@ function SalesView({
                   type="button"
                   id="checkout-back"
                   onClick={handlePrevStep}
-                  className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="text-xs font-bold text-white bg-slate-700 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
                 >
                   Go Back
                 </button>
@@ -927,9 +1112,25 @@ function SalesView({
 
         {/* Right column: Order Summary Receipt (span 5) */}
         <div id="checkout-invoice-card" className="lg:col-span-5 bg-surface dark:bg-surface p-6 rounded-2xl border border-border-blue-light dark:border-border-blue-light sticky top-6 shadow-sm">
-          <div className="flex items-center gap-2 pb-4 border-b border-border-blue-light dark:border-border-blue-light mb-6">
-            <Receipt className="text-brand-blue-dark dark:text-brand-blue-dark" size={16} />
-            <h3 className="text-xs font-bold text-brand-blue-deep dark:text-brand-blue-deep uppercase tracking-wider">Live Checkout Invoice</h3>
+          {/* Copy button above the live invoice */}
+          <div className="flex items-center justify-between gap-2 pb-4 border-b border-border-blue-light dark:border-border-blue-light mb-6">
+            <div className="flex items-center gap-2">
+              <Receipt className="text-brand-blue-dark dark:text-brand-blue-dark" size={16} />
+              <h3 className="text-xs font-bold text-brand-blue-deep dark:text-brand-blue-deep uppercase tracking-wider">Live Checkout Invoice</h3>
+            </div>
+            <button
+              id="btn-copy-invoice"
+              type="button"
+              onClick={handleCopyInvoice}
+              className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer active:scale-95 ${
+                copied
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-brand-blue text-white hover:bg-[#154673]'
+              }`}
+            >
+              {copied ? <CopyCheck size={12} /> : <Copy size={12} />}
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
           </div>
 
           {/* Client summary */}
@@ -1072,10 +1273,11 @@ function SalesView({
                     </td>
                     <td className="py-3 pr-4 text-right">
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         onClick={() => {
                           setEditingInvoice({ ...inv });
+                          setEditForm({ ...inv });
                           setShowEditInvoiceModal(true);
                         }}
                         leftIcon={<FileEdit size={11} />}
@@ -1138,61 +1340,98 @@ function SalesView({
 
       {/* Edit Sales Entry Record Modal */}
       <Modal
-        isOpen={showEditInvoiceModal && !!editingInvoice}
+        isOpen={showEditInvoiceModal && !!editForm}
         onClose={() => setShowEditInvoiceModal(false)}
-        title="Edit Sales Entry Record"
+        title={`Edit Sales Entry Record — ${editForm?.invoiceNo || ''}`}
         size="md"
         showCloseButton={false}
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (editingInvoice && onUpdateInvoice) {
-              onUpdateInvoice(editingInvoice);
+            if (!editForm || !editForm.invoiceNo || !onUpdateInvoice) return;
+
+            const total = Math.round(Number(editForm.totalAmountBDT || 0) * 100) / 100;
+            const paid = Math.round(Number(editForm.paidAmountBDT || 0) * 100) / 100;
+            const due = Math.round((total - paid) * 100) / 100;
+
+            const payload = {
+              invoiceNo: editForm.invoiceNo,
+              date: editForm.date || undefined,
+              groupId: editForm.groupId,
+              customerId: editForm.customerId,
+              serviceType: editForm.serviceType,
+              platform: editForm.platform,
+              adAccountName: editForm.adAccountName,
+              adAccountId: editForm.adAccountId,
+              dollarRate: Number(editForm.dollarRate || 0),
+              topupAmountUSD: Number(editForm.topupAmountUSD || 0),
+              totalAmountBDT: total,
+              paidAmountBDT: paid,
+              dueAmountBDT: due,
+              paymentStatus: editForm.paymentStatus || (due <= 0 && paid > 0 ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Due'),
+              paymentMethod: editForm.paymentMethod,
+              topupStatus: editForm.topupStatus,
+              approvalStatus: editForm.approvalStatus,
+              note: editForm.note,
+              paymentScreenshot: editForm.paymentScreenshot || undefined,
+            };
+
+            try {
+              await onUpdateInvoice(payload);
+            } catch (err) {
+              // The hook already surfaced a toast with the error.
+            } finally {
+              setShowEditInvoiceModal(false);
+              setEditingInvoice(null);
+              setEditForm(null);
             }
-            setShowEditInvoiceModal(false);
-            setEditingInvoice(null);
           }}
           className="space-y-4"
           id="form-edit-invoice"
         >
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Group ID Code</label>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Group ID</label>
               <input
                 type="text"
-                value={editingInvoice?.groupId || editingInvoice?.invoiceNo || ''}
-                onChange={(e) => editingInvoice && setEditingInvoice({ ...editingInvoice, groupId: e.target.value })}
+                value={editForm?.groupId || ''}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, groupId: e.target.value } : prev)}
                 className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Topup Amount ($)</label>
-              <input
-                type="number"
-                value={editingInvoice?.topupAmountUSD ?? 0}
-                onChange={(e) => editingInvoice && setEditingInvoice({ ...editingInvoice, topupAmountUSD: Number(e.target.value) })}
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-              />
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Customer</label>
+              <select
+                value={editForm?.customerId || ''}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, customerId: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="" disabled>Choose Customer</option>
+                {(editForm?.groupId ? customers.filter(c => c.groupId === editForm.groupId) : customers).map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.companyName})</option>
+                ))}
+              </select>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Ad Account Name</label>
-            <input
-              type="text"
-              value={editingInvoice?.adAccountName ?? ''}
-              onChange={(e) => editingInvoice && setEditingInvoice({ ...editingInvoice, adAccountName: e.target.value })}
-              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Service Type</label>
+              <select
+                value={editForm?.serviceType || 'Ad Account Topup'}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, serviceType: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Ad Account Topup">Ad Account Topup</option>
+                <option value="Others">Others</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Platform</label>
               <select
-                value={editingInvoice?.platform ?? 'Facebook'}
-                onChange={(e) => editingInvoice && setEditingInvoice({ ...editingInvoice, platform: e.target.value })}
+                value={editForm?.platform ?? 'Facebook'}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, platform: e.target.value } : prev)}
                 className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
               >
                 <option value="Facebook">Facebook</option>
@@ -1201,19 +1440,159 @@ function SalesView({
                 <option value="Snapchat">Snapchat</option>
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Status</label>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Ad Account Name</label>
+              <input
+                type="text"
+                value={editForm?.adAccountName ?? ''}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, adAccountName: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Ad Account ID</label>
+              <input
+                type="text"
+                value={editForm?.adAccountId ?? ''}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, adAccountId: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Date</label>
+              <input
+                type="date"
+                value={editForm?.date ? String(editForm.date).slice(0, 10) : ''}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, date: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Dollar Rate</label>
+              <input
+                type="number"
+                value={editForm?.dollarRate ?? 0}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, dollarRate: Number(e.target.value) } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Topup Amount (USD)</label>
+              <input
+                type="number"
+                value={editForm?.topupAmountUSD ?? 0}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, topupAmountUSD: Number(e.target.value) } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Total Amount (BDT)</label>
+              <input
+                type="number"
+                value={editForm?.totalAmountBDT ?? 0}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, totalAmountBDT: Number(e.target.value) } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Paid Amount (BDT)</label>
+              <input
+                type="number"
+                value={editForm?.paidAmountBDT ?? 0}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, paidAmountBDT: Number(e.target.value) } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Due Amount (BDT) — auto</label>
+              <input
+                type="text"
+                readOnly
+                disabled
+                value={`৳${Math.round((Number(editForm?.totalAmountBDT || 0) - Number(editForm?.paidAmountBDT || 0)) * 100) / 100}`}
+                className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-900 text-slate-500 rounded-lg border border-slate-200 dark:border-slate-800 font-bold cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Method</label>
               <select
-                value={editingInvoice?.status || 'Active'}
-                onChange={(e) => editingInvoice && setEditingInvoice({ ...editingInvoice, status: e.target.value })}
+                value={editForm?.paymentMethod || ''}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, paymentMethod: e.target.value } : prev)}
                 className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
               >
-                <option value="Active">Active</option>
-                <option value="Sold">Sold</option>
-                <option value="Disable">Disable</option>
-                <option value="Available">Available</option>
+                <option value="" disabled>Choose Method</option>
+                {paymentMethods.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
               </select>
             </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Status</label>
+              <select
+                value={editForm?.paymentStatus || 'Paid'}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, paymentStatus: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Paid">Paid</option>
+                <option value="Partially Paid">Partially Paid</option>
+                <option value="Due">Due</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Topup Status</label>
+              <select
+                value={editForm?.topupStatus || 'Successfull'}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, topupStatus: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Successfull">Successful</option>
+                <option value="Pending">Pending Sync</option>
+                <option value="Failed">Failed / Declined</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Approval Status</label>
+              <select
+                value={editForm?.approvalStatus || 'Pending'}
+                onChange={(e) => setEditForm(prev => prev ? { ...prev, approvalStatus: e.target.value } : prev)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Approved">Approved</option>
+                <option value="Pending">Pending</option>
+                <option value="Waiting For Feedback">Waiting For Feedback</option>
+                <option value="Final Approval Review">Final Approval Review</option>
+                <option value="Finally Rejected">Finally Rejected</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Author Note</label>
+            <input
+              type="text"
+              value={editForm?.note || ''}
+              onChange={(e) => setEditForm(prev => prev ? { ...prev, note: e.target.value } : prev)}
+              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+            />
           </div>
 
           <div className="custom-modal-footer flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">

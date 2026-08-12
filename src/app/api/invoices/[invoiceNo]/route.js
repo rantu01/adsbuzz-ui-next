@@ -27,5 +27,6 @@ export const PUT = asyncHandler(async (request, { params }) => {
 
   const invoice = await updateInvoice(invoiceNo, body);
   cacheInvalidate("GET:/api/invoices");
+  cacheInvalidate("GET:/api/customers");
   return ok({ message: "Invoice updated.", invoice });
 });

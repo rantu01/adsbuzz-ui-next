@@ -12,6 +12,31 @@ export const DEFAULT_DOLLAR_RATE = 132;
 export const DEFAULT_CREDIT_LIMIT = 1000;
 export const INVOICE_PAYMENT_STATUS = ["Paid", "Due", "Partially Paid"];
 
+// Topup audit workflow states. `Rejected` is a legacy state kept for
+// backward compatibility with old data; new audits use the full workflow.
+export const AUDIT_ACTIVE_STATES = ["Pending", "Waiting For Feedback", "Final Approval Review"];
+export const AUDIT_STATUSES = [
+  ...AUDIT_ACTIVE_STATES,
+  "Approved",
+  "Finally Rejected",
+  "Rejected",
+];
+
+/**
+ * Builds a single audit log entry. Kept small and stable so the View Log modal
+ * can render a clean timeline (creation, approvals, rejections, feedback,
+ * final actions) with actor + timestamp.
+ */
+function auditEntry(action, status, { reason = "", actor = null } = {}) {
+  return {
+    action,
+    status,
+    reason: reason ? String(reason).trim() : "",
+    actor: actor || null,
+    at: new Date().toISOString(),
+  };
+}
+
 // The legacy migration below is expensive (per-customer x per-log scan + per-invoice
 // upserts). It must never run on every list read. We de-duplicate it with a
 // module-level promise and skip it entirely once the migration has already been
@@ -145,7 +170,12 @@ export async function syncLegacyInvoices() {
 
       await invoicesCollection.updateOne(
         { legacyId },
-        { $set: invoice },
+        {
+          $set: invoice,
+          $setOnInsert: {
+            auditLog: [auditEntry("created", "Approved", { actor: null, reason: invoice.note || "" })],
+          },
+        },
         { upsert: true }
       );
       synced += 1;
@@ -208,6 +238,52 @@ export async function listInvoices({ search = "", paymentStatus = "", customerId
   return items;
 }
 
+/**
+ * Real lifetime + current-month topup totals for a customer, computed from the
+ * actual invoice collection (legacy-synced + manual sales). Never hardcoded.
+ */
+export async function getCustomerTopupSummary(customerId) {
+  if (!customerId) return null;
+  const db = await getDb();
+  const invoicesCollection = db.collection("invoices");
+  const invoices = await invoicesCollection.find({ customerId }).toArray();
+
+  const now = new Date();
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  let lifetimeTotalTopupUSD = 0;
+  let lifetimeTotalTopupBDT = 0;
+  let currentMonthTotalTopupUSD = 0;
+  let currentMonthTotalTopupBDT = 0;
+  let lifetimeTopupCount = 0;
+  let currentMonthTopupCount = 0;
+
+  for (const inv of invoices) {
+    const usd = Number(inv.topupAmountUSD || 0);
+    const bdt = Number(inv.totalAmountBDT || inv.paidAmountBDT || 0);
+    lifetimeTotalTopupUSD += usd;
+    lifetimeTotalTopupBDT += bdt;
+    lifetimeTopupCount += 1;
+
+    const d = String(inv.date || inv.createdAtRaw || "").slice(0, 7);
+    if (d === monthPrefix) {
+      currentMonthTotalTopupUSD += usd;
+      currentMonthTotalTopupBDT += bdt;
+      currentMonthTopupCount += 1;
+    }
+  }
+
+  return {
+    customerId,
+    lifetimeTotalTopupUSD: round2(lifetimeTotalTopupUSD),
+    lifetimeTotalTopupBDT: round2(lifetimeTotalTopupBDT),
+    currentMonthTotalTopupUSD: round2(currentMonthTotalTopupUSD),
+    currentMonthTotalTopupBDT: round2(currentMonthTotalTopupBDT),
+    lifetimeTopupCount,
+    currentMonthTopupCount,
+  };
+}
+
 async function getNextInvoiceNo() {
   const db = await getDb();
   const result = await db.collection("counters").findOneAndUpdate(
@@ -220,6 +296,21 @@ async function getNextInvoiceNo() {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   return `ADB ${year}${month}${String(counter.seq).padStart(3, "0")}`;
+}
+
+/**
+ * Reads the next invoice number WITHOUT consuming the counter. Used by the
+ * Sales page live-invoice preview so the number shown matches the one that
+ * will actually be assigned on submit (barring concurrent sales).
+ */
+export async function peekNextInvoiceNo() {
+  const db = await getDb();
+  const counter = await db.collection("counters").findOne({ _id: "invoiceId" });
+  const seq = Number(counter?.seq || 0) + 1;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `ADB ${year}${month}${String(seq).padStart(3, "0")}`;
 }
 
 function mapInvoice({ _id, ...rest }) {
@@ -239,6 +330,7 @@ export async function createInvoice(data = {}) {
   const dueAmountBDT = Math.round((Number(data.dueAmountBDT ?? (totalAmountBDT - paidAmountBDT)) || 0) * 100) / 100;
   const paymentStatus = data.paymentStatus || computePaymentStatus({ totalAmountBDT, paidAmountBDT, dueAmountBDT });
   const date = data.date || new Date().toISOString().split("T")[0];
+  const approvalStatus = String(data.approvalStatus || "Pending");
 
   const invoice = {
     invoiceNo: await getNextInvoiceNo(),
@@ -257,12 +349,15 @@ export async function createInvoice(data = {}) {
     paymentStatus,
     paymentMethod: String(data.paymentMethod || "").trim() || "N/A",
     topupStatus: String(data.topupStatus || "Successfull"),
-    approvalStatus: String(data.approvalStatus || "Approved"),
+    approvalStatus,
     customerId: String(data.customerId || "").trim(),
     groupId: String(data.groupId || "").trim(),
     note: String(data.note || "").trim(),
     paymentScreenshot: data.paymentScreenshot || "",
     source: "manual",
+    auditLog: [
+      auditEntry("created", approvalStatus, { actor: data.auditActor || null, reason: String(data.note || "") }),
+    ],
     createdAtRaw: new Date(),
     updatedAt: new Date(),
   };
@@ -289,13 +384,24 @@ export async function createInvoice(data = {}) {
   return mapInvoice(invoice);
 }
 
-export async function listPendingTopups({ search = "" } = {}) {
+/**
+ * Topup ledger. Every invoice is a topup record. Passing `onlyPending: true`
+ * restricts to records still awaiting finance approval or API sync (the audit
+ * queue); the default returns the full topup history so new sales from the
+ * Sales page are always visible on the Topups page.
+ */
+export async function listTopups({ search = "", onlyPending = false } = {}) {
   await ensureLegacyInvoicesSynced();
   const invoicesCollection = await getCollection("invoices");
 
-  const filter = {
-    $or: [{ approvalStatus: "Pending" }, { topupStatus: "Pending" }],
-  };
+  const filter = onlyPending
+    ? {
+        $or: [
+          { approvalStatus: { $in: AUDIT_ACTIVE_STATES } },
+          { topupStatus: "Pending" },
+        ],
+      }
+    : {};
   const cursor = invoicesCollection.find(filter).sort({ createdAtRaw: -1, date: -1 });
   const invoices = await cursor.toArray();
 
@@ -312,6 +418,10 @@ export async function listPendingTopups({ search = "" } = {}) {
   }
 
   return items;
+}
+
+export async function listPendingTopups({ search = "" } = {}) {
+  return listTopups({ search, onlyPending: true });
 }
 
 export async function getInvoiceByNo(invoiceNo) {
@@ -381,30 +491,71 @@ export async function updateInvoice(invoiceNo, data = {}) {
   return mapInvoice(updated);
 }
 
-export async function approveInvoice(invoiceNo) {
+/**
+ * Shared audit transition: moves an invoice's approvalStatus to the target
+ * state, applies any extra field changes, and appends an audit log entry.
+ */
+async function applyAuditTransition(invoiceNo, { action, status, reason = "", actor = null, set = {} }) {
   const invoicesCollection = await getCollection("invoices");
   const existing = await invoicesCollection.findOne({ invoiceNo });
   if (!existing) return null;
 
   await invoicesCollection.updateOne(
     { invoiceNo },
-    { $set: { approvalStatus: "Approved", paymentStatus: "Paid", dueAmountBDT: 0, updatedAt: new Date() } }
+    {
+      $set: { approvalStatus: status, updatedAt: new Date(), ...set },
+      $push: { auditLog: auditEntry(action, status, { reason, actor }) },
+    }
   );
   const updated = await invoicesCollection.findOne({ invoiceNo });
   return mapInvoice(updated);
 }
 
-export async function rejectInvoice(invoiceNo) {
-  const invoicesCollection = await getCollection("invoices");
-  const existing = await invoicesCollection.findOne({ invoiceNo });
-  if (!existing) return null;
+export async function approveInvoice(invoiceNo, { actor = null } = {}) {
+  return applyAuditTransition(invoiceNo, {
+    action: "approved",
+    status: "Approved",
+    actor,
+    set: { paymentStatus: "Paid", dueAmountBDT: 0 },
+  });
+}
 
-  await invoicesCollection.updateOne(
-    { invoiceNo },
-    { $set: { approvalStatus: "Rejected", paymentStatus: "Due", updatedAt: new Date() } }
-  );
-  const updated = await invoicesCollection.findOne({ invoiceNo });
-  return mapInvoice(updated);
+export async function rejectInvoice(invoiceNo, { reason = "", actor = null } = {}) {
+  return applyAuditTransition(invoiceNo, {
+    action: "rejected",
+    status: "Waiting For Feedback",
+    reason,
+    actor,
+    set: { paymentStatus: "Due" },
+  });
+}
+
+export async function submitFeedback(invoiceNo, { feedback = "", actor = null } = {}) {
+  return applyAuditTransition(invoiceNo, {
+    action: "feedback_submitted",
+    status: "Final Approval Review",
+    reason: feedback,
+    actor,
+  });
+}
+
+export async function finalApproveInvoice(invoiceNo, { actor = null } = {}) {
+  return applyAuditTransition(invoiceNo, {
+    action: "final_approved",
+    status: "Approved",
+    actor,
+    set: { paymentStatus: "Paid", dueAmountBDT: 0 },
+  });
+}
+
+export async function finalRejectInvoice(invoiceNo, { reason = "", actor = null } = {}) {
+  return applyAuditTransition(invoiceNo, {
+    action: "final_rejected",
+    status: "Finally Rejected",
+    reason,
+    actor,
+    set: { paymentStatus: "Due" },
+  });
 }
 
 export async function syncTopupStatus(invoiceNo, status) {

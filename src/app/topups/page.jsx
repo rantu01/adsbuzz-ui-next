@@ -12,6 +12,9 @@ export default function TopupsPage() {
     error,
     approveInvoice,
     rejectInvoice,
+    submitFeedback,
+    finalApproveInvoice,
+    finalRejectInvoice,
     syncTopupStatus,
     refetch,
   } = useTopups(app.triggerToast);
@@ -25,6 +28,9 @@ export default function TopupsPage() {
       customers={app.customers}
       onApproveInvoice={approveInvoice}
       onRejectInvoice={rejectInvoice}
+      onSubmitFeedback={submitFeedback}
+      onFinalApproveInvoice={finalApproveInvoice}
+      onFinalRejectInvoice={finalRejectInvoice}
       onSyncTopupStatus={syncTopupStatus}
     />
   );

@@ -808,10 +808,10 @@ export const INITIAL_VENDORS = [
 ];
 
 export const INITIAL_SETUPS = [
-  { groupId: "GC-350", userId: "USER-EXPRESS-1", adName: "Express Shine Hair Video Campaign", adAccountId: "206893199112660", platform: "Facebook", dollarRate: 135, monthlySpending: 200, status: "Active" },
-  { groupId: "GC-237", userId: "USER-MOZUMDER-2", adName: "Mozumder Eid Collection Boost", adAccountId: "2575053032825341", platform: "Facebook", dollarRate: 133, monthlySpending: 200, status: "Active" },
-  { groupId: "GC-269", userId: "USER-BIJOY-4", adName: "Bijoy Summer Fest Carousel", adAccountId: "3293528637619220", platform: "Facebook", dollarRate: 134, monthlySpending: 3000, status: "Active" },
-  { groupId: "GC-351", userId: "USER-BOOSTPAPA-1", adName: "BoostPapa Reseller Spark 01", adAccountId: "7528078034021318663", platform: "TikTok", dollarRate: 138, monthlySpending: 2000, status: "Active" }
+  { groupId: "GC-350", userId: "USER-EXPRESS-1", adName: "Express Shine Hair Video Campaign", adAccountId: "206893199112660", platform: "Facebook", dollarRate: 135, monthlySpending: 200, serviceType: "Ad Account Sales Setup", serviceDetails: "", serviceFee: 0, service: "", status: "Active" },
+  { groupId: "GC-237", userId: "USER-MOZUMDER-2", adName: "Mozumder Eid Collection Boost", adAccountId: "2575053032825341", platform: "Facebook", dollarRate: 133, monthlySpending: 200, serviceType: "Ad Account Sales Setup", serviceDetails: "", serviceFee: 0, service: "", status: "Active" },
+  { groupId: "GC-269", userId: "USER-BIJOY-4", adName: "Bijoy Summer Fest Carousel", adAccountId: "3293528637619220", platform: "Facebook", dollarRate: 134, monthlySpending: 3000, serviceType: "Ad Account Sales Setup", serviceDetails: "", serviceFee: 0, service: "", status: "Active" },
+  { groupId: "GC-351", userId: "USER-BOOSTPAPA-1", adName: "BoostPapa Reseller Spark 01", adAccountId: "7528078034021318663", platform: "TikTok", dollarRate: 138, monthlySpending: 2000, serviceType: "Ad Account Sales Setup", serviceDetails: "", serviceFee: 0, service: "", status: "Active" }
 ];
 
 export const INITIAL_ACTIVITIES = [

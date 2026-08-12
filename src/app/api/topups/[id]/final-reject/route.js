@@ -1,6 +1,6 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, optionalString } from "@/utils/validate";
-import { rejectInvoice } from "@/models/invoiceModel";
+import { finalRejectInvoice } from "@/models/invoiceModel";
 import { getRequestActor } from "@/utils/auditActor";
 
 export const PATCH = asyncHandler(async (request, { params }) => {
@@ -13,9 +13,9 @@ export const PATCH = asyncHandler(async (request, { params }) => {
   }
 
   const actor = await getRequestActor(request);
-  const invoice = await rejectInvoice(id, { reason, actor });
+  const invoice = await finalRejectInvoice(id, { reason, actor });
   if (!invoice) {
     return notFound("Topup invoice not found.");
   }
-  return ok({ message: "Topup rejected. Waiting for customer feedback.", invoice });
+  return ok({ message: "Topup finally rejected.", invoice });
 });
