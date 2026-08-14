@@ -142,7 +142,7 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteS
               showIcon={false}
               placeholder="Search series by name or code..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(value) => setSearch(value)}
             />
           </div>
           <div className="overflow-x-auto">

@@ -17,7 +17,9 @@ function SalesPageInner() {
     <SalesView
       customers={app.customers}
       adAccounts={app.adAccounts}
+      socialAdAccounts={app.socialAdAccounts}
       invoices={app.invoices}
+      setups={app.setups}
       paymentMethods={app.settings.paymentMethods}
       onSubmitSale={app.handleExecuteSale}
       onUpdateInvoice={app.handleUpdateInvoice}

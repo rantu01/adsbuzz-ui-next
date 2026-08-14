@@ -67,7 +67,9 @@ function CustomersView({
   error,
   onRetry,
   adAccounts,
+  socialAdAccounts = [],
   invoices,
+  setups = [],
   onAddCustomer,
   onUpdateCustomer,
   onUpdateCustomerNotes,
@@ -75,6 +77,8 @@ function CustomersView({
   onDeleteCustomer,
   onAssignAdAccount,
   onUnassignAdAccount,
+  onAssignSocialAdAccount,
+  onUnassignSocialAdAccount,
   onTriggerTopup,
   onTriggerAssign,
   autoOpenAddModal = false,
@@ -124,13 +128,16 @@ function CustomersView({
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId) || customers[0];
 
   // Precompute per-customer aggregates once so filtering/rendering avoids repeated
-  // O(n) scans of adAccounts/invoices and customers on every render.
+  // O(n) scans of adAccounts/invoices and customers on every render. Social ad
+  // accounts (loaded from the Ad Account Inventory page) are merged in so they
+  // surface in the "Assigned Ad Accounts" tab exactly like main inventory accounts.
   const customerStats = useMemo(() => {
+    const allAccounts = [...(socialAdAccounts || []), ...(adAccounts || [])];
     const map = {};
     for (const cust of customers) {
       const id = cust.id;
       const gid = cust.groupId;
-      const accounts = adAccounts.filter(a => a.assignedCustomer === id || (a.userGroupCode && gid === a.userGroupCode));
+      const accounts = allAccounts.filter(a => a.assignedCustomer === id || (a.userGroupCode && gid === a.userGroupCode));
       const invs = invoices.filter(inv => inv.customerId === id || (inv.groupId && gid === inv.groupId));
       map[id] = {
         accounts,
@@ -141,7 +148,7 @@ function CustomersView({
       };
     }
     return map;
-  }, [customers, adAccounts, invoices]);
+  }, [customers, adAccounts, socialAdAccounts, invoices]);
 
   const getCustomerStats = useCallback(
     (custId) => {
@@ -222,8 +229,11 @@ function CustomersView({
   }, []);
 
   const assignableAdAccounts = useMemo(() => {
-    return adAccounts.filter(acc => !acc.assignedCustomer);
-  }, [adAccounts]);
+    // Unassigned accounts from BOTH the main inventory and the social collection
+    // so accounts loaded on the Ad Account Inventory page are assignable/searchable here.
+    const combined = [...(socialAdAccounts || []), ...(adAccounts || [])];
+    return combined.filter(acc => !acc.assignedCustomer);
+  }, [adAccounts, socialAdAccounts]);
 
   const handleOpenAssignModal = useCallback(() => {
     setAssignTargetAccountId('');
@@ -239,7 +249,10 @@ function CustomersView({
     if (!selectedCustomer || !assignTargetAccountId) return;
     setAssigning(true);
     try {
-      await onAssignAdAccount(assignTargetAccountId, selectedCustomer.id);
+      const isSocial = (socialAdAccounts || []).some(a => a.adAccountId === assignTargetAccountId);
+      const assignHandler = isSocial ? onAssignSocialAdAccount : onAssignAdAccount;
+      if (!assignHandler) throw new Error('Assignment handler missing.');
+      await assignHandler(assignTargetAccountId, selectedCustomer.id);
       setShowAssignModal(false);
       setAssignTargetAccountId('');
     } catch {
@@ -248,6 +261,17 @@ function CustomersView({
       setAssigning(false);
     }
   };
+
+  // Route the "Unassign" action in the customer details pane to the social
+  // handler when the assigned account lives in the social collection.
+  const handlePaneUnassign = useCallback(
+    (adAccountId) => {
+      const isSocial = (socialAdAccounts || []).some(a => a.adAccountId === adAccountId);
+      const unassignHandler = isSocial ? onUnassignSocialAdAccount : onUnassignAdAccount;
+      if (unassignHandler) unassignHandler(adAccountId);
+    },
+    [socialAdAccounts, onUnassignAdAccount, onUnassignSocialAdAccount],
+  );
 
   const handleConfirmDelete = useCallback(() => {
     if (!selectedCustomer) return;
@@ -563,7 +587,8 @@ function CustomersView({
             onRequestAssign={handleOpenAssignModal}
             onDelete={handleRequestDelete}
             onNotesSave={handlePaneNotesSave}
-            onUnassignAdAccount={onUnassignAdAccount}
+            onUnassignAdAccount={handlePaneUnassign}
+            setups={setups}
           />
         ) : null}
 

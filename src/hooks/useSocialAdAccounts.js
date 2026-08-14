@@ -96,6 +96,80 @@ export function useSocialAdAccounts(triggerToast) {
     [socialAdAccounts, triggerToast],
   );
 
+  // Assignment uses the shared /api/ad-accounts/:id/assign + unassign endpoints
+  // (which resolve both regular and social ad accounts), so the same "assign &
+  // mark Sold" semantics apply across the Customers and Ad Account Inventory pages.
+  const assignSocialAdAccount = useCallback(
+    async (adAccountId, customerId) => {
+      const prev = socialAdAccounts.find(a => a.adAccountId === adAccountId || a._id === adAccountId);
+      if (prev) {
+        setSocialAdAccounts(prevList =>
+          prevList.map(a =>
+            a.adAccountId === adAccountId || a._id === adAccountId
+              ? { ...a, accountStatus: 'Sold', assignedCustomer: customerId }
+              : a,
+          ),
+        );
+      }
+      try {
+        const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(adAccountId)}/assign`, {
+          method: 'POST',
+          body: JSON.stringify({ customerId }),
+        });
+        const saved = data.adAccount;
+        setSocialAdAccounts(prevList =>
+          prevList.map(a =>
+            a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a,
+          ),
+        );
+        triggerToast('success', 'Ad Account Assigned', `${saved.adAccountName} assigned to customer ${saved.assignedCustomer}.`);
+        return saved;
+      } catch (err) {
+        if (prev) {
+          setSocialAdAccounts(prevList =>
+            prevList.map(a => (a.adAccountId === adAccountId || a._id === adAccountId ? prev : a)),
+          );
+        }
+        triggerToast('error', 'Assignment Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [socialAdAccounts, triggerToast],
+  );
+
+  const unassignSocialAdAccount = useCallback(
+    async (adAccountId) => {
+      const prev = socialAdAccounts.find(a => a._id === adAccountId || a.adAccountId === adAccountId);
+      if (prev) {
+        setSocialAdAccounts(prevList =>
+          prevList.map(a =>
+            a._id === adAccountId || a.adAccountId === adAccountId
+              ? { ...a, accountStatus: 'Available', assignedCustomer: '' }
+              : a,
+          ),
+        );
+      }
+      try {
+        const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(adAccountId)}/unassign`, {
+          method: 'POST',
+        });
+        const saved = data.adAccount;
+        setSocialAdAccounts(prevList => prevList.map(a => (a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a)));
+        triggerToast('success', 'Ad Account Unassigned', `${saved.adAccountName} returned to the available pool.`);
+        return saved;
+      } catch (err) {
+        if (prev) {
+          setSocialAdAccounts(prevList =>
+            prevList.map(a => (a._id === adAccountId || a.adAccountId === adAccountId ? prev : a)),
+          );
+        }
+        triggerToast('error', 'Unassign Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [socialAdAccounts, triggerToast],
+  );
+
   const refetch = useCallback(() => {
     setLoading(true);
     return fetchSocialAdAccounts();
@@ -108,6 +182,8 @@ export function useSocialAdAccounts(triggerToast) {
     addSocialAdAccount,
     updateSocialAdAccount,
     deleteSocialAdAccount,
+    assignSocialAdAccount,
+    unassignSocialAdAccount,
     refetch,
   };
 }

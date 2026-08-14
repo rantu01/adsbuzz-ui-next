@@ -20,7 +20,9 @@ function CustomersPageInner() {
       error={app.customersError}
       onRetry={app.refetchCustomers}
       adAccounts={app.adAccounts}
+      socialAdAccounts={app.socialAdAccounts}
       invoices={app.invoices}
+      setups={app.setups}
       onAddCustomer={app.handleAddCustomer}
       onUpdateCustomer={app.handleUpdateCustomer}
       onUpdateCustomerNotes={app.handleUpdateCustomerNotes}
@@ -28,6 +30,8 @@ function CustomersPageInner() {
       onDeleteCustomer={app.handleDeleteCustomer}
       onAssignAdAccount={app.handleAssignAdAccount}
       onUnassignAdAccount={app.handleUnassignAdAccount}
+      onAssignSocialAdAccount={app.handleAssignSocialAdAccount}
+      onUnassignSocialAdAccount={app.handleUnassignSocialAdAccount}
       onTriggerTopup={app.handleTriggerTopup}
       onTriggerAssign={app.handleTriggerAssign}
       autoOpenAddModal={autoOpenAdd || app.pendingOpenAddCustomer}

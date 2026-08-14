@@ -186,7 +186,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, error, onRetry }) 
           maxWidthClass="w-full sm:max-w-xs"
           placeholder="Search invoice or group code..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(value) => setSearch(value)}
         />
         <div className="flex gap-2 w-full sm:w-auto">
           {(['All', 'Paid', 'Due', 'Partially Paid']).map(st => {

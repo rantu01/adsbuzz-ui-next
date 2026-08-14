@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Star,
   Briefcase,
@@ -33,6 +33,7 @@ function CustomerDetailsPane({
   onDelete,
   onNotesSave,
   onUnassignAdAccount,
+  setups = [],
 }) {
   const [activeTab, setActiveTab] = useState('accounts');
   const [editingNotes, setEditingNotes] = useState(false);
@@ -40,6 +41,55 @@ function CustomerDetailsPane({
   const [invoicePage, setInvoicePage] = useState(1);
 
   const { activities: historyActivities, loading: historyLoading } = useCustomerActivities(customer?.id);
+
+  // Active "Ad Account Sales Setup" entries keyed by adAccountId for this customer's group.
+  // If a setup record exists for the account + group the account is "configured"; otherwise we
+  // surface the "Please Setup sales rules for this Ad Account" prompt.
+  const configuredSetupByAccount = useMemo(() => {
+    const map = new Map();
+    (setups || []).forEach((s) => {
+      if (s.serviceType !== 'Ad Account Sales Setup' || s.status !== 'Active' || !s.adAccountId) return;
+      if (!map.has(s.adAccountId)) map.set(s.adAccountId, new Set());
+      map.get(s.adAccountId).add(s.groupId);
+    });
+    return map;
+  }, [setups]);
+
+  // Latest Active Sale Setup record (by adAccountId + customer group) so the
+  // "Rate" shown for an assigned account reflects the Dollar Rate configured in
+  // Sales Setup instead of the ad account's bootstrap/default value.
+  const setupRecordByAccountAndGroup = useMemo(() => {
+    const map = new Map();
+    (setups || []).forEach((s) => {
+      if (s.serviceType !== 'Ad Account Sales Setup' || s.status !== 'Active' || !s.adAccountId) return;
+      map.set(`${s.adAccountId}|${s.groupId}`, s);
+    });
+    return map;
+  }, [setups]);
+
+  const getConfiguredSetup = useCallback(
+    (acc) => setupRecordByAccountAndGroup.get(`${acc.adAccountId}|${customer?.groupId}`) || null,
+    [setupRecordByAccountAndGroup, customer?.groupId],
+  );
+
+  // Effective dollar rate for an account: the Sales Setup configured rate wins;
+  // fall back to the account's own rate when no setup exists for it.
+  const getDisplayRate = useCallback(
+    (acc) => {
+      const configured = getConfiguredSetup(acc)?.dollarRate;
+      return Number(configured) > 0 ? configured : acc.dollarRate;
+    },
+    [getConfiguredSetup],
+  );
+
+  const isSalesSetupConfigured = useCallback(
+    (acc) => {
+      const groups = configuredSetupByAccount.get(acc.adAccountId);
+      if (!groups) return false;
+      return groups.has(customer?.groupId);
+    },
+    [configuredSetupByAccount, customer?.groupId],
+  );
 
   const TYPE_ICON = {
     sale: <ArrowUpRight size={11} className="text-brand-orange" />,
@@ -267,8 +317,23 @@ function CustomerDetailsPane({
 
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center text-[10px]">
                       <span className="text-slate-400">Platform: <PlatformText platform={acc.platform} className="font-semibold text-[10px]" /></span>
-                      <span className="text-slate-400">Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">৳{acc.dollarRate}</span></span>
+                      <span className="text-slate-400">Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">৳{getDisplayRate(acc)}</span></span>
                     </div>
+
+                    {!isSalesSetupConfigured(acc) && (
+                      <div className="mt-3 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-500/10">
+                        <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                          <AlertCircle size={11} className="flex-shrink-0" />
+                          Please Setup sales rules for this Ad Account
+                        </p>
+                        <a
+                          href="/sale-setup"
+                          className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-brand-blue dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          Configure in Sale Setup <ArrowUpRight size={10} />
+                        </a>
+                      </div>
+                    )}
 
                     <div className="mt-3 flex justify-end">
                       <Button

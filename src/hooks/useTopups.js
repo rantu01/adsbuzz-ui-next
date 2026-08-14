@@ -59,11 +59,11 @@ export function useTopups(triggerToast) {
   );
 
   const submitFeedback = useCallback(
-    async (invoiceNo, feedback) => {
+    async (invoiceNo, feedback, screenshot = '') => {
       try {
         const data = await apiFetch(`/api/topups/${encodeURIComponent(invoiceNo)}/feedback`, {
           method: 'PATCH',
-          body: JSON.stringify({ feedback }),
+          body: JSON.stringify({ feedback, screenshot }),
         });
         setInvoices(prev => prev.map(inv => (inv.invoiceNo === invoiceNo ? data.invoice : inv)));
         triggerToast('info', 'Feedback Submitted', `Invoice ${invoiceNo} moved to final approval review.`);

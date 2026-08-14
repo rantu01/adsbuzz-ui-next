@@ -186,3 +186,65 @@ export async function socialAdAccountExists(adAccountId) {
   const doc = await collection.findOne({ adAccountId });
   return !!doc;
 }
+
+/**
+ * Marks a social ad account as Sold and assigns it to a customer. Mirrors the
+ * main ad-accounts assignment semantics so the same behaviour works on both the
+ * Ad Account Inventory and Customers pages.
+ */
+export async function markSocialAccountSold(identifier, customerId) {
+  const collection = await getCollection("socialAdAccounts");
+  const doc = await getSocialAdAccountById(identifier);
+  if (!doc) return null;
+
+  const nextCustomer = String(customerId || "") || doc.assignedCustomer || "";
+  const isSameCustomer = Boolean(doc.assignedCustomer) && doc.assignedCustomer === nextCustomer;
+  const assignedAt = isSameCustomer && doc.assignedAt ? doc.assignedAt : new Date();
+
+  const { ObjectId } = await import("mongodb");
+  await collection.updateOne(
+    { _id: new ObjectId(doc._id) },
+    {
+      $set: {
+        accountStatus: "Sold",
+        status: "sold",
+        assignedCustomer: nextCustomer,
+        assignedAt,
+        updatedAt: new Date(),
+      },
+    }
+  );
+  const saved = await collection.findOne({ _id: new ObjectId(doc._id) });
+  logger.info(`markSocialAccountSold: ${doc.adAccountName} assigned to ${nextCustomer}.`);
+  return toUiAccount(saved);
+}
+
+/**
+ * Unassigns a social ad account, returning it to the available pool. Only the
+ * account record changes — existing sales/history is never touched.
+ */
+export async function unassignSocialAccount(identifier) {
+  const collection = await getCollection("socialAdAccounts");
+  const doc = await getSocialAdAccountById(identifier);
+  if (!doc) return null;
+
+  const { ObjectId } = await import("mongodb");
+  await collection.updateOne(
+    { _id: new ObjectId(doc._id) },
+    {
+      $set: {
+        accountStatus: "Available",
+        status: "available",
+        assignedCustomer: "",
+        uid: "",
+        assignedBy: null,
+        assignedAt: null,
+        unassignedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }
+  );
+  const saved = await collection.findOne({ _id: new ObjectId(doc._id) });
+  logger.info(`unassignSocialAccount: ${doc.adAccountName} returned to the available pool.`);
+  return toUiAccount(saved);
+}

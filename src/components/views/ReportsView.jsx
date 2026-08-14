@@ -411,7 +411,7 @@ function ReportsView({ invoices, onTriggerExport }) {
             maxWidthClass="relative w-full sm:max-w-xs"
             placeholder="Search invoice or account..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(value) => setSearch(value)}
           />
         </div>
 

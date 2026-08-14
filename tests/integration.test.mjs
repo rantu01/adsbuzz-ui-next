@@ -15,6 +15,12 @@ import * as feedbackRoute from '@/app/api/topups/[id]/feedback/route';
 import * as finalApproveRoute from '@/app/api/topups/[id]/final-approve/route';
 import * as finalRejectRoute from '@/app/api/topups/[id]/final-reject/route';
 import * as topupsRejectRoute from '@/app/api/topups/[id]/reject/route';
+import * as adAccountsRoute from '@/app/api/ad-accounts/route';
+import * as assignRoute from '@/app/api/ad-accounts/[id]/assign/route';
+import * as unassignRoute from '@/app/api/ad-accounts/[id]/unassign/route';
+import * as socialAdAccountsRoute from '@/app/api/social-ad-accounts/route';
+import * as saleSetupsRoute from '@/app/api/sale-setups/route';
+import * as saleSetupDetailRoute from '@/app/api/sale-setups/[id]/route';
 
 const BASE = 'http://localhost';
 
@@ -36,6 +42,14 @@ function topupParams(id) {
   return { params: Promise.resolve({ id }) };
 }
 
+function accountParams(id) {
+  return { params: Promise.resolve({ id }) };
+}
+
+function setupParams(id) {
+  return { params: Promise.resolve({ id }) };
+}
+
 before(async () => {
   const db = await getDb();
   await db.dropDatabase();
@@ -43,6 +57,72 @@ before(async () => {
 
 after(async () => {
   await closeDb();
+});
+
+test('E2E: social ad account (Ad Account Inventory) can be assigned and marked Sold', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', {
+      method: 'POST',
+      body: { name: 'Social Assign Client', email: 'socialassign@example.com', companyName: 'Social Assign Ltd', groupId: 'GC-SOCIAL-ASSIGN' },
+    }),
+  );
+  assert.equal(custRes.status, 201);
+  const customer = (await custRes.json()).customer;
+
+  const socialRes = await socialAdAccountsRoute.POST(
+    makeRequest('/api/social-ad-accounts', {
+      method: 'POST',
+      body: { adAccountId: 'acc-social-001', adAccountName: 'ADS_Social_001', platform: 'TikTok', accountStatus: 'Available', seriesId: 'SRC-TK' },
+    }),
+  );
+  assert.equal(socialRes.status, 201);
+  const social = (await socialRes.json()).adAccount;
+  assert.equal(social.source, 'social');
+
+  // Assignment via the shared ad-accounts endpoint must resolve social accounts
+  // (the fix for the "Ad account not found" assignment failure) and mark them Sold.
+  const assignRes = await assignRoute.POST(
+    makeRequest(`/api/ad-accounts/${social.adAccountId}/assign`, { method: 'POST', body: { customerId: customer.id } }),
+    accountParams(social.adAccountId),
+  );
+  assert.equal(assignRes.status, 200);
+  const assigned = (await assignRes.json()).adAccount;
+  assert.equal(assigned.assignedCustomer, customer.id);
+  assert.equal(assigned.accountStatus, 'Sold');
+
+  const listRes = await socialAdAccountsRoute.GET(makeRequest('/api/social-ad-accounts'));
+  assert.equal(listRes.status, 200);
+  const list = await listRes.json();
+  const persisted = list.adAccounts.find((a) => a.adAccountId === social.adAccountId);
+  assert.ok(persisted, 'social account still listed after assignment');
+  assert.equal(persisted.assignedCustomer, customer.id);
+  assert.equal(persisted.accountStatus, 'Sold');
+
+  // Unassign returns it to the available pool.
+  const unassignRes = await unassignRoute.POST(
+    makeRequest(`/api/ad-accounts/${social.adAccountId}/unassign`, { method: 'POST' }),
+    accountParams(social.adAccountId),
+  );
+  assert.equal(unassignRes.status, 200);
+  const unassigned = (await unassignRes.json()).adAccount;
+  assert.equal(unassigned.assignedCustomer, '');
+  assert.equal(unassigned.accountStatus, 'Available');
+});
+
+test('POST /api/ad-accounts/:id/assign requires a customer', async () => {
+  const res = await assignRoute.POST(
+    makeRequest('/api/ad-accounts/whatever/assign', { method: 'POST', body: { customerId: '' } }),
+    accountParams('whatever'),
+  );
+  assert.equal(res.status, 400);
+});
+
+test('POST /api/ad-accounts/:id/assign returns 404 for unknown account', async () => {
+  const res = await assignRoute.POST(
+    makeRequest('/api/ad-accounts/DOES-NOT-EXIST/assign', { method: 'POST', body: { customerId: 'CUST-404' } }),
+    accountParams('DOES-NOT-EXIST'),
+  );
+  assert.equal(res.status, 404);
 });
 
 test('GET /api/settings returns system settings', async () => {
@@ -273,12 +353,13 @@ test('E2E: full audit workflow — reject, feedback, final reject', async () => 
 
   // Feedback → Final Approval Review
   const feedRes = await feedbackRoute.PATCH(
-    makeRequest(`/api/topups/${invoice.invoiceNo}/feedback`, { method: 'PATCH', body: { feedback: 'Customer resent a valid screenshot.' } }),
+    makeRequest(`/api/topups/${invoice.invoiceNo}/feedback`, { method: 'PATCH', body: { feedback: 'Customer resent a valid screenshot.', screenshot: '/uploads/feedback-proof.png' } }),
     topupParams(invoice.invoiceNo),
   );
   assert.equal(feedRes.status, 200);
   const reviewed = (await feedRes.json()).invoice;
   assert.equal(reviewed.approvalStatus, 'Final Approval Review');
+  assert.ok(reviewed.screenshots.some((s) => s.url === '/uploads/feedback-proof.png' && s.source === 'feedback'));
 
   // Final reject → Finally Rejected
   const finalRes = await finalRejectRoute.PATCH(
@@ -366,4 +447,111 @@ test('GET /api/customers supports page/limit pagination', async () => {
   assert.ok(body.total >= 1);
   assert.equal(body.customers.length, 1);
   assert.equal(body.totalPages, body.total);
+});
+
+test('POST /api/sale-setups stores a custom dollar rate', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', {
+      method: 'POST',
+      body: { name: 'Rate Client', email: 'rate@example.com', companyName: 'Rate Ltd', groupId: 'GC-RATE-TEST' },
+    }),
+  );
+  const customer = (await custRes.json()).customer;
+
+  const res = await saleSetupsRoute.POST(
+    makeRequest('/api/sale-setups', {
+      method: 'POST',
+      body: {
+        groupId: customer.groupId,
+        serviceType: 'Ad Account Sales Setup',
+        adAccountId: 'acc-rate-001',
+        adName: 'ADS_Rate_001',
+        platform: 'Facebook',
+        dollarRate: 140,
+        monthlySpending: 800,
+        status: 'Active',
+      },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const { setup } = await res.json();
+  assert.equal(setup.dollarRate, 140);
+  assert.equal(setup.adAccountId, 'acc-rate-001');
+});
+
+test('E2E: unassigning an ad account auto-terminates its Sale Setup but keeps history', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', {
+      method: 'POST',
+      body: { name: 'Unassign Client', email: 'unassign@example.com', companyName: 'Unassign Ltd', groupId: 'GC-UNASSIGN-TEST' },
+    }),
+  );
+  assert.equal(custRes.status, 201);
+  const customer = (await custRes.json()).customer;
+
+  const accRes = await adAccountsRoute.POST(
+    makeRequest('/api/ad-accounts', {
+      method: 'POST',
+      body: { adAccountId: 'acc-unassign-001', adAccountName: 'ADS_Unassign_001', platform: 'Facebook', accountStatus: 'Available', dollarRate: 130, monthlySpending: 500 },
+    }),
+  );
+  assert.equal(accRes.status, 201);
+  const account = (await accRes.json()).adAccount;
+
+  const assignRes = await assignRoute.POST(
+    makeRequest(`/api/ad-accounts/${account.adAccountId}/assign`, { method: 'POST', body: { customerId: customer.id } }),
+    accountParams(account.adAccountId),
+  );
+  assert.equal(assignRes.status, 200);
+
+  const setupRes = await saleSetupsRoute.POST(
+    makeRequest('/api/sale-setups', {
+      method: 'POST',
+      body: {
+        groupId: customer.groupId,
+        serviceType: 'Ad Account Sales Setup',
+        adAccountId: account.adAccountId,
+        adName: account.adAccountName,
+        platform: 'Facebook',
+        dollarRate: 130,
+        monthlySpending: 500,
+        status: 'Active',
+      },
+    }),
+  );
+  assert.equal(setupRes.status, 201);
+  const { setup } = await setupRes.json();
+  assert.equal(setup.status, 'Active');
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: { customerId: customer.id, adAccountId: account.adAccountId, adAccountName: account.adAccountName, topupAmountUSD: 100, dollarRate: 130, approvalStatus: 'Pending', topupStatus: 'Successfull', note: 'History must survive unassign' },
+    }),
+  );
+  assert.equal(invRes.status, 201);
+  const { invoice } = await invRes.json();
+
+  const unassignRes = await unassignRoute.POST(
+    makeRequest(`/api/ad-accounts/${account.adAccountId}/unassign`, { method: 'POST' }),
+    accountParams(account.adAccountId),
+  );
+  assert.equal(unassignRes.status, 200);
+  const unassigned = (await unassignRes.json()).adAccount;
+  assert.equal(unassigned.assignedCustomer, '');
+
+  const setupGetRes = await saleSetupDetailRoute.GET(
+    makeRequest(`/api/sale-setups/${setup.id}`),
+    setupParams(setup.id),
+  );
+  assert.equal(setupGetRes.status, 200);
+  const { setup: terminated } = await setupGetRes.json();
+  assert.equal(terminated.status, 'Terminated');
+
+  const invListRes = await invoicesRoute.GET(makeRequest('/api/invoices', { search: `search=${invoice.invoiceNo}` }));
+  const invList = await invListRes.json();
+  const saved = invList.invoices.find((i) => i.invoiceNo === invoice.invoiceNo);
+  assert.ok(saved, 'sales history must remain after unassign');
+  assert.equal(saved.topupAmountUSD, 100);
+  assert.equal(saved.customerId, customer.id);
 });

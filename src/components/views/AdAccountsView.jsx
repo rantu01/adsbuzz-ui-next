@@ -38,6 +38,8 @@ function AdAccountsView({
   onDeleteSocialAdAccount,
   onAssignAdAccount,
   onUnassignAdAccount,
+  onAssignSocialAdAccount,
+  onUnassignSocialAdAccount,
   onUpdateAccountStatus,
   onBulkUpdateStatus,
   autoOpenAddModal = false,
@@ -79,6 +81,7 @@ function AdAccountsView({
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignCustomerId, setAssignCustomerId] = useState('');
   const [assignSearchTerm, setAssignSearchTerm] = useState('');
+  const [assigning, setAssigning] = useState(false);
 
   // Form validation state
   const [addFormErrors, setAddFormErrors] = useState({});
@@ -322,18 +325,30 @@ function AdAccountsView({
     setShowAssignModal(true);
   };
 
-  const handleAssignAccount = () => {
-    if (!assignTarget || !assignCustomerId || !onAssignAdAccount) return;
-    onAssignAdAccount(assignTarget.adAccountId, assignCustomerId);
-    setShowAssignModal(false);
-    setAssignTarget(null);
-    setAssignCustomerId('');
-    setAssignSearchTerm('');
+  const handleAssignAccount = async () => {
+    if (!assignTarget || !assignCustomerId) return;
+    const isSocial = assignTarget.source === 'social';
+    const assignHandler = isSocial ? onAssignSocialAdAccount : onAssignAdAccount;
+    if (!assignHandler) return;
+    setAssigning(true);
+    try {
+      await assignHandler(assignTarget.adAccountId, assignCustomerId);
+      setShowAssignModal(false);
+      setAssignTarget(null);
+      setAssignCustomerId('');
+      setAssignSearchTerm('');
+    } catch (err) {
+      // Keep the modal open so the user can retry or pick a different customer.
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleUnassignAccount = (acc) => {
-    if (!acc || !onUnassignAdAccount) return;
-    onUnassignAdAccount(acc.adAccountId);
+    if (!acc) return;
+    const unassignHandler = acc.source === 'social' ? onUnassignSocialAdAccount : onUnassignAdAccount;
+    if (!unassignHandler) return;
+    unassignHandler(acc.adAccountId);
   };
 
   const getCustomerName = (custId) => {
@@ -346,6 +361,22 @@ function AdAccountsView({
     if (!custId) return null;
     return customers.find(cust => cust.id === custId) || null;
   };
+
+  // Live search for the assignment popup — matching users are shown below the
+  // search box as the user types (no separate dropdown needed to pick them).
+  const matchingCustomers = customers.filter(c => {
+    const q = assignSearchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.id || '').toLowerCase().includes(q) ||
+      (c.groupId || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q)
+    );
+  });
+  const selectedAssignUser = assignCustomerId
+    ? getAssignedCustomer(assignCustomerId)
+    : null;
 
   const totalAdAccounts = adAccounts.length;
   const soldAccounts = adAccounts.filter(acc => getEffectiveAccountStatus(acc) === 'Sold').length;
@@ -1148,42 +1179,68 @@ function AdAccountsView({
 
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Assign To Customer</label>
-            <select
-              id="assign-customer-id"
-              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-              value={assignCustomerId}
-              onChange={(e) => setAssignCustomerId(e.target.value)}
-            >
-              <option value="">Select Customer...</option>
-              {assignSearchTerm === '' ? (
-                customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-                ))
-              ) : (
-                customers
-                  .filter(c =>
-                    c.name.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
-                    (c.groupId || '').toLowerCase().includes(assignSearchTerm.toLowerCase())
-                  )
-                  .map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-                  ))
-              )}
-            </select>
-            {customers.length === 0 && (
+            {customers.length === 0 ? (
               <p className="text-[11px] text-slate-400 italic mt-1">No customers available to assign.</p>
+            ) : (
+              <>
+                {matchingCustomers.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic mt-1">No users match your search.</p>
+                ) : (
+                  <ul className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800">
+                    {matchingCustomers.map(c => {
+                      const isSelected = assignCustomerId === c.id;
+                      return (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            onClick={() => setAssignCustomerId(c.id)}
+                            className={`w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-left text-xs transition-colors ${
+                              isSelected
+                                ? 'bg-blue-50 dark:bg-blue-950/40'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                            }`}
+                          >
+                            <span className="flex flex-col min-w-0">
+                              <span className={`font-bold truncate ${isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-slate-200'}`}>
+                                {c.name}
+                              </span>
+                              {c.groupId && (
+                                <span className="text-[10px] font-mono text-slate-400 truncate">
+                                  Group: {c.groupId}
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex items-center gap-2 shrink-0">
+                              <span className="text-[10px] font-mono text-slate-400">{c.id}</span>
+                              {isSelected && <CheckCircle2 size={14} className="text-blue-600 dark:text-blue-400" />}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
             )}
-            {customers.length > 0 && assignSearchTerm !== '' && customers.filter(c =>
-              c.name.toLowerCase().includes(assignSearchTerm.toLowerCase()) ||
-              (c.groupId || '').toLowerCase().includes(assignSearchTerm.toLowerCase())
-            ).length === 0 && (
-              <p className="text-[11px] text-slate-400 italic mt-1">No users match your search.</p>
+            {selectedAssignUser && (
+              <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-1.5 font-semibold">
+                Selected: {selectedAssignUser.name} ({selectedAssignUser.id})
+                {selectedAssignUser.groupId ? ` · Group ${selectedAssignUser.groupId}` : ''}
+              </p>
             )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <Button variant="ghost" onClick={() => { setShowAssignModal(false); setAssignTarget(null); setAssignCustomerId(''); setAssignSearchTerm(''); }}>Cancel</Button>
-            <Button type="submit" disabled={!assignCustomerId}>Confirm Assignment</Button>
+            <Button variant="ghost" onClick={() => { setShowAssignModal(false); setAssignTarget(null); setAssignCustomerId(''); setAssignSearchTerm(''); }} disabled={assigning}>Cancel</Button>
+            <Button
+              type="submit"
+              disabled={!assignCustomerId || assigning}
+              leftIcon={assigning ? (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/50 border-t-white" />
+              ) : undefined}
+            >
+              {assigning ? 'Assigning…' : 'Confirm Assignment'}
+            </Button>
           </div>
         </form>
       </Modal>

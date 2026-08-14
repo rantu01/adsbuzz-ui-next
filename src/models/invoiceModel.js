@@ -354,6 +354,7 @@ export async function createInvoice(data = {}) {
     groupId: String(data.groupId || "").trim(),
     note: String(data.note || "").trim(),
     paymentScreenshot: data.paymentScreenshot || "",
+    screenshots: Array.isArray(data.screenshots) ? data.screenshots : [],
     source: "manual",
     auditLog: [
       auditEntry("created", approvalStatus, { actor: data.auditActor || null, reason: String(data.note || "") }),
@@ -495,7 +496,7 @@ export async function updateInvoice(invoiceNo, data = {}) {
  * Shared audit transition: moves an invoice's approvalStatus to the target
  * state, applies any extra field changes, and appends an audit log entry.
  */
-async function applyAuditTransition(invoiceNo, { action, status, reason = "", actor = null, set = {} }) {
+async function applyAuditTransition(invoiceNo, { action, status, reason = "", actor = null, set = {}, push = {} }) {
   const invoicesCollection = await getCollection("invoices");
   const existing = await invoicesCollection.findOne({ invoiceNo });
   if (!existing) return null;
@@ -504,7 +505,7 @@ async function applyAuditTransition(invoiceNo, { action, status, reason = "", ac
     { invoiceNo },
     {
       $set: { approvalStatus: status, updatedAt: new Date(), ...set },
-      $push: { auditLog: auditEntry(action, status, { reason, actor }) },
+      $push: { auditLog: auditEntry(action, status, { reason, actor }), ...push },
     }
   );
   const updated = await invoicesCollection.findOne({ invoiceNo });
@@ -530,12 +531,22 @@ export async function rejectInvoice(invoiceNo, { reason = "", actor = null } = {
   });
 }
 
-export async function submitFeedback(invoiceNo, { feedback = "", actor = null } = {}) {
+export async function submitFeedback(invoiceNo, { feedback = "", screenshot = "", actor = null } = {}) {
+  const push = {};
+  if (screenshot) {
+    push.screenshots = {
+      url: String(screenshot).trim(),
+      source: "feedback",
+      actor: actor || null,
+      at: new Date().toISOString(),
+    };
+  }
   return applyAuditTransition(invoiceNo, {
     action: "feedback_submitted",
     status: "Final Approval Review",
     reason: feedback,
     actor,
+    push,
   });
 }
 

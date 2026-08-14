@@ -407,7 +407,7 @@ function InsightsView({ invoices, adAccounts, vendors, cards = [], series = [], 
                 showIcon={false}
                 placeholder="Search month (e.g. Apr 25)..."
                 value={earlySearch}
-                onChange={(e) => setEarlySearch(e.target.value)}
+                onChange={(value) => setEarlySearch(value)}
                 className="!pl-8 !pr-3 font-bold text-black dark:text-white"
               />
             </div>
@@ -793,7 +793,7 @@ function InsightsView({ invoices, adAccounts, vendors, cards = [], series = [], 
             <SearchBar
               placeholder="Search ad account name or ID..."
               value={accountSearch}
-              onChange={(e) => setAccountSearch(e.target.value)}
+              onChange={(value) => setAccountSearch(value)}
               className="!py-2.5 font-bold text-black dark:text-white"
             />
 

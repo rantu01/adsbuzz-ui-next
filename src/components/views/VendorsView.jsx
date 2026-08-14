@@ -1,5 +1,5 @@
  'use client';
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Plus, FileEdit, DollarSign, User, Check, Trash2, History, Edit3, CalendarDays } from 'lucide-react';
 import { VENDOR_TYPES } from '@/constants/vendorTypes';
 import Modal from '@/components/ui/Modal';
@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import SearchBar from '@/components/ui/SearchBar';
 import StatCard from '@/components/common/StatCard';
+import Pagination from '@/components/common/Pagination';
 
 function formatBdt(value, rate) {
   const usd = Number(value) || 0;
@@ -50,7 +51,28 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const [overviewMonth, setOverviewMonth] = useState('');
   const [overviewVendor, setOverviewVendor] = useState('');
 
-  const filtered = vendors.filter(v => v.name.toLowerCase().includes(search.toLowerCase()) || v.id.toLowerCase().includes(search.toLowerCase()));
+  const [vendorPage, setVendorPage] = useState(1);
+  const VENDOR_PAGE_SIZE = 10;
+
+  const query = search.trim().toLowerCase();
+  const filtered = vendors.filter(v => {
+    if (!query) return true;
+    return [v.name, v.id, v.vendorType, v.email, v.phone, v.status]
+      .filter(Boolean)
+      .some(field => String(field).toLowerCase().includes(query));
+  });
+
+  useEffect(() => {
+    setVendorPage(1);
+  }, [search]);
+
+  const vendorTotalPages = Math.max(1, Math.ceil(filtered.length / VENDOR_PAGE_SIZE));
+  const safeVendorPage = Math.min(vendorPage, vendorTotalPages);
+  const pagedVendors = filtered.slice(
+    (safeVendorPage - 1) * VENDOR_PAGE_SIZE,
+    safeVendorPage * VENDOR_PAGE_SIZE,
+  );
+
   const activeVendor = vendors.find(v => v.id === selectedVendorId) || vendors[0];
 
   const currentMonth = new Date().toISOString().substring(0, 7);
@@ -310,11 +332,11 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
               maxWidthClass="w-full"
               placeholder="Search vendor..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(value) => setSearch(value)}
             />
           </div>
           <div id="vendors-list-box" className="space-y-1">
-            {filtered.map(v => (
+            {pagedVendors.map(v => (
               <div
                 key={v.id}
                 id={`vendor-item-${v.id}`}
@@ -352,7 +374,22 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 </div>
               </div>
             ))}
+            {filtered.length === 0 && (
+              <div className="p-6 text-center">
+                <User size={20} className="mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">No vendors match your search</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Try a different name, ID, type, or email.</p>
+              </div>
+            )}
           </div>
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                Showing {(safeVendorPage - 1) * VENDOR_PAGE_SIZE + 1}–{Math.min(safeVendorPage * VENDOR_PAGE_SIZE, filtered.length)} of {filtered.length} vendors
+              </span>
+            </div>
+          )}
+          <Pagination page={safeVendorPage} totalPages={vendorTotalPages} onPageChange={setVendorPage} />
         </div>
 
           {activeVendor && (
@@ -826,9 +863,8 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Amount (BDT)</label>
             <input
-              type="number"
-              required
-              min="0.01"
+              type="text"
+              inputMode="decimal"
               value={editPaymentData?.editAmountBDT ?? ''}
               onChange={(e) => editPaymentData && setEditPaymentData({ ...editPaymentData, editAmountBDT: e.target.value })}
               placeholder="৳0.00"

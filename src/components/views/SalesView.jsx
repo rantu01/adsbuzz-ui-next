@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users,
@@ -22,7 +22,8 @@ import {
   Image as ImageIcon,
   X as XIcon,
   Copy,
-  CopyCheck
+  CopyCheck,
+  Search
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
@@ -38,7 +39,9 @@ const STEP_HEADERS = [
 function SalesView({
   customers,
   adAccounts,
+  socialAdAccounts = [],
   invoices = [],
+  setups = [],
   paymentMethods,
   onSubmitSale,
   onUpdateInvoice,
@@ -49,8 +52,11 @@ function SalesView({
   const [currentStep, setCurrentStep] = useState(initialCheckoutStep ?? 1);
   
   // Service Type & Group ID Code
-  const [serviceType, setServiceType] = useState('Ad Account Topup');
+  const [serviceType, setServiceType] = useState('');
   const [groupIdCode, setGroupIdCode] = useState('');
+  // Group ID search box — the selected group is never pre-populated; the user
+  // must manually pick a Group ID (see "Please select a Group ID" prompt).
+  const [groupIdSearch, setGroupIdSearch] = useState('');
 
   // Build deduplicated list of available Group IDs (from existing customers + sale setups)
   const groupIdOptions = React.useMemo(() => {
@@ -65,6 +71,28 @@ function SalesView({
     () => customers.filter(c => !groupIdCode || c.groupId === groupIdCode),
     [customers, groupIdCode]
   );
+
+  // Group IDs filtered by the search term typed into the Group ID search box
+  const filteredGroupOptions = React.useMemo(() => {
+    const q = groupIdSearch.trim().toLowerCase();
+    if (!q) return groupIdOptions;
+    return groupIdOptions.filter(id => id.toLowerCase().includes(q));
+  }, [groupIdOptions, groupIdSearch]);
+
+  const handleSelectGroup = (gid) => {
+    setGroupIdCode(gid);
+    setGroupIdSearch(gid);
+    const inGroup = customers.filter(c => c.groupId === gid);
+    const keep = inGroup.find(c => c.id === selectedCustomerId);
+    setSelectedCustomerId(keep ? keep.id : (inGroup[0] ? inGroup[0].id : ''));
+    setValidationError('');
+  };
+
+  const handleClearGroup = () => {
+    setGroupIdCode('');
+    setGroupIdSearch('');
+    setSelectedCustomerId('');
+  };
 
   // Live preview of the next invoice number (DB-backed, read without consuming it)
   const [previewInvoiceNo, setPreviewInvoiceNo] = useState('');
@@ -97,17 +125,8 @@ function SalesView({
   }, [currentPage, totalPages]);
 
   // Checkout State
-  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId || customers[0]?.id || '');
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId || '');
   const [platform, setSelectedPlatform] = useState('Facebook');
-
-  // When a customer is pre-selected (e.g. from the Customers page), sync the group
-  useEffect(() => {
-    if (selectedCustomerId) {
-      const c = customers.find(x => x.id === selectedCustomerId);
-      if (c && c.groupId) setGroupIdCode(c.groupId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCustomerId]);
 
   // Real topup totals fetched from the customer's topup history in the database
   const [topupSummary, setTopupSummary] = useState(null);
@@ -195,9 +214,13 @@ function SalesView({
 
   // Selected entities
   const activeCustomer = customers.find(c => c.id === selectedCustomerId);
-  
+
+  // Merge social accounts (loaded from the Ad Account Inventory page) with the main
+  // inventory so accounts from BOTH collections can be used in the checkout flow.
+  const allAccounts = useMemo(() => [...(socialAdAccounts || []), ...(adAccounts || [])], [adAccounts, socialAdAccounts]);
+
   // Accounts matching selected platform AND assigned to the selected customer
-  const platformAccounts = adAccounts.filter(acc =>
+  const platformAccounts = allAccounts.filter(acc =>
     acc.platform === platform &&
     acc.assignedCustomer === selectedCustomerId
   );
@@ -205,11 +228,50 @@ function SalesView({
   // True when the customer actually paid something (Paid Amount > 0)
   const hasPaidAmount = Number.isFinite(paidBDT) && paidBDT > 0;
 
+  // Active "Ad Account Sales Setup" records keyed by adAccountId. The rate/values
+  // configured on /sale-setup must win over the account's bootstrap values.
+  const saleSetupByAccount = useMemo(() => {
+    const index = new Map();
+    const byGroup = new Map();
+    (setups || []).forEach((s) => {
+      if (s.serviceType !== 'Ad Account Sales Setup' || s.status !== 'Active' || !s.adAccountId) return;
+      if (!index.has(s.adAccountId)) index.set(s.adAccountId, s);
+      const gk = `${s.adAccountId}|${s.groupId}`;
+      if (!byGroup.has(gk)) byGroup.set(gk, s);
+    });
+    return { index, byGroup };
+  }, [setups]);
+
+  // The configured Sales Setup for an account: exact customer-group match wins,
+  // otherwise fall back to any active setup for that account.
+  const getConfiguredSetupFor = useCallback(
+    (acc) => {
+      if (!acc) return null;
+      const { index, byGroup } = saleSetupByAccount;
+      if (activeCustomer?.groupId) {
+        const groupMatch = byGroup.get(`${acc.adAccountId}|${activeCustomer.groupId}`);
+        if (groupMatch) return groupMatch;
+      }
+      return index.get(acc.adAccountId) || null;
+    },
+    [saleSetupByAccount, activeCustomer?.groupId],
+  );
+
+  // Effective dollar rate for an account: the Sale Setup configured rate wins
+  // (mirrors the Customers page so the same rules appear across the app).
+  const getEffectiveRate = useCallback(
+    (acc) => {
+      const configured = getConfiguredSetupFor(acc)?.dollarRate;
+      return Number(configured) > 0 ? configured : acc?.dollarRate || 132;
+    },
+    [getConfiguredSetupFor],
+  );
+
   // Auto-set the first account when platform changes or customer changes
   useEffect(() => {
     if (platformAccounts.length > 0) {
       setSelectedAccountId(platformAccounts[0].adAccountId);
-      setDollarRate(platformAccounts[0].dollarRate || 132);
+      setDollarRate(getEffectiveRate(platformAccounts[0]));
     } else {
       setSelectedAccountId('');
       setDollarRate(132);
@@ -217,7 +279,9 @@ function SalesView({
   }, [platform, selectedCustomerId]);
 
   // When selected account changes, update the loaded rate
-  const activeAccount = adAccounts.find(acc => acc.adAccountId === selectedAccountId);
+  const activeAccount = allAccounts.find(acc => acc.adAccountId === selectedAccountId);
+
+  const activeAccountSetup = getConfiguredSetupFor(activeAccount);
 
   // Topups taken by the selected account AFTER it was assigned to this customer
   const matchingAccountInvoices = React.useMemo(() => {
@@ -245,12 +309,12 @@ function SalesView({
 
   useEffect(() => {
     if (activeAccount) {
-      const rate = activeAccount.dollarRate || 132;
+      const rate = getEffectiveRate(activeAccount);
       setDollarRate(rate);
       // Default: customer has paid the full BDT total so status is "Paid"
       setPaidBDT(Math.round(topupAmountUSD * rate * 100) / 100);
     }
-  }, [selectedAccountId, activeAccount]);
+  }, [selectedAccountId, activeAccount, activeAccountSetup]);
 
   // Handle live calculations
   useEffect(() => {
@@ -282,6 +346,14 @@ function SalesView({
 
   const handleNextStep = () => {
     if (currentStep === 1) {
+      if (!serviceType) {
+        setValidationError('Please select a service type before continuing.');
+        return;
+      }
+      if (!groupIdCode) {
+        setValidationError('Please select a Group ID before continuing.');
+        return;
+      }
       if (!selectedCustomerId) {
         setValidationError('Please select a customer before continuing.');
         return;
@@ -338,6 +410,14 @@ function SalesView({
     let tempStep = currentStep;
     while (tempStep < stepId) {
       if (tempStep === 1) {
+        if (!serviceType) {
+          setValidationError('Please select a service type before continuing.');
+          return;
+        }
+        if (!groupIdCode) {
+          setValidationError('Please select a Group ID before continuing.');
+          return;
+        }
         if (!selectedCustomerId) {
           setValidationError('Please select a customer before continuing.');
           return;
@@ -512,7 +592,7 @@ function SalesView({
 
                 {/* 1. Service Type */}
                 <div className="space-y-2">
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Service Type</label>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Select Service Type</label>
                   <div className="flex gap-4 items-center">
                     <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-200">
                       <input
@@ -537,32 +617,66 @@ function SalesView({
                       Others
                     </label>
                   </div>
+                  {!serviceType && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Please select a service type to continue.</p>
+                  )}
                 </div>
 
-                {/* 2. Group ID + Platform */}
+                {/* 2. Group ID Search + Platform */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Group ID</label>
-                    <select
-                      id="checkout-group-id"
-                      required
-                      value={groupIdCode}
-                      onChange={(e) => {
-                        const gid = e.target.value;
-                        setGroupIdCode(gid);
-                        const firstInGroup = customers.find(c => c.groupId === gid);
-                        setSelectedCustomerId(firstInGroup ? firstInGroup.id : '');
-                      }}
-                      className="w-full text-xs p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-medium"
-                    >
-                      <option value="" disabled>Select Group ID</option>
-                      {groupIdOptions.map(id => (
-                        <option key={id} value={id}>{id}</option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-slate-400 mt-1.5">
-                      {customersInGroup.length} customer{customersInGroup.length === 1 ? '' : 's'} in this group.
-                    </p>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Select Group ID</label>
+                    {groupIdCode ? (
+                      <div className="flex items-center justify-between gap-3 p-3 border border-brand-blue dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl">
+                        <span className="text-xs font-bold text-brand-blue dark:text-blue-300 font-mono truncate">{groupIdCode}</span>
+                        <button
+                          type="button"
+                          onClick={handleClearGroup}
+                          className="text-[10px] font-bold text-brand-blue dark:text-blue-300 hover:underline cursor-pointer shrink-0"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <input
+                            id="checkout-group-search"
+                            type="text"
+                            placeholder="Please select / search a Group ID..."
+                            value={groupIdSearch}
+                            onChange={(e) => { setGroupIdSearch(e.target.value); setGroupIdCode(''); setSelectedCustomerId(''); }}
+                            className="w-full text-xs pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+                          />
+                          <Search className="absolute left-3 top-3 text-slate-400" size={14} />
+                        </div>
+                        {filteredGroupOptions.length > 0 ? (
+                          <ul className="mt-1.5 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                            {filteredGroupOptions.map(id => (
+                              <li key={id}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectGroup(id)}
+                                  className="w-full text-left px-3 py-2 text-xs font-mono font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+                                >
+                                  {id}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 italic mt-1.5">No group IDs match your search.</p>
+                        )}
+                      </>
+                    )}
+                    {!groupIdCode && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 font-semibold">Please select a Group ID to continue.</p>
+                    )}
+                    {groupIdCode && (
+                      <p className="text-[10px] text-slate-400 mt-1.5">
+                        {customersInGroup.length} customer{customersInGroup.length === 1 ? '' : 's'} in this group.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Platform</label>
@@ -586,7 +700,8 @@ function SalesView({
                     <select
                       id="checkout-customer-select"
                       required
-                      className="w-full text-xs p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                      disabled={!groupIdCode}
+                      className="w-full text-xs p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       value={selectedCustomerId}
                       onChange={(e) => setSelectedCustomerId(e.target.value)}
                     >
@@ -595,12 +710,15 @@ function SalesView({
                         <option key={c.id} value={c.id}>{c.name} ({c.companyName})</option>
                       ))}
                     </select>
+                    {!groupIdCode && (
+                      <p className="text-[10px] text-slate-400 italic mt-1.5">Select a Group ID first to choose a customer.</p>
+                    )}
                   </div>
 
                   {activeCustomer && (
                     <div className="p-4 rounded-xl border border-blue-50 dark:border-blue-950/20 bg-blue-50/20 dark:bg-blue-950/10 space-y-3">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-brand-blue dark:text-blue-400">Client Information</h4>
+                        <h4 className="text-xs font-bold text-brand-blue dark:text-blue-400">Customer Information</h4>
                         <span className="text-[10px] font-mono font-bold text-brand-blue/80 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/40">
                           {activeCustomer.name} ({activeCustomer.companyName})
                         </span>
@@ -656,7 +774,7 @@ function SalesView({
                       >
                         {platformAccounts.map(acc => (
                           <option key={acc.adAccountId} value={acc.adAccountId}>
-                            {acc.adAccountName} (ID: ...{acc.adAccountId.slice(-6)}) - Rate: ৳{acc.dollarRate}
+                            {acc.adAccountName} (ID: ...{acc.adAccountId.slice(-6)}) - Rate: ৳{getEffectiveRate(acc)}
                           </option>
                         ))}
                       </select>
@@ -679,14 +797,20 @@ function SalesView({
                           <span className="font-mono font-bold text-sky-950 dark:text-sky-100">{activeAccount.billingCard || "None Linked"}</span>
                         </div>
                         <div className="flex justify-between items-center pb-1.5 border-b border-sky-200/80 dark:border-sky-800/80">
-                          <span className="text-sky-800 dark:text-sky-300 font-medium">Assigned To Customer:</span>
-                          <span className="font-mono font-bold text-sky-950 dark:text-sky-100">{activeCustomer?.name || activeAccount.assignedCustomer || "Unassigned"}</span>
+                          <span className="text-sky-800 dark:text-sky-300 font-medium">Platform:</span>
+                          <span className="font-bold text-sky-950 dark:text-sky-100">{activeAccount.platform || platform}</span>
                         </div>
+                        {activeAccountSetup && (
+                          <div className="flex justify-between items-center pb-1.5 border-b border-sky-200/80 dark:border-sky-800/80">
+                            <span className="text-sky-800 dark:text-sky-300 font-medium">Sales Setup:</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">Rate ৳{activeAccountSetup.dollarRate}{Number(activeAccountSetup.monthlySpending) > 0 ? ` · Spend $${activeAccountSetup.monthlySpending}` : ''}</span>
+                          </div>
+                        )}
 
                         <div className="pt-1.5 border-t border-sky-200/80 dark:border-sky-800/80 space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="font-bold text-sky-900 dark:text-sky-200">Topups Since Assignment:</span>
-                            <span className="text-[10px] bg-sky-200/80 dark:bg-sky-800 text-sky-900 dark:text-sky-100 px-2 py-0.5 rounded font-bold">
+                            <span className="text-[10px]  text-sky-900 dark:text-sky-100 px-2 py-0.5 rounded font-bold">
                               {matchingAccountInvoices.length} {matchingAccountInvoices.length === 1 ? 'top-up' : 'top-ups'}
                             </span>
                           </div>

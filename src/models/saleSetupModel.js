@@ -184,3 +184,31 @@ export async function updateSaleSetup(id, data) {
   const updated = await collection.findOne({ id });
   return { ...mapSetup(updated), _id: updated._id };
 }
+
+/**
+ * Terminates the active "Ad Account Sales Setup" entries tied to an ad account.
+ * Used when an ad account is unassigned from a customer so the topup setup is
+ * automatically closed. Only the setup record's status flips to "Terminated" —
+ * existing sales/history (invoices) are never touched.
+ */
+export async function terminateSaleSetupsForAccount({ adAccountId, groupId } = {}) {
+  const account = String(adAccountId || "").trim();
+  if (!account) return 0;
+
+  const collection = await getCollection("saleSetups");
+  const filter = {
+    serviceType: "Ad Account Sales Setup",
+    adAccountId: account,
+    status: "Active",
+  };
+  const group = String(groupId || "").trim();
+  if (group) filter.groupId = group;
+
+  const result = await collection.updateMany(filter, {
+    $set: { status: "Terminated", updatedAt: new Date() },
+  });
+  if (result.modifiedCount > 0) {
+    logger.info(`terminateSaleSetupsForAccount: terminated ${result.modifiedCount} setup(s) for account ${account}.`);
+  }
+  return result.modifiedCount;
+}

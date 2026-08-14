@@ -93,6 +93,8 @@ export function AppProvider({ children }) {
     addSocialAdAccount,
     updateSocialAdAccount: rawUpdateSocialAdAccount,
     deleteSocialAdAccount: rawDeleteSocialAdAccount,
+    assignSocialAdAccount: rawAssignSocialAdAccount,
+    unassignSocialAdAccount: rawUnassignSocialAdAccount,
     refetch: refetchSocialAdAccounts,
   } = useSocialAdAccounts(triggerToast);
 
@@ -233,6 +235,18 @@ export function AppProvider({ children }) {
   const handleUnassignAdAccount = async (adAccountId) => {
     const result = await rawUnassignAdAccount(adAccountId);
     if (result) logActivityFx("Rakibul R.", "Unassigned Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account", result.assignedCustomer);
+    return result;
+  };
+
+  const handleAssignSocialAdAccount = async (adAccountId, customerId) => {
+    const result = await rawAssignSocialAdAccount(adAccountId, customerId);
+    if (result) logActivityFx("Rakibul R.", "Assigned Social Ad Account", `${result.adAccountName} assigned to customer ${customerId}.`, "account", customerId);
+    return result;
+  };
+
+  const handleUnassignSocialAdAccount = async (adAccountId) => {
+    const result = await rawUnassignSocialAdAccount(adAccountId);
+    if (result) logActivityFx("Rakibul R.", "Unassigned Social Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account", result.assignedCustomer);
     return result;
   };
 
@@ -646,6 +660,8 @@ export function AppProvider({ children }) {
     handleDeleteSocialAdAccount,
     handleAssignAdAccount,
     handleUnassignAdAccount,
+    handleAssignSocialAdAccount,
+    handleUnassignSocialAdAccount,
     handleUpdateAccountStatus,
     handleBulkUpdateStatus,
     handleExecuteSale,

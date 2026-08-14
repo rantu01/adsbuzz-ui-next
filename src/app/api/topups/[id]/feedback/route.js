@@ -12,8 +12,10 @@ export const PATCH = asyncHandler(async (request, { params }) => {
     throw new ApiError(HttpStatus.BAD_REQUEST, "Feedback text is required.");
   }
 
+  const screenshot = optionalString(body.screenshot, 1000);
+
   const actor = await getRequestActor(request);
-  const invoice = await submitFeedback(id, { feedback, actor });
+  const invoice = await submitFeedback(id, { feedback, screenshot, actor });
   if (!invoice) {
     return notFound("Topup invoice not found.");
   }

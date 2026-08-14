@@ -16,15 +16,20 @@ import {
   CheckCheck,
   XOctagon,
   FileClock,
+  Paperclip,
+  Trash2,
+  ImageIcon,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import StatCard from '@/components/common/StatCard';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import Modal from '@/components/ui/Modal';
 import Pagination from '@/components/common/Pagination';
+import { uploadScreenshot } from '@/utils/api';
 
 const ACTIVE_AUDIT_STATES = ['Pending', 'Waiting For Feedback', 'Final Approval Review'];
 const PAGE_SIZE = 20;
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024; // 5 MB
 
 const ACTION_META = {
   created: { label: 'Audit Created', icon: <FileClock size={13} />, tone: 'text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' },
@@ -56,6 +61,26 @@ function formatActor(actor) {
   return actor.name || actor.email || actor.uid || 'System';
 }
 
+function collectScreenshots(inv) {
+  const list = [];
+  if (inv?.paymentScreenshot) {
+    list.push({ url: inv.paymentScreenshot, source: 'payment', label: 'Payment Proof', at: inv.createdAtRaw || null });
+  }
+  if (Array.isArray(inv?.screenshots)) {
+    inv.screenshots.forEach((s) => {
+      if (s && s.url) {
+        list.push({
+          url: s.url,
+          source: s.source || 'attached',
+          label: s.source === 'feedback' ? 'Feedback Attachment' : 'Attached Screenshot',
+          at: s.at || null,
+        });
+      }
+    });
+  }
+  return list;
+}
+
 function TopupsView({
   invoices,
   customers,
@@ -76,6 +101,7 @@ function TopupsView({
   const [logTarget, setLogTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [busyKey, setBusyKey] = useState(null);
+  const [feedbackScreenshotError, setFeedbackScreenshotError] = useState('');
 
   const activeAudits = invoices.filter(inv => ACTIVE_AUDIT_STATES.includes(inv.approvalStatus));
 
@@ -122,7 +148,14 @@ function TopupsView({
     if (!feedbackTarget) return;
     const no = feedbackTarget.invoiceNo;
     await runAction(`feedback-${no}`, async () => {
-      await onSubmitFeedback(no, feedbackTarget.feedback);
+      let screenshotUrl = '';
+      if (feedbackTarget.screenshot) {
+        screenshotUrl = await uploadScreenshot({
+          name: feedbackTarget.screenshotName || 'feedback-screenshot.png',
+          data: feedbackTarget.screenshot,
+        });
+      }
+      await onSubmitFeedback(no, feedbackTarget.feedback, screenshotUrl);
       setFeedbackTarget(null);
     });
   };
@@ -138,9 +171,38 @@ function TopupsView({
 
   const auditLog = (inv) => (Array.isArray(inv.auditLog) ? inv.auditLog : []);
 
+  const handleFeedbackScreenshot = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setFeedbackScreenshotError('Please upload a valid image file (PNG, JPG, JPEG, WebP, GIF).');
+      return;
+    }
+    if (file.size > MAX_SCREENSHOT_BYTES) {
+      setFeedbackScreenshotError(`Image is too large. Maximum allowed size is 5 MB (uploaded: ${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+      return;
+    }
+    setFeedbackScreenshotError('');
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setFeedbackTarget(prev => prev ? { ...prev, screenshot: reader.result, screenshotName: file.name } : prev);
+      }
+    };
+    reader.onerror = () => {
+      setFeedbackScreenshotError('Failed to read the uploaded file. Please try again.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveFeedbackScreenshot = () => {
+    setFeedbackTarget(prev => prev ? { ...prev, screenshot: undefined, screenshotName: '' } : prev);
+    setFeedbackScreenshotError('');
+  };
+
   return (
     <div className="space-y-8 animate-fade-in" id="topups-view">
-      <ErrorBanner error={error} onRetry={onRetry} />
+      <ErrorBanner error={error} onRetry={onRetry} /> 
 
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -209,7 +271,7 @@ function TopupsView({
         ) : (
           <>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400 min-w-[980px]" id="topups-table">
+            <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400" id="topups-table">
               <thead className="bg-slate-50 dark:bg-slate-950/20 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-100 dark:border-slate-800/80 uppercase text-[10px] tracking-wider">
                 <tr>
                   <th scope="col" className="py-2.5 px-3 whitespace-nowrap">Invoice ID</th>
@@ -236,7 +298,7 @@ function TopupsView({
                         <div className="font-semibold text-slate-800 dark:text-slate-200">{getCustomerName(inv.customerId)}</div>
                         <div className="text-[10px] text-slate-400">ID: {inv.customerId}</div>
                       </td>
-                      <td className="py-2.5 px-3 min-w-[160px]">
+                      <td className="py-2.5 px-3">
                         <div className="font-normal text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title={inv.adAccountName}>{inv.adAccountName}</div>
                         <div className="text-[10px] text-slate-400"><span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border shadow-xs"><PlatformText platform={inv.platform} variant="badge" className="text-[10px]" /></span></div>
                       </td>
@@ -260,13 +322,13 @@ function TopupsView({
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        {inv.paymentScreenshot ? (
+                        {collectScreenshots(inv).length > 0 ? (
                           <button
                             id={`btn-screenshot-${inv.invoiceNo}`}
                             onClick={() => setScreenshotTarget(inv)}
                             className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors"
                           >
-                            <Eye size={12} /> View
+                            <Eye size={12} /> View {collectScreenshots(inv).length > 1 && `(${collectScreenshots(inv).length})`}
                           </button>
                         ) : (
                           <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -283,7 +345,7 @@ function TopupsView({
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         {isActiveAudit || needsApiSync ? (
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex flex-wrap items-center justify-center gap-1.5">
                             {auditStatus === 'Pending' && (
                               <>
                                 <button
@@ -459,6 +521,37 @@ function TopupsView({
               placeholder="e.g. Customer confirmed the payment and resent the correct screenshot."
             />
           </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+              Attach Screenshot <span className="normal-case font-medium">(optional)</span>
+            </label>
+            {feedbackTarget?.screenshot ? (
+              <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-950">
+                <img
+                  src={feedbackTarget.screenshot}
+                  alt="Feedback screenshot preview"
+                  className="w-full object-contain max-h-52"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveFeedbackScreenshot}
+                  className="absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-900/70 text-white hover:bg-red-500 cursor-pointer transition-colors"
+                >
+                  <Trash2 size={11} /> Remove
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-brand-blue/50 cursor-pointer py-6 px-4 text-center transition-colors">
+                <Paperclip size={18} className="text-slate-400" />
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Click to upload screenshot</span>
+                <span className="text-[10px] text-slate-400">PNG, JPG, JPEG, WebP or GIF · up to 5 MB</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFeedbackScreenshot} />
+              </label>
+            )}
+            {feedbackScreenshotError && (
+              <p className="mt-1.5 text-[10px] font-semibold text-red-500">{feedbackScreenshotError}</p>
+            )}
+          </div>
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
@@ -541,15 +634,30 @@ function TopupsView({
         onClose={() => setScreenshotTarget(null)}
         title={`Payment Screenshot — ${screenshotTarget?.invoiceNo ?? ''}`}
         size="xl"
+        scrollable
       >
-        {screenshotTarget?.paymentScreenshot ? (
-          <div className="space-y-3">
-            <img
-              src={screenshotTarget.paymentScreenshot}
-              alt={`Payment screenshot for ${screenshotTarget.invoiceNo}`}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-950 object-contain max-h-[60vh]"
-            />
-            <p className="text-[10px] text-slate-400">Reference proof of payment attached to this topup. Review against the Paid BDT amount before deciding.</p>
+        {screenshotTarget && collectScreenshots(screenshotTarget).length > 0 ? (
+          <div className="space-y-5">
+            {collectScreenshots(screenshotTarget).map((shot, idx) => (
+              <div key={idx} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <ImageIcon size={11} /> {shot.label}
+                  </span>
+                  {shot.at && (
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(shot.at).toLocaleString()}</span>
+                  )}
+                </div>
+                <img
+                  src={shot.url}
+                  alt={`${shot.label} for ${screenshotTarget.invoiceNo}`}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-950 object-contain max-h-[60vh]"
+                />
+              </div>
+            ))}
+            <p className="text-[10px] text-slate-400">
+              All screenshots attached to this topup, from the sale checkout and the feedback step. Review against the Paid BDT amount before deciding.
+            </p>
           </div>
         ) : (
           <p className="text-xs text-slate-500">No screenshot was attached to this topup.</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useState } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { Plus, FileEdit } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
@@ -129,6 +129,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     groupId: '',
     serviceType: 'Ad Account Sales Setup',
     adAccountId: '',
+    dollarRate: '',
+    monthlySpending: '',
     service: '',
     serviceDetails: '',
     serviceFee: '',
@@ -155,7 +157,22 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
   const addCustomerAccounts = addCustomer
     ? adAccounts.filter(a => a.assignedCustomer === addCustomer.id)
     : [];
-  const addAccountOptions = addCustomerAccounts.map(a => ({
+
+  // Accounts that already have a Sale Setup configured. Only accounts that do NOT
+  // yet have a setup are offered when creating a new Sale Setup entry.
+  const configuredAccountIds = useMemo(
+    () =>
+      new Set(
+        (setups || [])
+          .filter((s) => s.serviceType === 'Ad Account Sales Setup' && s.adAccountId)
+          .map((s) => s.adAccountId),
+      ),
+    [setups],
+  );
+
+  const addAccountOptions = addCustomerAccounts
+    .filter(a => !configuredAccountIds.has(a.adAccountId))
+    .map(a => ({
     value: a.adAccountId,
     label: a.adAccountName,
     sub: `${a.adAccountId} • ${a.platform}`
@@ -197,6 +214,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
       groupId: '',
       serviceType: 'Ad Account Sales Setup',
       adAccountId: '',
+      dollarRate: '',
+      monthlySpending: '',
       service: '',
       serviceDetails: '',
       serviceFee: '',
@@ -215,13 +234,19 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
   };
 
   const handleGroupIdChange = (gid) => {
-    setForm(prev => ({ ...prev, groupId: gid, adAccountId: '' }));
+    setForm(prev => ({ ...prev, groupId: gid, adAccountId: '', dollarRate: '', monthlySpending: '' }));
     clearAddError('groupId');
     clearAddError('adAccountId');
   };
 
   const handleAdAccountChange = (accId) => {
-    setForm(prev => ({ ...prev, adAccountId: accId }));
+    const a = adAccounts.find(x => x.adAccountId === accId);
+    setForm(prev => ({
+      ...prev,
+      adAccountId: accId,
+      dollarRate: a?.dollarRate ?? prev.dollarRate,
+      monthlySpending: a?.monthlySpending ?? prev.monthlySpending,
+    }));
     clearAddError('adAccountId');
   };
 
@@ -262,8 +287,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
       adAccountId: form.adAccountId,
       adName: a.adAccountName,
       platform: a.platform,
-      dollarRate: a.dollarRate,
-      monthlySpending: a.monthlySpending,
+      dollarRate: Number(form.dollarRate) > 0 ? Number(form.dollarRate) : a.dollarRate,
+      monthlySpending: Number(form.monthlySpending) > 0 ? Number(form.monthlySpending) : a.monthlySpending,
       status: form.status,
     };
   };
@@ -277,6 +302,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
       if (Number(form.serviceFee) <= 0) errors.serviceFee = 'Enter a valid service fee.';
     } else {
       if (!form.adAccountId) errors.adAccountId = 'Select an ad account for this customer.';
+      if (Number(form.dollarRate) <= 0) errors.dollarRate = 'Enter a valid dollar rate.';
+      if (Number(form.monthlySpending) <= 0) errors.monthlySpending = 'Enter a valid monthly spending.';
     }
     return errors;
   };
@@ -290,6 +317,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
       if (Number(editSetupData.serviceFee) <= 0) errors.serviceFee = 'Enter a valid service fee.';
     } else {
       if (!editSetupData.adAccountId) errors.adAccountId = 'Select an ad account for this customer.';
+      if (Number(editSetupData.dollarRate) <= 0) errors.dollarRate = 'Enter a valid dollar rate.';
+      if (Number(editSetupData.monthlySpending) <= 0) errors.monthlySpending = 'Enter a valid monthly spending.';
     }
     return errors;
   };
@@ -367,12 +396,8 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
       ? (!editCustomer && !adAccountId)
       : (!addCustomer || adAccountsLoading);
 
-    const rate = isEdit
-      ? (data?.dollarRate ?? 0)
-      : (addSelectedAccount?.dollarRate ?? '');
-    const spend = isEdit
-      ? (data?.monthlySpending ?? 0)
-      : (addSelectedAccount?.monthlySpending ?? '');
+    const rate = data?.dollarRate ?? addSelectedAccount?.dollarRate ?? '';
+    const spend = data?.monthlySpending ?? addSelectedAccount?.monthlySpending ?? '';
 
     return (
       <form
@@ -449,7 +474,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                 onChange={isEdit ? handleEditAdAccountChange : handleAdAccountChange}
                 placeholder={isEdit ? 'Select ad account...' : (addCustomer ? (adAccountsLoading ? 'Loading ad accounts...' : 'Select ad account...') : 'Select a customer first')}
                 disabled={accountSelectDisabled}
-                emptyText="No ad accounts assigned to this customer"
+                emptyText={isEdit ? 'No ad accounts assigned to this customer' : 'No ad accounts available — assigned accounts already have a Sale Setup'}
               />
               {errors.adAccountId && (
                 <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.adAccountId}</p>
@@ -460,19 +485,39 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Dollar Rate (৳)</label>
                 <input
                   type="number"
+                  min={0}
+                  step="0.01"
                   value={rate}
-                  readOnly
-                  className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold cursor-not-allowed"
+                  onChange={(e) => {
+                    if (isEdit) setEditSetupData(prev => ({ ...prev, dollarRate: Number(e.target.value) }));
+                    else setForm(prev => ({ ...prev, dollarRate: Number(e.target.value) }));
+                    if (isEdit) clearEditError('dollarRate'); else clearAddError('dollarRate');
+                  }}
+                  placeholder="Enter dollar rate"
+                  className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
                 />
+                {errors.dollarRate && (
+                  <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.dollarRate}</p>
+                )}
               </div>
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Monthly Spending ($)</label>
                 <input
                   type="number"
+                  min={0}
+                  step="0.01"
                   value={spend}
-                  readOnly
-                  className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold cursor-not-allowed"
+                  onChange={(e) => {
+                    if (isEdit) setEditSetupData(prev => ({ ...prev, monthlySpending: Number(e.target.value) }));
+                    else setForm(prev => ({ ...prev, monthlySpending: Number(e.target.value) }));
+                    if (isEdit) clearEditError('monthlySpending'); else clearAddError('monthlySpending');
+                  }}
+                  placeholder="Enter monthly spending"
+                  className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
                 />
+                {errors.monthlySpending && (
+                  <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{errors.monthlySpending}</p>
+                )}
               </div>
             </div>
           </>
@@ -599,7 +644,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
             showIcon={false}
             placeholder="Search by Ad Name or Group Code..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(value) => setSearch(value)}
           />
         </div>
         <div className="overflow-x-auto">
