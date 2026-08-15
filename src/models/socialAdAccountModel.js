@@ -210,6 +210,7 @@ export async function markSocialAccountSold(identifier, customerId) {
         status: "sold",
         assignedCustomer: nextCustomer,
         assignedAt,
+        unassignedAt: null,
         updatedAt: new Date(),
       },
     }

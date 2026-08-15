@@ -46,7 +46,15 @@ export function toUiAccount(doc) {
   const legacyId = doc.accountId || doc.metaAccountId || "";
   const rate = Number(doc.dollarRate) > 0 ? Number(doc.dollarRate) : DEFAULT_DOLLAR_RATE;
   const mapped = mapStatusToUi(doc.status);
-  const assigned = (Boolean(doc.uid) || Boolean(doc.assignedCustomer)) && !doc.unassignedAt;
+  const hasAssignment = Boolean(doc.uid) || Boolean(doc.assignedCustomer);
+  // An account is still considered assigned when it was re-assigned after the
+  // last unassign (unassignedAt predates assignedAt). Only a trailing unassign
+  // with no newer assignment actually frees the account.
+  const staleUnassign =
+    doc.unassignedAt &&
+    doc.assignedAt &&
+    new Date(doc.unassignedAt).getTime() <= new Date(doc.assignedAt).getTime();
+  const assigned = hasAssignment && (!doc.unassignedAt || staleUnassign);
 
   return {
     adAccountId: doc.adAccountId || stripActPrefix(legacyId) || String(doc._id),
@@ -270,6 +278,7 @@ export async function markAccountSold(identifier, customerId) {
         status: "active",
         assignedCustomer: nextCustomer,
         assignedAt,
+        unassignedAt: null,
         updatedAt: new Date(),
       },
     }
