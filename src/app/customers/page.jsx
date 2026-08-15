@@ -34,6 +34,7 @@ function CustomersPageInner() {
       onUnassignSocialAdAccount={app.handleUnassignSocialAdAccount}
       onTriggerTopup={app.handleTriggerTopup}
       onTriggerAssign={app.handleTriggerAssign}
+      onConfigureSaleSetup={app.handleConfigureSaleSetup}
       autoOpenAddModal={autoOpenAdd || app.pendingOpenAddCustomer}
       initialCustomerId={initialCustomerId || app.pendingInitialCustomerId || undefined}
     />

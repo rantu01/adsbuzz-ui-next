@@ -12,6 +12,8 @@ export default function CardsPage() {
       error={app.cardsError}
       onRetry={app.refetchCards}
       adAccounts={app.adAccounts}
+      platforms={app.platforms}
+      wallets={app.wallets}
       onUpdateCard={app.updateCard}
       onAddCard={app.addCard}
       onToggleCardStatus={app.handleToggleCardStatus}

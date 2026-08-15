@@ -20,12 +20,15 @@ function sanitize(input = {}) {
   const cardPlatform = input.cardPlatform ? String(input.cardPlatform).trim() : "";
   const cardInitial = String(input.cardInitial || "").trim().toUpperCase();
   const status = CARD_STATUS.includes(input.status) ? input.status : "Active";
+  const platformId = String(input.platformId || "").trim();
+  const walletId = String(input.walletId || "").trim();
+  const cardWallet = input.cardWallet ? String(input.cardWallet).trim() : "";
 
   const linkedAccountsCount = Number(input.linkedAccountsCount) > 0 ? Number(input.linkedAccountsCount) : 0;
   const usageCount = Number(input.usageCount) > 0 ? Number(input.usageCount) : 0;
   const totalLoadedUSD = Number(input.totalLoadedUSD) > 0 ? Number(input.totalLoadedUSD) : 0;
 
-  return { id, cardName, cardType, cardPlatform, cardInitial, status, linkedAccountsCount, usageCount, totalLoadedUSD };
+  return { id, cardName, cardType, cardPlatform, cardInitial, status, linkedAccountsCount, usageCount, totalLoadedUSD, platformId, walletId, cardWallet };
 }
 
 export async function seedCards() {
@@ -41,6 +44,9 @@ export async function seedCards() {
       cardType: String(c.cardType || "Visa"),
       cardPlatform: String(c.cardPlatform || ""),
       status: CARD_STATUS.includes(c.status) ? c.status : "Active",
+      platformId: String(c.platformId || ""),
+      walletId: String(c.walletId || ""),
+      cardWallet: String(c.cardWallet || ""),
       linkedAccountsCount: Number(c.linkedAccountsCount) || 0,
       usageCount: Number(c.usageCount) || 0,
       totalLoadedUSD: Number(c.totalLoadedUSD) || 0,
@@ -110,6 +116,9 @@ export async function updateCard(id, data) {
     "cardPlatform",
     "status",
     "totalLoadedUSD",
+    "platformId",
+    "walletId",
+    "cardWallet",
   ];
   const patch = {};
   for (const key of allowed) {

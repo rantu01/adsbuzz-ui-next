@@ -21,6 +21,8 @@ import { useSeries } from '@/hooks/useSeries';
 import { useSaleSetups } from '@/hooks/useSaleSetups';
 import { useSettings } from '@/hooks/useSettings';
 import { useActivities } from '@/hooks/useActivities';
+import { usePlatforms } from '@/hooks/usePlatforms';
+import { useWallets } from '@/hooks/useWallets';
 import { useSocialAdAccounts } from '@/hooks/useSocialAdAccounts';
 import { uploadScreenshot, getErrorMessage } from '@/utils/api';
 
@@ -40,6 +42,7 @@ export function AppProvider({ children }) {
   const [pendingInitialCheckoutStep, setPendingInitialCheckoutStep] = useState(null);
   const [pendingInitialCustomerId, setPendingInitialCustomerId] = useState(null);
   const [pendingInitialSalesCustomerId, setPendingInitialSalesCustomerId] = useState(null);
+  const [pendingSetupPrefill, setPendingSetupPrefill] = useState(null);
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -152,6 +155,25 @@ export function AppProvider({ children }) {
     refetch: refetchSettings,
   } = useSettings(triggerToast);
   const { activities, error: activitiesError, addActivity, refetch: refetchActivities } = useActivities();
+  const {
+    platforms,
+    loading: platformsLoading,
+    error: platformsError,
+    addPlatform: rawAddPlatform,
+    updatePlatform: rawUpdatePlatform,
+    togglePlatformStatus: rawTogglePlatformStatus,
+    deletePlatform: rawDeletePlatform,
+    refetch: refetchPlatforms,
+  } = usePlatforms(triggerToast);
+  const {
+    wallets,
+    loading: walletsLoading,
+    error: walletsError,
+    addWallet: rawAddWallet,
+    updateWallet: rawUpdateWallet,
+    deleteWallet: rawDeleteWallet,
+    refetch: refetchWallets,
+  } = useWallets(triggerToast);
 
   const logActivityFx = (user, action, details, type, customerId) => {
     addActivity({ time: "Just now", user, action, details, type, ...(customerId && { customerId }) });
@@ -310,6 +332,48 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const handleAddPlatform = async (platformData) => {
+    const result = await rawAddPlatform(platformData);
+    if (result) logActivityFx("Rakibul R.", "Added Platform", `${result.platformName} (${result.platformId}) added to platform registry.`, "system");
+    return result;
+  };
+
+  const handleUpdatePlatform = async (platform) => {
+    const result = await rawUpdatePlatform(platform);
+    if (result) logActivityFx("Rakibul R.", "Updated Platform", `Platform ${result.platformName} updated.`, "system");
+    return result;
+  };
+
+  const handleTogglePlatformStatus = async (id) => {
+    const result = await rawTogglePlatformStatus(id);
+    if (result) logActivityFx("Rakibul R.", "Toggled Platform Status", `Platform ${result.platformName} set to ${result.status}.`, "system");
+    return result;
+  };
+
+  const handleDeletePlatform = async (id) => {
+    const result = await rawDeletePlatform(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Platform", `Platform ${result.platformName} removed.`, "system");
+    return result;
+  };
+
+  const handleAddWallet = async (walletData) => {
+    const result = await rawAddWallet(walletData);
+    if (result) logActivityFx("Rakibul R.", "Added Wallet", `${result.ownerName} (${result.walletId}) added to wallet registry.`, "system");
+    return result;
+  };
+
+  const handleUpdateWallet = async (wallet) => {
+    const result = await rawUpdateWallet(wallet);
+    if (result) logActivityFx("Rakibul R.", "Updated Wallet", `Wallet ${result.ownerName} updated.`, "system");
+    return result;
+  };
+
+  const handleDeleteWallet = async (id) => {
+    const result = await rawDeleteWallet(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Wallet", `Wallet ${result.ownerName} removed.`, "system");
+    return result;
+  };
+
   const handleUpdateSaleSetup = async (setup) => {
     const result = await rawUpdateSaleSetup(setup);
     if (result) logActivityFx("Rakibul R.", "Updated Sale Setup", `Setup for ${result.adName} updated.`, "account");
@@ -380,6 +444,9 @@ export function AppProvider({ children }) {
   }, []);
   useEffect(() => {
     if (pendingInitialCustomerId !== null) setPendingInitialCustomerId(null);
+  }, []);
+  useEffect(() => {
+    if (pendingSetupPrefill !== null) setPendingSetupPrefill(null);
   }, []);
 
   const handleAddCustomer = (customerData) => {
@@ -563,6 +630,15 @@ export function AppProvider({ children }) {
     router.push('/customers?autoOpenAdd=true');
   };
 
+  const handleConfigureSaleSetup = (customerId, adAccountId) => {
+    setPendingSetupPrefill({ customerId, adAccountId });
+    router.push('/sale-setup');
+  };
+
+  const clearSetupPrefill = useCallback(() => {
+    setPendingSetupPrefill(null);
+  }, []);
+
   const computeDashboardStats = () => {
     const today = "2026-06-01";
     const todayInvoices = invoices.filter(inv => inv.date === today && inv.paymentStatus === 'Paid');
@@ -608,6 +684,7 @@ export function AppProvider({ children }) {
     pendingInitialCheckoutStep,
     pendingInitialCustomerId,
     pendingInitialSalesCustomerId,
+    pendingSetupPrefill,
 
     customers,
     customersLoading,
@@ -632,6 +709,10 @@ export function AppProvider({ children }) {
     settingsError,
     activities,
     activitiesError,
+    platforms,
+    platformsError,
+    wallets,
+    walletsError,
     stats,
 
     refetchCustomers,
@@ -644,6 +725,8 @@ export function AppProvider({ children }) {
     refetchSetups,
     refetchSettings,
     refetchActivities,
+    refetchPlatforms,
+    refetchWallets,
 
     toggleTheme,
     triggerToast,
@@ -680,6 +763,15 @@ export function AppProvider({ children }) {
     handleUpdateSeries,
     addSeries,
     handleDeleteSeries,
+    handleAddPlatform,
+    handleUpdatePlatform,
+    handleTogglePlatformStatus,
+    handleDeletePlatform,
+    addPlatform: rawAddPlatform,
+    handleAddWallet,
+    handleUpdateWallet,
+    handleDeleteWallet,
+    addWallet: rawAddWallet,
     handleUpdateSaleSetup,
     addSetup,
     handleUpdateBaseRate,
@@ -696,6 +788,8 @@ export function AppProvider({ children }) {
     handleTriggerTopup,
     handleTriggerAssign,
     handleNavigateToCustomers,
+    handleConfigureSaleSetup,
+    clearSetupPrefill,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

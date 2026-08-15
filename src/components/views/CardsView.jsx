@@ -72,6 +72,8 @@ const getCardTypeIcon = (cardType) => {
 function CardsView({
   cards,
   adAccounts,
+  platforms = [],
+  wallets = [],
   onAddCard,
   onUpdateCard,
   onToggleCardStatus,
@@ -139,7 +141,8 @@ function CardsView({
   const [newCardName, setNewCardName] = useState('');
   const [newCardInitial, setNewCardInitial] = useState('');
   const [newCardType, setNewCardType] = useState('Visa');
-  const [newCardPlatform, setNewCardPlatform] = useState('Rizon');
+  const [newCardPlatform, setNewCardPlatform] = useState('');
+  const [newCardWallet, setNewCardWallet] = useState('');
   const [newCardStatus, setNewCardStatus] = useState('Active');
 
   const [addFormErrors, setAddFormErrors] = useState({});
@@ -165,11 +168,17 @@ function CardsView({
     }
     setAddFormErrors({});
 
+    const selectedPlatform = platforms.find(p => p.platformId === newCardPlatform);
+    const selectedWallet = wallets.find(w => w.walletId === newCardWallet);
+
     onAddCard({
       id: `CARD-${Date.now().toString().slice(-4)}`,
       cardName: newCardName,
       cardType: newCardType,
-      cardPlatform: newCardPlatform,
+      cardPlatform: selectedPlatform?.platformName || newCardPlatform,
+      platformId: newCardPlatform,
+      walletId: newCardWallet,
+      cardWallet: selectedWallet?.ownerName || '',
       cardInitial: newCardInitial || newCardName.slice(0, 2).toUpperCase(),
       status: newCardStatus,
       linkedAccountsCount: 0,
@@ -180,7 +189,8 @@ function CardsView({
     setNewCardName('');
     setNewCardInitial('');
     setNewCardType('Visa');
-    setNewCardPlatform('Rizon');
+    setNewCardPlatform('');
+    setNewCardWallet('');
     setNewCardStatus('Active');
     setShowAddModal(false);
   };
@@ -297,6 +307,12 @@ function CardsView({
                         <span>Type: <strong className="text-slate-700 dark:text-slate-300">{card.cardType || 'Visa'}</strong></span>
                         <span className="hidden sm:inline">•</span>
                         <span>Platform: <strong className="text-slate-700 dark:text-slate-300">{card.cardPlatform || 'N/A'}</strong></span>
+                        {card.cardWallet && (
+                          <>
+                            <span className="hidden sm:inline">•</span>
+                            <span>Wallet: <strong className="text-slate-700 dark:text-slate-300">{card.cardWallet}</strong></span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -423,6 +439,12 @@ Edit
                   <span>Card Type: <strong className="text-slate-700 dark:text-slate-300">{selectedCard.cardType || 'Visa'}</strong></span>
                   <span>•</span>
                   <span>Platform: <strong className="text-slate-700 dark:text-slate-300">{selectedCard.cardPlatform || 'N/A'}</strong></span>
+                  {selectedCard.cardWallet && (
+                    <>
+                      <span>•</span>
+                      <span>Wallet: <strong className="text-slate-700 dark:text-slate-300">{selectedCard.cardWallet}</strong></span>
+                    </>
+                  )}
                   <span>•</span>
                   <span>Linked: {linkedAccounts.length} active ad accounts</span>
                 </div>
@@ -568,14 +590,23 @@ Edit
               onChange={(e) => setNewCardPlatform(e.target.value)}
             >
               <option value="">Select platform</option>
-              <option value="RIZON">RIZON</option>
-              <option value="BYBIT">BYBIT</option>
-              <option value="PAYONNER">PAYONNER</option>
-              <option value="WISE">WISE</option>
-              <option value="AIRWALEX">AIRWALEX</option>
-              <option value="MERCURY">MERCURY</option>
-              <option value="MEDIA BUYING">MEDIA BUYING</option>
-              <option value="REDOTPAY">REDOTPAY</option>
+              {platforms.map((p) => (
+                <option key={p.platformId} value={p.platformId}>{p.platformName}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Wallets</label>
+            <select
+              id="add-card-wallet"
+              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+              value={newCardWallet}
+              onChange={(e) => setNewCardWallet(e.target.value)}
+            >
+              <option value="">Select wallet</option>
+              {wallets.map((w) => (
+                <option key={w.walletId} value={w.walletId}>{w.ownerName}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -643,13 +674,31 @@ Edit
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Platform</label>
-            <input
+            <select
               id="edit-card-platform"
-              type="text"
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-              value={editCardData?.cardPlatform || ''}
-              onChange={(e) => editCardData && setEditCardData({ ...editCardData, cardPlatform: e.target.value })}
-            />
+              value={editCardData?.platformId || editCardData?.cardPlatform || ''}
+              onChange={(e) => editCardData && setEditCardData({ ...editCardData, platformId: e.target.value, cardPlatform: platforms.find(p => p.platformId === e.target.value)?.platformName || e.target.value })}
+            >
+              <option value="">Select platform</option>
+              {platforms.map((p) => (
+                <option key={p.platformId} value={p.platformId}>{p.platformName}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Wallets</label>
+            <select
+              id="edit-card-wallet"
+              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+              value={editCardData?.walletId || ''}
+              onChange={(e) => editCardData && setEditCardData({ ...editCardData, walletId: e.target.value, cardWallet: wallets.find(w => w.walletId === e.target.value)?.ownerName || '' })}
+            >
+              <option value="">Select wallet</option>
+              {wallets.map((w) => (
+                <option key={w.walletId} value={w.walletId}>{w.ownerName}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Total Loaded USD ($)</label>

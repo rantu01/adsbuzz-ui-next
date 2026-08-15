@@ -81,6 +81,7 @@ function CustomersView({
   onUnassignSocialAdAccount,
   onTriggerTopup,
   onTriggerAssign,
+  onConfigureSaleSetup,
   autoOpenAddModal = false,
   initialCustomerId,
 }) {
@@ -588,6 +589,7 @@ function CustomersView({
             onDelete={handleRequestDelete}
             onNotesSave={handlePaneNotesSave}
             onUnassignAdAccount={handlePaneUnassign}
+            onConfigureSaleSetup={onConfigureSaleSetup}
             setups={setups}
           />
         ) : null}

@@ -38,6 +38,24 @@ export const INITIAL_CARDS = [
   { id: "CARD-DBBL-7473", cardName: "ADSBUZZ DBBL - 7473", cardType: "Mastercard", cardPlatform: "Airwalex", cardInitial: "DB", status: "Active", linkedAccountsCount: 6, usageCount: 95, totalLoadedUSD: 12500 }
 ];
 
+export const INITIAL_PLATFORMS = [
+  { platformId: "PLAT-001", platformName: "Rizon", platformLogo: "RZ", status: "Active" },
+  { platformId: "PLAT-002", platformName: "Bybit", platformLogo: "BY", status: "Active" },
+  { platformId: "PLAT-003", platformName: "Payoneer", platformLogo: "PY", status: "Active" },
+  { platformId: "PLAT-004", platformName: "Wise", platformLogo: "WS", status: "Active" },
+  { platformId: "PLAT-005", platformName: "Airwalex", platformLogo: "AW", status: "Active" },
+  { platformId: "PLAT-006", platformName: "Mercury", platformLogo: "MC", status: "Active" },
+  { platformId: "PLAT-007", platformName: "Media Buying", platformLogo: "MB", status: "Active" },
+  { platformId: "PLAT-008", platformName: "Redotpay", platformLogo: "RD", status: "Active" }
+];
+
+export const INITIAL_WALLETS = [
+  { walletId: "WALLET-001", ownerName: "AdsBuzz Corp", idCardInfo: "AID-3344556", sourceBy: "Bank Transfer", email: "finance@adsbuzz.com", accountSecurityStatus: "High", walletStatus: "Active" },
+  { walletId: "WALLET-002", ownerName: "SN Traders", idCardInfo: "NID-7788991", sourceBy: "bKash", email: "sntraders@outlook.com", accountSecurityStatus: "Medium", walletStatus: "Active" },
+  { walletId: "WALLET-003", ownerName: "MD Al-Amin", idCardInfo: "NID-1122334", sourceBy: "Nagad", email: "mdalamin@gmail.com", accountSecurityStatus: "High", walletStatus: "Active" },
+  { walletId: "WALLET-004", ownerName: "Celfin Ltd", idCardInfo: "CID-5566778", sourceBy: "IBBL", email: "billing@celfin.com", accountSecurityStatus: "Low", walletStatus: "Restricted" }
+];
+
 export const INITIAL_CUSTOMERS = [
   {
     id: "ADB550001",

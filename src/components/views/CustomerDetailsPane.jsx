@@ -33,6 +33,7 @@ function CustomerDetailsPane({
   onDelete,
   onNotesSave,
   onUnassignAdAccount,
+  onConfigureSaleSetup,
   setups = [],
 }) {
   const [activeTab, setActiveTab] = useState('accounts');
@@ -342,12 +343,13 @@ function CustomerDetailsPane({
                           <AlertCircle size={11} className="flex-shrink-0" />
                           Please Setup sales rules for this Ad Account
                         </p>
-                        <a
-                          href="/sale-setup"
+                        <button
+                          type="button"
+                          onClick={() => onConfigureSaleSetup(customer.id, acc.adAccountId)}
                           className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-brand-blue dark:text-blue-400 hover:underline cursor-pointer"
                         >
                           Configure in Sale Setup <ArrowUpRight size={10} />
-                        </a>
+                        </button>
                       </div>
                     )}
 

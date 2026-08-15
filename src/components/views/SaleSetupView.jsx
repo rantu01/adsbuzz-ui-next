@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, FileEdit } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
@@ -119,7 +119,18 @@ function SearchableSelect({
   );
 }
 
-function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetup, customersLoading, adAccountsLoading }) {
+function SaleSetupView({
+  setups,
+  customers,
+  adAccounts,
+  socialAdAccounts = [],
+  onAddSetup,
+  onUpdateSetup,
+  customersLoading,
+  adAccountsLoading,
+  prefill = null,
+  onPrefillConsumed,
+}) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -153,9 +164,14 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     .map(c => ({ value: c.groupId, label: c.groupId, sub: c.name }));
 
   // ---- Add-form derived values ----
+  const allAccounts = useMemo(() => [...(socialAdAccounts || []), ...(adAccounts || [])], [socialAdAccounts, adAccounts]);
+
   const addCustomer = activeCustomers.find(c => c.groupId === form.groupId);
   const addCustomerAccounts = addCustomer
-    ? adAccounts.filter(a => a.assignedCustomer === addCustomer.id)
+    ? allAccounts.filter(a =>
+        a.assignedCustomer === addCustomer.id ||
+        (a.userGroupCode && addCustomer.groupId === a.userGroupCode),
+      )
     : [];
 
   // Accounts that already have a Sale Setup configured. Only accounts that do NOT
@@ -177,6 +193,19 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     label: a.adAccountName,
     sub: `${a.adAccountId} • ${a.platform}`
   }));
+  // When navigating here from "Configure in Sale Setup", make sure the pre-filled
+  // ad account is always selectable even if a (e.g. terminated) setup already exists.
+  if (prefill?.adAccountId && !addAccountOptions.some(o => o.value === prefill.adAccountId)) {
+    const prefilledAccount = addCustomerAccounts.find(a => a.adAccountId === prefill.adAccountId)
+      || allAccounts.find(a => a.adAccountId === prefill.adAccountId);
+    if (prefilledAccount) {
+      addAccountOptions.push({
+        value: prefilledAccount.adAccountId,
+        label: prefilledAccount.adAccountName,
+        sub: `${prefilledAccount.adAccountId} • ${prefilledAccount.platform}`,
+      });
+    }
+  }
   const addSelectedAccount = addCustomerAccounts.find(a => a.adAccountId === form.adAccountId);
   const isAddOthers = form.serviceType === 'Others Sale Setup';
 
@@ -186,7 +215,10 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     ? customers.find(c => c.groupId === editSetupData.groupId)
     : null;
   const editCustomerAccounts = editCustomer
-    ? adAccounts.filter(a => a.assignedCustomer === editCustomer.id)
+    ? allAccounts.filter(a =>
+        a.assignedCustomer === editCustomer.id ||
+        (a.userGroupCode && editCustomer.groupId === a.userGroupCode),
+      )
     : [];
 
   let editAccountOptions = editCustomerAccounts.map(a => ({
@@ -240,7 +272,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
   };
 
   const handleAdAccountChange = (accId) => {
-    const a = adAccounts.find(x => x.adAccountId === accId);
+    const a = allAccounts.find(x => x.adAccountId === accId);
     setForm(prev => ({
       ...prev,
       adAccountId: accId,
@@ -251,7 +283,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
   };
 
   const handleEditAdAccountChange = (accId) => {
-    const a = adAccounts.find(x => x.adAccountId === accId);
+    const a = allAccounts.find(x => x.adAccountId === accId);
     setEditSetupData(prev => ({
       ...prev,
       adAccountId: accId,
@@ -279,7 +311,7 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
       };
     }
     if (!form.adAccountId) return null;
-    const a = addSelectedAccount || adAccounts.find(x => x.adAccountId === form.adAccountId);
+    const a = addSelectedAccount || allAccounts.find(x => x.adAccountId === form.adAccountId);
     if (!a) return null;
     return {
       groupId: form.groupId,
@@ -375,6 +407,30 @@ function SaleSetupView({ setups, customers, adAccounts, onAddSetup, onUpdateSetu
     resetForm();
     setShowModal(true);
   };
+
+  // Cross-view prefill: when the user clicks "Configure in Sale Setup" on the
+  // customer profile, navigate here with the customer + ad account intent and
+  // auto-open the New Sale Setup modal pre-filled with that group + account.
+  const prefillHandledRef = useRef(false);
+  useEffect(() => {
+    if (!prefill || prefillHandledRef.current) return;
+    if (customersLoading || adAccountsLoading) return;
+    const customer = customers.find(c => c.id === prefill.customerId);
+    if (!customer) return;
+    const account = allAccounts.find(a => a.adAccountId === prefill.adAccountId);
+    prefillHandledRef.current = true;
+    resetForm();
+    setForm(prev => ({
+      ...prev,
+      groupId: customer.groupId || '',
+      serviceType: 'Ad Account Sales Setup',
+      adAccountId: prefill.adAccountId || '',
+      dollarRate: account?.dollarRate ?? prev.dollarRate,
+      monthlySpending: account?.monthlySpending ?? prev.monthlySpending,
+    }));
+    setShowModal(true);
+    onPrefillConsumed?.();
+  }, [prefill, customers, allAccounts, customersLoading, adAccountsLoading, onPrefillConsumed]);
 
   // ---- Shared form renderer for Add / Edit ----
   const renderForm = (isEdit) => {

@@ -11,10 +11,13 @@ export default function SaleSetupPage() {
       setups={app.setups}
       customers={app.customers}
       adAccounts={app.adAccounts}
+      socialAdAccounts={app.socialAdAccounts}
       customersLoading={app.customersLoading}
       adAccountsLoading={app.adAccountsLoading}
       onUpdateSetup={app.handleUpdateSaleSetup}
       onAddSetup={app.addSetup}
+      prefill={app.pendingSetupPrefill}
+      onPrefillConsumed={app.clearSetupPrefill}
     />
   );
 }
