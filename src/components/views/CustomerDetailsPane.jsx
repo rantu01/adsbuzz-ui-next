@@ -72,12 +72,21 @@ function CustomerDetailsPane({
     [setupRecordByAccountAndGroup, customer?.groupId],
   );
 
-  // Effective dollar rate for an account: the Sales Setup configured rate wins;
-  // fall back to the account's own rate when no setup exists for it.
+  // Effective dollar rate for an account: only the Sales Setup configured rate is
+  // shown. When no setup exists for the account no rate is displayed at all.
   const getDisplayRate = useCallback(
     (acc) => {
       const configured = getConfiguredSetup(acc)?.dollarRate;
-      return Number(configured) > 0 ? configured : acc.dollarRate;
+      return Number(configured) > 0 ? configured : null;
+    },
+    [getConfiguredSetup],
+  );
+
+  // Monthly Spending configured in Sales Setup for the account; null when no setup.
+  const getDisplayMonthlySpending = useCallback(
+    (acc) => {
+      const configured = getConfiguredSetup(acc)?.monthlySpending;
+      return Number(configured) > 0 ? Number(configured) : null;
     },
     [getConfiguredSetup],
   );
@@ -315,9 +324,16 @@ function CustomerDetailsPane({
                       <div className="text-[10px] text-slate-400 font-mono mt-1">ID: {acc.adAccountId}</div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center text-[10px]">
+                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center gap-2 text-[10px]">
                       <span className="text-slate-400">Platform: <PlatformText platform={acc.platform} className="font-semibold text-[10px]" /></span>
-                      <span className="text-slate-400">Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">৳{getDisplayRate(acc)}</span></span>
+                      <span className="flex items-center gap-2.5 flex-wrap justify-end">
+                        {getDisplayRate(acc) !== null && (
+                          <span className="text-slate-400">Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">৳{getDisplayRate(acc)}</span></span>
+                        )}
+                        {getDisplayMonthlySpending(acc) !== null && (
+                          <span className="text-slate-400">Monthly Spending: <span className="font-semibold text-slate-600 dark:text-slate-300">${getDisplayMonthlySpending(acc).toLocaleString()}</span></span>
+                        )}
+                      </span>
                     </div>
 
                     {!isSalesSetupConfigured(acc) && (

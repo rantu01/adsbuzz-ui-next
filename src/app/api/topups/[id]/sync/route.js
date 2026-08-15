@@ -1,6 +1,7 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, optionalString } from "@/utils/validate";
 import { syncTopupStatus } from "@/models/invoiceModel";
+import { getRequestActor } from "@/utils/auditActor";
 
 export const POST = asyncHandler(async (request, { params }) => {
   const { id } = await params;
@@ -11,7 +12,8 @@ export const POST = asyncHandler(async (request, { params }) => {
     throw new ApiError(HttpStatus.BAD_REQUEST, "status is required.");
   }
 
-  const invoice = await syncTopupStatus(id, status);
+  const actor = await getRequestActor(request);
+  const invoice = await syncTopupStatus(id, status, { actor });
   if (!invoice) {
     return notFound("Topup invoice not found.");
   }

@@ -487,7 +487,17 @@ export async function updateInvoice(invoiceNo, data = {}) {
   }
 
   patch.updatedAt = new Date();
-  await invoicesCollection.updateOne({ invoiceNo }, { $set: patch });
+  await invoicesCollection.updateOne(
+    { invoiceNo },
+    {
+      $set: patch,
+      $push: {
+        auditLog: auditEntry("edited", patch.approvalStatus || existing.approvalStatus, {
+          actor: data.auditActor || null,
+        }),
+      },
+    }
+  );
   const updated = await invoicesCollection.findOne({ invoiceNo });
   return mapInvoice(updated);
 }
@@ -569,14 +579,17 @@ export async function finalRejectInvoice(invoiceNo, { reason = "", actor = null 
   });
 }
 
-export async function syncTopupStatus(invoiceNo, status) {
+export async function syncTopupStatus(invoiceNo, status, { actor = null } = {}) {
   const invoicesCollection = await getCollection("invoices");
   const existing = await invoicesCollection.findOne({ invoiceNo });
   if (!existing) return null;
 
   await invoicesCollection.updateOne(
     { invoiceNo },
-    { $set: { topupStatus: String(status || "Pending"), updatedAt: new Date() } }
+    {
+      $set: { topupStatus: String(status || "Pending"), updatedAt: new Date() },
+      $push: { auditLog: auditEntry("status_synced", String(status || "Pending"), { actor }) },
+    }
   );
   const updated = await invoicesCollection.findOne({ invoiceNo });
   return mapInvoice(updated);

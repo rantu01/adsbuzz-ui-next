@@ -99,6 +99,7 @@ function TopupsView({
   const [finalRejectTarget, setFinalRejectTarget] = useState(null);
   const [screenshotTarget, setScreenshotTarget] = useState(null);
   const [logTarget, setLogTarget] = useState(null);
+  const [viewFeedbackTarget, setViewFeedbackTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [busyKey, setBusyKey] = useState(null);
   const [feedbackScreenshotError, setFeedbackScreenshotError] = useState('');
@@ -170,6 +171,8 @@ function TopupsView({
   };
 
   const auditLog = (inv) => (Array.isArray(inv.auditLog) ? inv.auditLog : []);
+
+  const feedbackEntries = (inv) => auditLog(inv).filter((entry) => entry.action === 'feedback_submitted');
 
   const handleFeedbackScreenshot = (e) => {
     const file = e.target.files?.[0];
@@ -380,11 +383,27 @@ function TopupsView({
                                 disabled={!!busyKey}
                                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-2.5 py-1 rounded cursor-pointer active:scale-95 transition-all disabled:opacity-60 disabled:cursor-wait"
                               >
-                                Submit Feedback
+                                Give Feedback
                               </button>
                             )}
                             {auditStatus === 'Final Approval Review' && (
                               <>
+                                <button
+                                  id={`btn-view-feedback-${inv.invoiceNo}`}
+                                  onClick={() => setViewFeedbackTarget(inv)}
+                                  disabled={!!busyKey}
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                  <MessageSquare size={11} /> View Feedback
+                                </button>
+                                <button
+                                  id={`btn-give-feedback-${inv.invoiceNo}`}
+                                  onClick={() => setFeedbackTarget({ invoiceNo: inv.invoiceNo, feedback: '' })}
+                                  disabled={!!busyKey}
+                                  className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] px-2.5 py-1 rounded cursor-pointer active:scale-95 transition-all disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                  <MessageSquare size={11} /> Give Feedback
+                                </button>
                                 <button
                                   id={`btn-final-approve-${inv.invoiceNo}`}
                                   onClick={() => runAction(`final-approve-${inv.invoiceNo}`, () => onFinalApproveInvoice(inv.invoiceNo))}
@@ -661,6 +680,56 @@ function TopupsView({
           </div>
         ) : (
           <p className="text-xs text-slate-500">No screenshot was attached to this topup.</p>
+        )}
+      </Modal>
+
+      {/* View Feedback modal */}
+      <Modal
+        isOpen={!!viewFeedbackTarget}
+        onClose={() => setViewFeedbackTarget(null)}
+        title={`Existing Feedback — ${viewFeedbackTarget?.invoiceNo ?? ''}`}
+        description="Feedback submitted for this topup during the audit workflow."
+        size="md"
+        scrollable
+      >
+        {viewFeedbackTarget && feedbackEntries(viewFeedbackTarget).length > 0 ? (
+          <ol className="relative space-y-4 pl-1">
+            {feedbackEntries(viewFeedbackTarget).map((entry, idx) => {
+              const meta = ACTION_META.feedback_submitted;
+              const entries = feedbackEntries(viewFeedbackTarget);
+              const isLast = idx === entries.length - 1;
+              return (
+                <li key={`${entry.at}-${idx}`} className="relative pl-6">
+                  {!isLast && (
+                    <span className="absolute left-[9px] top-6 bottom-[-16px] w-px bg-slate-200 dark:bg-slate-800" />
+                  )}
+                  <span className={`absolute left-0 top-0.5 inline-flex items-center justify-center h-[18px] w-[18px] rounded-full border ${meta.tone}`}>
+                    {meta.icon}
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.tone}`}>
+                      {meta.icon} Feedback #{idx + 1}
+                    </span>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(entry.at).toLocaleString()}</span>
+                  </div>
+                  {entry.reason && (
+                    <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-800 rounded-lg px-2.5 py-1.5">
+                      {entry.reason}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
+                    By <span className="font-semibold text-slate-500 dark:text-slate-300">{formatActor(entry.actor)}</span>
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <div className="text-center py-8">
+            <MessageSquare className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={28} />
+            <p className="text-xs text-slate-500">No feedback has been submitted for this topup yet.</p>
+          </div>
         )}
       </Modal>
 

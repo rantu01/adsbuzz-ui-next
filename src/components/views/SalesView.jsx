@@ -2,7 +2,7 @@
 
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
+import {
   Users,
   CheckCircle,
   Smartphone,
@@ -23,7 +23,17 @@ import {
   X as XIcon,
   Copy,
   CopyCheck,
-  Search
+  Search,
+  History,
+  FileClock,
+  ThumbsUp,
+  ThumbsDown,
+  CheckCheck,
+  XOctagon,
+  XCircle,
+  MessageSquare,
+  AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
@@ -35,6 +45,26 @@ const STEP_HEADERS = [
   { id: 2, name: 'Configure Payment' },
   { id: 3, name: 'Payment Summary' }
 ];
+
+const ACTION_META = {
+  created: { label: 'Entry Created', icon: <FileClock size={13} />, tone: 'text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' },
+  edited: { label: 'Entry Edited', icon: <FileEdit size={13} />, tone: 'text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400' },
+  approved: { label: 'Approved', icon: <ThumbsUp size={13} />, tone: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  rejected: { label: 'Rejected — Waiting for Feedback', icon: <ThumbsDown size={13} />, tone: 'text-rose-600 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400' },
+  feedback_submitted: { label: 'Feedback Submitted', icon: <MessageSquare size={13} />, tone: 'text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400' },
+  final_approved: { label: 'Final Approval Granted', icon: <CheckCheck size={13} />, tone: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  final_rejected: { label: 'Finally Rejected', icon: <XOctagon size={13} />, tone: 'text-rose-600 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400' },
+  status_synced: { label: 'Topup Status Synced', icon: <RefreshCw size={13} />, tone: 'text-sky-600 bg-sky-50 dark:bg-sky-500/10 dark:text-sky-400' },
+};
+
+function formatActor(actor) {
+  if (!actor) return 'System';
+  return actor.name || actor.email || actor.uid || 'System';
+}
+
+function auditLogOf(inv) {
+  return Array.isArray(inv?.auditLog) ? inv.auditLog : [];
+}
 
 function SalesView({
   customers,
@@ -107,6 +137,12 @@ function SalesView({
   const [editForm, setEditForm] = useState(null);
   const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
 
+  // View Log modal state
+  const [logTarget, setLogTarget] = useState(null);
+
+  // Per-record Copy Invoice feedback
+  const [copiedRecord, setCopiedRecord] = useState('');
+
   // Sales records pagination state
   const RECORDS_PER_PAGE = 8;
   const [currentPage, setCurrentPage] = useState(1);
@@ -126,7 +162,6 @@ function SalesView({
 
   // Checkout State
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId || '');
-  const [platform, setSelectedPlatform] = useState('Facebook');
 
   // Real topup totals fetched from the customer's topup history in the database
   const [topupSummary, setTopupSummary] = useState(null);
@@ -219,9 +254,9 @@ function SalesView({
   // inventory so accounts from BOTH collections can be used in the checkout flow.
   const allAccounts = useMemo(() => [...(socialAdAccounts || []), ...(adAccounts || [])], [adAccounts, socialAdAccounts]);
 
-  // Accounts matching selected platform AND assigned to the selected customer
-  const platformAccounts = allAccounts.filter(acc =>
-    acc.platform === platform &&
+  // Accounts assigned to the selected customer (any platform). The platform is
+  // determined automatically from the chosen ad account, not selected manually.
+  const customerAccounts = allAccounts.filter(acc =>
     acc.assignedCustomer === selectedCustomerId
   );
 
@@ -267,19 +302,23 @@ function SalesView({
     [getConfiguredSetupFor],
   );
 
-  // Auto-set the first account when platform changes or customer changes
+  // Auto-set the first account when the customer changes (platform follows the
+  // selected ad account automatically).
   useEffect(() => {
-    if (platformAccounts.length > 0) {
-      setSelectedAccountId(platformAccounts[0].adAccountId);
-      setDollarRate(getEffectiveRate(platformAccounts[0]));
+    if (customerAccounts.length > 0) {
+      setSelectedAccountId(customerAccounts[0].adAccountId);
+      setDollarRate(getEffectiveRate(customerAccounts[0]));
     } else {
       setSelectedAccountId('');
       setDollarRate(132);
     }
-  }, [platform, selectedCustomerId]);
+  }, [selectedCustomerId]);
 
   // When selected account changes, update the loaded rate
   const activeAccount = allAccounts.find(acc => acc.adAccountId === selectedAccountId);
+
+  // Platform is derived automatically from the selected Ad Account's data.
+  const platform = activeAccount?.platform || '';
 
   const activeAccountSetup = getConfiguredSetupFor(activeAccount);
 
@@ -358,10 +397,6 @@ function SalesView({
         setValidationError('Please select a customer before continuing.');
         return;
       }
-      if (!platform) {
-        setValidationError('Please select a publisher platform before continuing.');
-        return;
-      }
       if (!selectedAccountId) {
         setValidationError('Please select a target ad account before continuing.');
         return;
@@ -420,10 +455,6 @@ function SalesView({
         }
         if (!selectedCustomerId) {
           setValidationError('Please select a customer before continuing.');
-          return;
-        }
-        if (!platform) {
-          setValidationError('Please select a publisher platform before continuing.');
           return;
         }
         if (!selectedAccountId) {
@@ -531,6 +562,50 @@ function SalesView({
       .catch(() => {});
   };
 
+  // Builds the plain-text invoice copy for an existing sales record so the
+  // "Copy Invoice" action in the Sales Entry Records table can be used from the
+  // table without relying on the checkout state.
+  const buildRecordInvoiceText = (inv) => {
+    const custName = customers.find(c => c.id === inv.customerId)?.name || "Cash Client";
+    const platformName = `${inv.platform || ''} Ad Account`.trim();
+    const topupLabel = inv.topupStatus === 'Successfull' ? 'Successful' : (inv.topupStatus || '');
+    const paymentLabel = inv.paymentStatus || computePaymentLabel(inv);
+    return [
+      `Date: ${inv.date || ''}`,
+      `Invoice no: ${inv.invoiceNo || ''}`,
+      `Group ID: ${inv.groupId || ''}`,
+      `Customer: ${custName}`,
+      `Platform Name: ${platformName}`,
+      `Ad Account Name: ${inv.adAccountName || ''}`,
+      `Ad Account ID: ${inv.adAccountId || ''}`,
+      `USD Dollar rate: ${inv.dollarRate || 0}`,
+      `Amount in USD: ${inv.topupAmountUSD || 0}`,
+      `Amount in BDT: ${inv.totalAmountBDT || 0}`,
+      `Payment Status: ${paymentLabel}`,
+      `TopUp Status: ${topupLabel}`,
+      `Paid Amount: ${Number.isFinite(Number(inv.paidAmountBDT)) ? inv.paidAmountBDT : 0}`,
+      `Due Amount: ${Number.isFinite(Number(inv.dueAmountBDT)) ? inv.dueAmountBDT : 0}`,
+    ].join('\n');
+  };
+
+  const computePaymentLabel = (inv) => {
+    const total = Number(inv.totalAmountBDT || 0);
+    const paid = Number(inv.paidAmountBDT || 0);
+    if (paid <= 0) return 'Due';
+    if (paid >= total) return 'Paid';
+    return 'Partially Paid';
+  };
+
+  const handleCopyRecordInvoice = (inv) => {
+    if (typeof navigator === 'undefined') return;
+    navigator.clipboard?.writeText(buildRecordInvoiceText(inv))
+      .then(() => {
+        setCopiedRecord(inv.invoiceNo);
+        setTimeout(() => setCopiedRecord(''), 2000);
+      })
+      .catch(() => {});
+  };
+
   return (
     <div className="space-y-8 pb-12 animate-fade-in" id="sales-view">
       
@@ -622,8 +697,8 @@ function SalesView({
                   )}
                 </div>
 
-                {/* 2. Group ID Search + Platform */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 2. Group ID Search */}
+                <div className="space-y-2">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Select Group ID</label>
                     {groupIdCode ? (
@@ -678,44 +753,11 @@ function SalesView({
                       </p>
                     )}
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Platform</label>
-                    <select
-                      value={platform}
-                      onChange={(e) => setSelectedPlatform(e.target.value)}
-                      className="w-full text-xs p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-medium"
-                    >
-                      <option value="Facebook">Facebook</option>
-                      <option value="TikTok">TikTok</option>
-                      <option value="Google">Google</option>
-                      <option value="Snapchat">Snapchat</option>
-                    </select>
-                  </div>
                 </div>
 
-                {/* 3. Client Information */}
+                {/* 3. Client Information — resolved automatically from the selected Group ID */}
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Existing Customer</label>
-                    <select
-                      id="checkout-customer-select"
-                      required
-                      disabled={!groupIdCode}
-                      className="w-full text-xs p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      value={selectedCustomerId}
-                      onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    >
-                      <option value="" disabled>Choose Customer</option>
-                      {customersInGroup.map(c => (
-                        <option key={c.id} value={c.id}>{c.name} ({c.companyName})</option>
-                      ))}
-                    </select>
-                    {!groupIdCode && (
-                      <p className="text-[10px] text-slate-400 italic mt-1.5">Select a Group ID first to choose a customer.</p>
-                    )}
-                  </div>
-
-                  {activeCustomer && (
+                  {activeCustomer ? (
                     <div className="p-4 rounded-xl border border-blue-50 dark:border-blue-950/20 bg-blue-50/20 dark:bg-blue-950/10 space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold text-brand-blue dark:text-blue-400">Customer Information</h4>
@@ -751,6 +793,12 @@ function SalesView({
                         <p className="text-[11px] text-slate-400">No topup history found for this customer yet.</p>
                       )}
                     </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/10 text-center">
+                      <p className="text-[11px] text-slate-400">
+                        Select a Group ID to automatically load the customer information.
+                      </p>
+                    </div>
                   )}
                 </div>
 
@@ -758,11 +806,11 @@ function SalesView({
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Ad Account</label>
-                    {platformAccounts.length === 0 ? (
+                    {customerAccounts.length === 0 ? (
                       <div className="p-4 text-xs text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 rounded-xl">
                         {selectedCustomerId
-                          ? <>No {platform} ad accounts are currently assigned to this client. Go to <span className="font-bold underline cursor-pointer" onClick={onNavigateToCustomers}>Ad Accounts inventory</span> to assign one.</>
-                          : 'Please select a Group ID / customer first to see their assigned ad accounts.'}
+                          ? <>No ad accounts are currently assigned to this client. Go to <span className="font-bold underline cursor-pointer" onClick={onNavigateToCustomers}>Ad Accounts inventory</span> to assign one.</>
+                          : 'Please select a Group ID first to see their assigned ad accounts.'}
                       </div>
                     ) : (
                       <select
@@ -772,7 +820,7 @@ function SalesView({
                         value={selectedAccountId}
                         onChange={(e) => setSelectedAccountId(e.target.value)}
                       >
-                        {platformAccounts.map(acc => (
+                        {customerAccounts.map(acc => (
                           <option key={acc.adAccountId} value={acc.adAccountId}>
                             {acc.adAccountName} (ID: ...{acc.adAccountId.slice(-6)}) - Rate: ৳{getEffectiveRate(acc)}
                           </option>
@@ -798,7 +846,7 @@ function SalesView({
                         </div>
                         <div className="flex justify-between items-center pb-1.5 border-b border-sky-200/80 dark:border-sky-800/80">
                           <span className="text-sky-800 dark:text-sky-300 font-medium">Platform:</span>
-                          <span className="font-bold text-sky-950 dark:text-sky-100">{activeAccount.platform || platform}</span>
+                          <span className="font-bold text-sky-950 dark:text-sky-100">{platform || '—'}</span>
                         </div>
                         {activeAccountSetup && (
                           <div className="flex justify-between items-center pb-1.5 border-b border-sky-200/80 dark:border-sky-800/80">
@@ -1361,54 +1409,83 @@ function SalesView({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-950/20 font-bold border-b border-slate-100 dark:border-slate-800 text-slate-500">
               <tr>
-                <th scope="col" className="py-3.5 pl-4">Group Code</th>
+                <th scope="col" className="py-3.5 pl-4">Group ID</th>
                 <th scope="col" className="py-3.5">Customer Name</th>
                 <th scope="col" className="py-3.5">Ad Account Name</th>
-                <th scope="col" className="py-3.5 text-right">Topup Amount (USD)</th>
-                <th scope="col" className="py-3.5 text-center">Platform</th>
-                <th scope="col" className="py-3.5 text-center">Status</th>
-                <th scope="col" className="py-3.5 pr-4 text-right">Action</th>
+                <th scope="col" className="py-3.5 text-right">Topup (USD)</th>
+                <th scope="col" className="py-3.5 text-right">Topup (BDT)</th>
+                <th scope="col" className="py-3.5 text-center">Payment Status</th>
+                <th scope="col" className="py-3.5 text-center">Approval Status</th>
+                <th scope="col" className="py-3.5 pr-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {paginatedInvoices.map((inv) => {
                 const custName = customers.find(c => c.id === inv.customerId)?.name || "Cash Client";
                 const displayGroupCode = inv.groupId || inv.invoiceNo;
-                const recordStatus = inv.status || inv.paymentStatus;
+                const paymentStatus = inv.paymentStatus || computePaymentLabel(inv);
+                const approvalStatus = inv.approvalStatus || 'Pending';
+                const logEntries = auditLogOf(inv);
                 return (
                   <tr key={inv.invoiceNo} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                     <td className="py-3 pl-4 font-bold text-slate-800 dark:text-slate-200 font-mono">{displayGroupCode}</td>
                     <td className="py-3 font-semibold text-slate-900 dark:text-white">{custName}</td>
-                    <td className="py-3 font-medium text-slate-700 dark:text-slate-300 truncate max-w-[180px]">{inv.adAccountName}</td>
-                    <td className="py-3 text-right font-bold text-slate-900 dark:text-white">${inv.topupAmountUSD}</td>
+                    <td className="py-3 font-medium text-slate-700 dark:text-slate-300 truncate max-w-[160px]">{inv.adAccountName}</td>
+                    <td className="py-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${inv.topupAmountUSD}</td>
+                    <td className="py-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">৳{(inv.totalAmountBDT ?? 0).toLocaleString()}</td>
                     <td className="py-3 text-center">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border shadow-xs">
-                        <PlatformText platform={inv.platform} variant="badge" />
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm inline-block whitespace-nowrap ${
+                        paymentStatus === 'Paid' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                        paymentStatus === 'Partially Paid' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                        'bg-red-500/10 text-red-600 dark:text-red-400'
+                      }`}>
+                        {paymentStatus}
                       </span>
                     </td>
                     <td className="py-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm inline-block ${
-                        recordStatus === 'Active' || recordStatus === 'Paid' || recordStatus === 'Available' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                        recordStatus === 'Need Support' || recordStatus === 'Partially Paid' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm inline-block whitespace-nowrap ${
+                        approvalStatus === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                        approvalStatus === 'Pending' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                        ['Waiting For Feedback', 'Final Approval Review'].includes(approvalStatus) ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
                         'bg-red-500/10 text-red-600 dark:text-red-400'
                       }`}>
-                        {recordStatus}
+                        {approvalStatus}
                       </span>
                     </td>
                     <td className="py-3 pr-4 text-right">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setEditingInvoice({ ...inv });
-                          setEditForm({ ...inv });
-                          setShowEditInvoiceModal(true);
-                        }}
-                        leftIcon={<FileEdit size={11} />}
-                        className="ml-auto"
-                      >
-                        Edit
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setEditingInvoice({ ...inv });
+                            setEditForm({ ...inv });
+                            setShowEditInvoiceModal(true);
+                          }}
+                          leftIcon={<FileEdit size={11} />}
+                        >
+                          Edit
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyRecordInvoice(inv)}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border cursor-pointer transition-colors ${
+                            copiedRecord === inv.invoiceNo
+                              ? 'bg-emerald-500 text-white border-emerald-500'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          {copiedRecord === inv.invoiceNo ? <CopyCheck size={11} /> : <Copy size={11} />}
+                          {copiedRecord === inv.invoiceNo ? 'Copied' : 'Copy Invoice'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLogTarget(inv)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 border border-indigo-100 dark:border-indigo-800/60 cursor-pointer transition-colors"
+                        >
+                          <History size={11} /> View Log {logEntries.length > 0 && `(${logEntries.length})`}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1461,6 +1538,60 @@ function SalesView({
           </div>
         )}
       </div>
+
+      {/* View Log modal */}
+      <Modal
+        isOpen={!!logTarget}
+        onClose={() => setLogTarget(null)}
+        title={`Activity Log — ${logTarget?.invoiceNo ?? ''}`}
+        description="Complete workflow history for this sales entry: creation, edits, approvals, rejections, feedback, and status changes."
+        size="xl"
+        scrollable
+      >
+        {logTarget && auditLogOf(logTarget).length > 0 ? (
+          <ol className="relative space-y-4 pl-1">
+            {auditLogOf(logTarget).map((entry, idx) => {
+              const entries = auditLogOf(logTarget);
+              const meta = ACTION_META[entry.action] || { label: entry.action, icon: <AlertCircle size={13} />, tone: 'text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' };
+              const isLast = idx === entries.length - 1;
+              return (
+                <li key={`${entry.at}-${idx}`} className="relative pl-6">
+                  {!isLast && (
+                    <span className="absolute left-[9px] top-6 bottom-[-16px] w-px bg-slate-200 dark:bg-slate-800" />
+                  )}
+                  <span className={`absolute left-0 top-0.5 inline-flex items-center justify-center h-[18px] w-[18px] rounded-full border ${meta.tone}`}>
+                    {meta.icon}
+                  </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.tone}`}>
+                        {meta.icon} {meta.label}
+                      </span>
+                      <span className="text-[10px] text-slate-400">→ {entry.status}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(entry.at).toLocaleString()}</span>
+                  </div>
+                  {entry.reason && (
+                    <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-800 rounded-lg px-2.5 py-1.5">
+                      {entry.reason}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
+                    By <span className="font-semibold text-slate-500 dark:text-slate-300">{formatActor(entry.actor)}</span>
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <div className="text-center py-8">
+            <XCircle className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={28} />
+            <p className="text-xs text-slate-500">No audit history recorded for this record.</p>
+            <p className="text-[10px] text-slate-400 mt-1">Legacy-synced records pre-date the audit log. New sales capture the full workflow automatically.</p>
+          </div>
+        )}
+      </Modal>
 
       {/* Edit Sales Entry Record Modal */}
       <Modal

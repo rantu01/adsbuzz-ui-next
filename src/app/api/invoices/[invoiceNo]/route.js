@@ -1,6 +1,7 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, requirePositiveNumber } from "@/utils/validate";
 import { getInvoiceByNo, updateInvoice } from "@/models/invoiceModel";
+import { getRequestActor } from "@/utils/auditActor";
 import { cacheInvalidate } from "@/lib/cache";
 
 export const GET = asyncHandler(async (request, { params }) => {
@@ -25,7 +26,8 @@ export const PUT = asyncHandler(async (request, { params }) => {
     throw new ApiError(HttpStatus.BAD_REQUEST, "topupAmountUSD must be a positive number.");
   }
 
-  const invoice = await updateInvoice(invoiceNo, body);
+  const actor = await getRequestActor(request);
+  const invoice = await updateInvoice(invoiceNo, { ...body, auditActor: actor });
   cacheInvalidate("GET:/api/invoices");
   cacheInvalidate("GET:/api/customers");
   return ok({ message: "Invoice updated.", invoice });
