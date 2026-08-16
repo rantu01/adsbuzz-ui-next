@@ -68,11 +68,11 @@ export function useVendors(triggerToast) {
   );
 
   const payVendor = useCallback(
-    async (vendorId, { amountUSD, paymentMethod, date, transactionId } = {}) => {
+    async (vendorId, { amountUSD, amountBDT, paymentMethod, date, transactionId } = {}) => {
       try {
         const data = await apiFetch(`/api/vendors/${encodeURIComponent(vendorId)}/pay`, {
           method: 'POST',
-          body: JSON.stringify({ amountUSD, paymentMethod, date, transactionId }),
+          body: JSON.stringify({ amountUSD, amountBDT, paymentMethod, date, transactionId }),
         });
         setVendors(prev => prev.map(v => (v.id === data.vendor.id ? data.vendor : v)));
         triggerToast('success', 'Payment Recorded', `$${amountUSD} settled to vendor.`);

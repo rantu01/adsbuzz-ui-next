@@ -22,12 +22,14 @@ function isPositiveFinite(value) {
 
 function normalizePayment(entry) {
   const amount = isPositiveFinite(entry.amountUSD) ? round2(entry.amountUSD) : 0;
-  return {
+  const payment = {
     date: String(entry.date || "").slice(0, 10),
     amountUSD: amount,
     paymentMethod: String(entry.paymentMethod || "").trim(),
     transactionId: String(entry.transactionId || "").trim(),
   };
+  if (isPositiveFinite(entry.amountBDT)) payment.amountBDT = round2(entry.amountBDT);
+  return payment;
 }
 
 function sanitize(input = {}) {
@@ -161,7 +163,7 @@ export async function updateVendor(id, data) {
   return { ...mapVendor(updated), _id: updated._id };
 }
 
-export async function recordVendorPayment(id, { amountUSD, paymentMethod, date, transactionId } = {}) {
+export async function recordVendorPayment(id, { amountUSD, amountBDT, paymentMethod, date, transactionId } = {}) {
   const collection = await getCollection("vendors");
   const existing = await collection.findOne({ id });
   if (!existing) return null;
@@ -173,6 +175,7 @@ export async function recordVendorPayment(id, { amountUSD, paymentMethod, date, 
     paymentMethod: String(paymentMethod || "Wire Transfer").trim(),
     transactionId: String(transactionId || "").trim() || `PAY-${Date.now().toString().slice(-6)}`,
   };
+  if (isPositiveFinite(amountBDT)) entry.amountBDT = round2(amountBDT);
 
   const nextBalance = Math.max(0, Number(existing.outstandingBalanceUSD || 0) - amount);
   const result = await collection.findOneAndUpdate(

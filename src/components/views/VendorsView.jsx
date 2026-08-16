@@ -10,19 +10,27 @@ import SearchBar from '@/components/ui/SearchBar';
 import StatCard from '@/components/common/StatCard';
 import Pagination from '@/components/common/Pagination';
 
-function formatBdt(value, rate) {
-  const usd = Number(value) || 0;
-  return Math.round(usd * (Number(rate) || 0)).toLocaleString();
-}
-
 function bdtToUsd(bdt, rate) {
   const bdtVal = Number(bdt) || 0;
   const rateVal = Number(rate) || 0;
   return rateVal > 0 ? bdtVal / rateVal : 0;
 }
 
-function toBdt(value, rate) {
-  return Math.round(Number(value || 0) * Number(rate || 0));
+// Display value (BDT) for a payment entry. Prefers the exact BDT amount
+// recorded at entry time so the entered and displayed amounts always match;
+// falls back to converting the stored USD amount for legacy records that
+// predate BDT persistence.
+function paymentBdt(ph, rate) {
+  if (ph && ph.amountBDT != null) return Number(ph.amountBDT) || 0;
+  return Math.round((Number(ph?.amountUSD) || 0) * (Number(rate) || 0));
+}
+
+function formatBdtValue(value) {
+  return Math.round(Number(value) || 0).toLocaleString();
+}
+
+function sumPaymentBdt(payments, rate) {
+  return (payments || []).reduce((sum, ph) => sum + paymentBdt(ph, rate), 0);
 }
 
 function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDeleteVendor, paymentMethods, error, onRetry, dollarRate = 0 }) {
@@ -77,12 +85,13 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
 
   const currentMonth = new Date().toISOString().substring(0, 7);
   const vendorPaidThisMonth = activeVendor
-    ? activeVendor.paymentHistory
-        .filter(ph => ph.date && ph.date.startsWith(currentMonth))
-        .reduce((sum, ph) => sum + (ph.amountUSD || 0), 0)
+    ? sumPaymentBdt(
+        activeVendor.paymentHistory.filter(ph => ph.date && ph.date.startsWith(currentMonth)),
+        dollarRate
+      )
     : 0;
   const vendorTotalPaid = activeVendor
-    ? activeVendor.paymentHistory.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0)
+    ? sumPaymentBdt(activeVendor.paymentHistory, dollarRate)
     : 0;
 
   const getAllPayments = () =>
@@ -96,17 +105,19 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     );
 
   const allVendorPayments = getAllPayments();
-  const totalVendorPaymentUSD = allVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
-  const totalVendorPaymentMonthUSD = allVendorPayments
-    .filter(ph => ph.date && ph.date.startsWith(currentMonth))
-    .reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+  const totalVendorPaymentUSD = sumPaymentBdt(allVendorPayments, dollarRate);
+  const totalVendorPaymentMonthUSD = sumPaymentBdt(
+    allVendorPayments.filter(ph => ph.date && ph.date.startsWith(currentMonth)),
+    dollarRate
+  );
   const totalActiveVendors = vendors.filter(v => v.status === 'Active' || v.status === 'Available').length;
 
   const vendorMonthTotals = {};
   vendors.forEach(v => {
-    const monthPaid = (v.paymentHistory || [])
-      .filter(ph => ph.date && ph.date.startsWith(currentMonth))
-      .reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+    const monthPaid = sumPaymentBdt(
+      (v.paymentHistory || []).filter(ph => ph.date && ph.date.startsWith(currentMonth)),
+      dollarRate
+    );
     if (monthPaid > 0) vendorMonthTotals[v.id] = { name: v.name, total: monthPaid };
   });
   const topVendor = Object.values(vendorMonthTotals).sort((a, b) => b.total - a.total)[0] || null;
@@ -116,7 +127,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     const matchesVendor = overviewVendor === '' || ph.vendorId === overviewVendor;
     return matchesMonth && matchesVendor;
   });
-  const overviewTotalUSD = overviewPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0);
+  const overviewTotalUSD = sumPaymentBdt(overviewPayments, dollarRate);
 
   const availableMonths = Array.from(
     new Set(allVendorPayments.filter(ph => ph.date).map(ph => ph.date.slice(0, 7)))
@@ -168,12 +179,14 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     if (onPayVendor) {
       onPayVendor(payVendorData.id, {
         amountUSD: parsedAmountUSD,
+        amountBDT: parsedBdt,
         paymentMethod: selectedChannel,
       });
     } else {
       const newPaymentEntry = {
         date: new Date().toISOString().slice(0, 10),
         amountUSD: parsedAmountUSD,
+        amountBDT: parsedBdt,
         paymentMethod: selectedChannel,
         transactionId: `PAY-${Date.now().toString().slice(-6)}`,
       };
@@ -215,7 +228,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const openEditPaymentModal = (vendor, payment, index) => {
     setEditPaymentData({
       ...payment,
-      editAmountBDT: toBdt(payment.amountUSD, dollarRate),
+      editAmountBDT: paymentBdt(payment, dollarRate),
       editMethod: payment.paymentMethod || '',
       editDate: payment.date || '',
       editTxnId: payment.transactionId || '',
@@ -239,6 +252,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     updatedHistory[index] = {
       date: editDate || original.date,
       amountUSD: newAmountUSD,
+      amountBDT: Number(editAmountBDT) || 0,
       paymentMethod: editMethod || original.paymentMethod,
       transactionId: editTxnId || original.transactionId,
     };
@@ -296,14 +310,14 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
          <StatCard
            title="TOTAL VENDOR PAYMENT"
-           value={`৳${formatBdt(totalVendorPaymentUSD, dollarRate)}`}
+           value={`৳${formatBdtValue(totalVendorPaymentUSD)}`}
            variant="blue"
            subtext="All-time vendor settlements"
            icon={<DollarSign size={20} />}
          />
          <StatCard
            title="VENDOR PAYMENT (CURRENT MONTH)"
-           value={`৳${formatBdt(totalVendorPaymentMonthUSD, dollarRate)}`}
+           value={`৳${formatBdtValue(totalVendorPaymentMonthUSD)}`}
            variant="emerald"
            subtext={`Month: ${currentMonth}`}
            icon={<DollarSign size={20} />}
@@ -319,7 +333,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
            title="TOP VENDOR"
            value={topVendor ? topVendor.name : '—'}
            variant="indigo"
-           subtext={topVendor ? `৳${formatBdt(topVendor.total, dollarRate)} paid this month` : 'No payments this month'}
+           subtext={topVendor ? `৳${formatBdtValue(topVendor.total)} paid this month` : 'No payments this month'}
            icon={<DollarSign size={20} />}
          />
        </div>
@@ -443,7 +457,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                   <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75">Paid In (Current Month)</p>
                 </div>
                  <p className="text-sm font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">
-                   ৳{formatBdt(vendorPaidThisMonth, dollarRate)}
+                   ৳{formatBdtValue(vendorPaidThisMonth)}
                  </p>
                </div>
 
@@ -453,7 +467,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                    <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75">Total Paid (All-time)</p>
                  </div>
                  <p className="text-sm font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">
-                   ৳{formatBdt(vendorTotalPaid, dollarRate)}
+                   ৳{formatBdtValue(vendorTotalPaid)}
                  </p>
               </div>
             </div>
@@ -505,7 +519,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                          <p className="text-[10px] text-slate-400 mt-0.5">Ref: {ph.transactionId} on {ph.date}</p>
                        </div>
                        <div className="flex items-center gap-2">
-                         <span className="font-bold text-emerald-600">৳{formatBdt(ph.amountUSD, dollarRate)}</span>
+                         <span className="font-bold text-emerald-600">৳{formatBdtValue(paymentBdt(ph, dollarRate))}</span>
                          <Button
                            variant="ghost"
                            size="sm"
@@ -598,7 +612,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                         <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold">{ph.vendorName}</td>
                         <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
                         <td className="px-2 py-1.5 text-slate-500 dark:text-slate-500 font-mono truncate max-w-[130px]" title={ph.transactionId}>{ph.transactionId || '—'}</td>
-                        <td className="px-2 py-1.5 text-right font-bold text-emerald-600">৳{formatBdt(ph.amountUSD || 0, dollarRate)}</td>
+<td className="px-2 py-1.5 text-right font-bold text-emerald-600">৳{formatBdtValue(paymentBdt(ph, dollarRate))}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -612,7 +626,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 Records: <span className="font-bold text-slate-700 dark:text-slate-200">{overviewPayments.length}</span>
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
-                Total: <span className="font-bold text-emerald-600">৳{formatBdt(overviewTotalUSD, dollarRate)}</span>
+                Total: <span className="font-bold text-emerald-600">৳{formatBdtValue(overviewTotalUSD)}</span>
               </span>
             </div>
           )}
@@ -835,7 +849,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-500 dark:text-slate-500 font-mono truncate max-w-[120px]" title={ph.transactionId}>{ph.transactionId || '—'}</td>
-                      <td className="px-2 py-1.5 text-right font-bold text-emerald-600">৳{formatBdt(ph.amountUSD || 0, dollarRate)}</td>
+                      <td className="px-2 py-1.5 text-right font-bold text-emerald-600">৳{formatBdtValue(paymentBdt(ph, dollarRate))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -844,7 +858,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
           )}
           <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-              Total: ৳{formatBdt(selectedVendorPayments.reduce((sum, ph) => sum + (ph.amountUSD || 0), 0), dollarRate)}
+              Total: ৳{formatBdtValue(sumPaymentBdt(selectedVendorPayments, dollarRate))}
             </span>
           </div>
         </div>

@@ -21,6 +21,7 @@ export const POST = asyncHandler(async (request, { params }) => {
 
   const updated = await recordVendorPayment(id, {
     amountUSD,
+    amountBDT: body.amountBDT,
     paymentMethod,
     date: body.date,
     transactionId: body.transactionId,
