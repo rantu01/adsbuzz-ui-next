@@ -7,6 +7,8 @@ import * as customersRoute from '@/app/api/customers/route';
 import * as cardsRoute from '@/app/api/cards/route';
 import * as cardDetailRoute from '@/app/api/cards/[id]/route';
 import * as invoicesRoute from '@/app/api/invoices/route';
+import * as historicalInvoicesRoute from '@/app/api/invoices/historical/route';
+import { getCustomerTopupSummary } from '@/models/invoiceModel';
 import * as topupsRoute from '@/app/api/topups/route';
 import * as approveRoute from '@/app/api/invoices/[invoiceNo]/approve/route';
 import * as rejectRoute from '@/app/api/invoices/[invoiceNo]/reject/route';
@@ -301,6 +303,81 @@ test('E2E: create sale invoice, then approve topup via audit queue', async () =>
   const list = await listRes.json();
   const updated = list.invoices.find((i) => i.invoiceNo === invoice.invoiceNo);
   assert.equal(updated.approvalStatus, 'Approved');
+});
+
+test('POST /api/invoices/historical records a past sale without live side effects', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Historical Client', email: 'hist@example.com', companyName: 'Hist Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const histRes = await historicalInvoicesRoute.POST(
+    makeRequest('/api/invoices/historical', {
+      method: 'POST',
+      body: {
+        date: '2024-05-15',
+        customerId,
+        groupId: 'GC-HIST',
+        adAccountId: 'hist-account-001',
+        adAccountName: 'ADS_Historical_001',
+        serviceType: 'Ad Account Topup',
+        dollarRate: 130,
+        topupAmountUSD: 200,
+        paidAmountBDT: 26000,
+        totalAmountBDT: 26000,
+        paymentMethod: 'Wire Transfer',
+        note: 'Backfilled pre-system sale.',
+      },
+    }),
+  );
+  assert.equal(histRes.status, 201);
+  const { invoice } = await histRes.json();
+
+  // Stored as a historical, pre-approved record on the exact past date.
+  assert.equal(invoice.source, 'historical');
+  assert.equal(invoice.date, '2024-05-15');
+  assert.equal(invoice.approvalStatus, 'Approved');
+  assert.equal(invoice.topupAmountUSD, 200);
+  assert.equal(invoice.totalAmountBDT, 26000);
+  // Invoice number carries the historical month prefix, not the current one.
+  assert.match(invoice.invoiceNo, /^ADB 202405/);
+
+  // Visible in the full invoice list (Sales Entry Records / history)...
+  const listRes = await invoicesRoute.GET(makeRequest('/api/invoices', { search: `search=${invoice.invoiceNo}` }));
+  const list = await listRes.json();
+  assert.ok(list.invoices.some((i) => i.invoiceNo === invoice.invoiceNo));
+
+  // ...but NOT in the pending topup approval queue.
+  const pendingRes = await topupsRoute.GET(makeRequest('/api/topups', { search: 'scope=pending' }));
+  const pending = await pendingRes.json();
+  assert.ok(!pending.topups.some((t) => t.invoiceNo === invoice.invoiceNo));
+
+  // And never counts toward the customer's live topup summary.
+  const summary = await getCustomerTopupSummary(customerId);
+  assert.equal(summary.lifetimeTotalTopupUSD, 0);
+  assert.equal(summary.currentMonthTotalTopupUSD, 0);
+});
+
+test('POST /api/invoices/historical rejects today/future dates', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Hist Date Client', email: 'histdate@example.com', companyName: 'Hist Date Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const future = new Date();
+  future.setUTCFullYear(future.getUTCFullYear() + 1);
+  const futureDate = future.toISOString().split('T')[0];
+
+  const res = await historicalInvoicesRoute.POST(
+    makeRequest('/api/invoices/historical', {
+      method: 'POST',
+      body: { date: futureDate, customerId, adAccountId: 'hist-future-001', topupAmountUSD: 10, paidAmountBDT: 1300, note: 'future' },
+    }),
+  );
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.success, false);
+  assert.match(body.message, /past date|before today/i);
 });
 
 test('E2E: reject topup moves audit to Waiting For Feedback', async () => {

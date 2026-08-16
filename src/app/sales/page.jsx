@@ -22,9 +22,11 @@ function SalesPageInner() {
       setups={app.setups}
       paymentMethods={app.settings.paymentMethods}
       onSubmitSale={app.handleExecuteSale}
+      onAddHistoricalSale={app.handleAddHistoricalSale}
       onUpdateInvoice={app.handleUpdateInvoice}
       onAddCustomer={app.handleAddCustomer}
       onNavigateToCustomers={app.handleNavigateToCustomers}
+      defaultDollarRate={app.settings.defaultDollarRate}
       initialCheckoutStep={initialStep ? Number(initialStep) : undefined}
       initialCustomerId={initialCustomerId || undefined}
     />

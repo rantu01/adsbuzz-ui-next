@@ -26,6 +26,7 @@ import {
   Search,
   History,
   FileClock,
+  CalendarDays,
   ThumbsUp,
   ThumbsDown,
   CheckCheck,
@@ -74,10 +75,12 @@ function SalesView({
   setups = [],
   paymentMethods,
   onSubmitSale,
+  onAddHistoricalSale,
   onUpdateInvoice,
   onNavigateToCustomers,
   initialCheckoutStep,
   initialCustomerId,
+  defaultDollarRate,
 }) {
   const [currentStep, setCurrentStep] = useState(initialCheckoutStep ?? 1);
   
@@ -526,6 +529,151 @@ function SalesView({
     setScreenshotError('');
   };
 
+  // STEP 4 — HISTORICAL / PREVIOUS MONTH SALES ENTRY
+  // Self-contained state so the backfill flow can never touch the live checkout.
+  const [showHistModal, setShowHistModal] = useState(false);
+  const [histSubmitting, setHistSubmitting] = useState(false);
+  const [histError, setHistError] = useState('');
+  const [histDate, setHistDate] = useState('');
+  const [histServiceType, setHistServiceType] = useState('Ad Account Topup');
+  const [histGroupId, setHistGroupId] = useState('');
+  const [histCustomerId, setHistCustomerId] = useState('');
+  const [histPlatform, setHistPlatform] = useState('Facebook');
+  const [histAdAccountName, setHistAdAccountName] = useState('');
+  const [histAdAccountId, setHistAdAccountId] = useState('');
+  const [histDollarRate, setHistDollarRate] = useState(Number(defaultDollarRate) > 0 ? Number(defaultDollarRate) : 132);
+  const [histTopupUSD, setHistTopupUSD] = useState('');
+  const [histPaidBDT, setHistPaidBDT] = useState('');
+  const [histPaymentMethod, setHistPaymentMethod] = useState(paymentMethods[0] ?? '');
+  const [histTopupStatus, setHistTopupStatus] = useState('Successfull');
+  const [histNote, setHistNote] = useState('');
+
+  const histUsd = Number(histTopupUSD);
+  const histTotalBdt = Math.round((Number.isFinite(histUsd) ? histUsd : 0) * (Number(histDollarRate) || 0) * 100) / 100;
+  const histPaid = Number(histPaidBDT);
+  const histDue = Math.round((histTotalBdt - (Number.isFinite(histPaid) ? histPaid : 0)) * 100) / 100;
+  const histPaymentStatus = histDue <= 0 && histPaid > 0 ? 'Paid' : histPaid > 0 ? 'Partially Paid' : 'Due';
+  const histMaxDate = new Date().toISOString().split('T')[0];
+
+  const resetHistForm = () => {
+    setHistDate('');
+    setHistServiceType('Ad Account Topup');
+    setHistGroupId('');
+    setHistCustomerId('');
+    setHistPlatform('Facebook');
+    setHistAdAccountName('');
+    setHistAdAccountId('');
+    setHistDollarRate(Number(defaultDollarRate) > 0 ? Number(defaultDollarRate) : 132);
+    setHistTopupUSD('');
+    setHistPaidBDT('');
+    setHistPaymentMethod(paymentMethods[0] ?? '');
+    setHistTopupStatus('Successfull');
+    setHistNote('');
+    setHistError('');
+    setHistSubmitting(false);
+  };
+
+  const openHistModal = () => {
+    resetHistForm();
+    setShowHistModal(true);
+  };
+
+  const handleAddHistoricalSale = async (e) => {
+    e.preventDefault();
+    setHistError('');
+
+    const date = histDate;
+    if (!date) {
+      setHistError('Please select the historical sale date.');
+      return;
+    }
+    const chosen = new Date(`${date}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(chosen.getTime())) {
+      setHistError('Please enter a valid date.');
+      return;
+    }
+    if (chosen.getTime() >= today.getTime()) {
+      setHistError('Historical sales must be for a past date (before today).');
+      return;
+    }
+
+    if (!histServiceType) {
+      setHistError('Please select a service type.');
+      return;
+    }
+    if (!histGroupId) {
+      setHistError('Please select a Group ID.');
+      return;
+    }
+    if (!histCustomerId) {
+      setHistError('Please select a customer.');
+      return;
+    }
+    if (!histAdAccountName.trim()) {
+      setHistError('Please enter the ad account name.');
+      return;
+    }
+    if (histServiceType !== 'Others' && !histAdAccountId.trim()) {
+      setHistError('Please enter the ad account ID.');
+      return;
+    }
+
+    const usd = Number(histTopupUSD);
+    if (!Number.isFinite(usd) || usd <= 0) {
+      setHistError('Please enter a valid topup amount (USD) greater than 0.');
+      return;
+    }
+    const paid = Number(histPaidBDT);
+    if (!Number.isFinite(paid) || paid < 0) {
+      setHistError('Please enter a valid paid amount (BDT).');
+      return;
+    }
+    if (paid <= 0 && !histNote.trim()) {
+      setHistError('An Author Note is required when no amount is paid.');
+      return;
+    }
+
+    if (!onAddHistoricalSale) {
+      setHistError('Historical sale entry is not available right now.');
+      return;
+    }
+    if (histSubmitting) return;
+    setHistSubmitting(true);
+
+    const due = Math.round((histTotalBdt - paid) * 100) / 100;
+    const paymentStatus = due <= 0 && paid > 0 ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Due';
+
+    try {
+      await onAddHistoricalSale({
+        date,
+        serviceType: histServiceType,
+        groupId: histGroupId,
+        customerId: histCustomerId,
+        platform: histPlatform,
+        adAccountName: histAdAccountName.trim(),
+        adAccountId: histAdAccountId.trim(),
+        dollarRate: Number(histDollarRate) || 0,
+        topupAmountUSD: usd,
+        totalAmountBDT: histTotalBdt,
+        paidAmountBDT: paid,
+        dueAmountBDT: due,
+        paymentStatus,
+        paymentMethod: histPaymentMethod,
+        topupStatus: histTopupStatus,
+        approvalStatus: 'Approved',
+        note: histNote.trim() || undefined,
+      });
+      setShowHistModal(false);
+      resetHistForm();
+    } catch (err) {
+      // Error toast is raised by the hook/context.
+    } finally {
+      setHistSubmitting(false);
+    }
+  };
+
   // STEP 5 — LIVE CHECKOUT INVOICE copy
   const [copied, setCopied] = useState(false);
 
@@ -609,8 +757,9 @@ function SalesView({
   return (
     <div className="space-y-8 pb-12 animate-fade-in" id="sales-view">
       
-      {/* Checkout Steps Indicator */}
-      <div id="checkout-steps-indicator" className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-3 rounded-2xl shadow-sm inline-flex">
+      {/* Checkout Steps Indicator + Historical Entry Action */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div id="checkout-steps-indicator" className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-3 rounded-2xl shadow-sm inline-flex">
         <div className="flex items-center justify-start gap-1.5">
           {STEP_HEADERS.map((step) => {
             const isCompleted = step.id < currentStep;
@@ -644,6 +793,17 @@ function SalesView({
             );
           })}
         </div>
+      </div>
+
+      <Button
+        id="btn-historical-sales"
+        variant="outline"
+        onClick={openHistModal}
+        leftIcon={<CalendarDays size={14} />}
+        className="shrink-0"
+      >
+        Historical / Previous Month Sales Entry
+      </Button>
       </div>
 
       {/* Main Split Layout */}
@@ -1853,6 +2013,234 @@ function SalesView({
           <div className="custom-modal-footer flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <Button variant="ghost" onClick={() => setShowEditInvoiceModal(false)}>Cancel</Button>
             <Button type="submit">Save Changes</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Historical / Previous Month Sales Entry Modal */}
+      <Modal
+        isOpen={showHistModal}
+        onClose={() => { if (!histSubmitting) setShowHistModal(false); }}
+        title="Historical / Previous Month Sales Entry"
+        description="Backfill a sale that occurred before this system was in use. The record is saved to the database and stays in the sales history without affecting current balances, approvals, or the live sales flow."
+        size="lg"
+        scrollable
+        showCloseButton={false}
+      >
+        <form onSubmit={handleAddHistoricalSale} className="space-y-4" id="form-historical-sale">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Sale Date <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="date"
+                required
+                max={histMaxDate}
+                value={histDate}
+                onChange={(e) => setHistDate(e.target.value)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Must be a past date (before today).</p>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Service Type <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={histServiceType}
+                onChange={(e) => setHistServiceType(e.target.value)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Ad Account Topup">Ad Account Topup</option>
+                <option value="Others">Others</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Group ID <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={histGroupId}
+                onChange={(e) => setHistGroupId(e.target.value)}
+                placeholder="e.g. GC-SOCIAL-ASSIGN"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Customer <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={histCustomerId}
+                onChange={(e) => setHistCustomerId(e.target.value)}
+                placeholder="e.g. ADB550001"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Platform</label>
+              <select
+                value={histPlatform}
+                onChange={(e) => setHistPlatform(e.target.value)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Facebook">Facebook</option>
+                <option value="TikTok">TikTok</option>
+                <option value="Google">Google</option>
+                <option value="Snapchat">Snapchat</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Dollar Rate (BDT/USD)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={histDollarRate}
+                onChange={(e) => setHistDollarRate(Number(e.target.value))}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Ad Account Name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={histAdAccountName}
+                onChange={(e) => setHistAdAccountName(e.target.value)}
+                placeholder="e.g. ADS_Safirana.com_VH_1377"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Ad Account ID {histServiceType !== 'Others' && <span className="text-rose-500">*</span>}
+              </label>
+              <input
+                type="text"
+                value={histAdAccountId}
+                onChange={(e) => setHistAdAccountId(e.target.value)}
+                placeholder={histServiceType === 'Others' ? 'Optional for Others' : 'e.g. 206893199112660'}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Topup Amount (USD) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={histTopupUSD}
+                onChange={(e) => setHistTopupUSD(e.target.value)}
+                placeholder="0.00"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Total Amount (BDT)</label>
+              <input
+                type="text"
+                readOnly
+                disabled
+                value={`৳${histTotalBdt.toLocaleString()}`}
+                className="w-full text-xs p-2 bg-slate-100 dark:bg-slate-900 text-slate-500 rounded-lg border border-slate-200 dark:border-slate-800 font-bold cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                Paid Amount (BDT) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={histPaidBDT}
+                onChange={(e) => setHistPaidBDT(e.target.value)}
+                placeholder="0.00"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-bold"
+              />
+            </div>
+          </div>
+
+          <div className={`p-3 rounded-xl border text-center text-xs font-bold flex items-center justify-center gap-4 flex-wrap ${
+            histDue > 0 ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800' : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+          }`}>
+            <span className="text-slate-400 font-semibold">Outstanding Due: <span className={histDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}>৳{histDue.toLocaleString()}</span></span>
+            <span className="text-slate-400 font-semibold">Payment Status: <span className={
+              histPaymentStatus === 'Paid' ? 'text-emerald-600 dark:text-emerald-400' :
+              histPaymentStatus === 'Partially Paid' ? 'text-amber-600 dark:text-amber-400' :
+              'text-rose-600 dark:text-rose-400'
+            }>{histPaymentStatus}</span></span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Channel</label>
+              <input
+                type="text"
+                value={histPaymentMethod}
+                onChange={(e) => setHistPaymentMethod(e.target.value)}
+                placeholder="e.g. Wire Transfer"
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Topup Status</label>
+              <select
+                value={histTopupStatus}
+                onChange={(e) => setHistTopupStatus(e.target.value)}
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="Successfull">Successful</option>
+                <option value="Pending">Pending Sync</option>
+                <option value="Failed">Failed / Declined</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+              Author Note {histPaid <= 0 && <span className="text-rose-500">*</span>}
+              {histPaid <= 0 && (
+                <span className="ml-2 normal-case font-semibold text-[10px] text-amber-600 dark:text-amber-400">Required when no amount is paid</span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={histNote}
+              onChange={(e) => setHistNote(e.target.value)}
+              placeholder="e.g. Historical topup settled via EBL before system launch"
+              className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
+            />
+          </div>
+
+          {histError && (
+            <p className="text-[10px] font-semibold text-rose-500 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-950/50 p-3 rounded-lg">
+              {histError}
+            </p>
+          )}
+
+          <div className="custom-modal-footer flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="ghost" onClick={() => { if (!histSubmitting) setShowHistModal(false); }}>Cancel</Button>
+            <Button type="submit" disabled={histSubmitting}>Save Historical Sale</Button>
           </div>
         </form>
       </Modal>

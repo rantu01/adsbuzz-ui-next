@@ -136,7 +136,7 @@ function DashboardView({
 
   // Top Performing Customers
   const customerTopups = invoices.reduce((acc, inv) => {
-    if (inv.customerId && inv.paymentStatus === 'Paid') {
+    if (inv.source !== 'historical' && inv.customerId && inv.paymentStatus === 'Paid') {
       acc[inv.customerId] = (acc[inv.customerId] || 0) + inv.topupAmountUSD;
     }
     return acc;
@@ -183,7 +183,7 @@ function DashboardView({
 
   const adAccountTopups = invoices.reduce((acc, inv) => {
     const key = inv.adAccountName;
-    if (key) {
+    if (key && inv.source !== 'historical') {
       if (!acc[key]) {
         acc[key] = { sumUSD: 0, adAccountId: inv.adAccountId, platform: inv.platform };
       }

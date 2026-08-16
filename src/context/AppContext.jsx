@@ -105,6 +105,7 @@ export function AppProvider({ children }) {
     invoices,
     error: invoicesError,
     addInvoice,
+    addHistoricalInvoice,
     updateInvoice: rawUpdateInvoice,
     approveInvoice: rawApproveInvoice,
     rejectInvoice: rawRejectInvoice,
@@ -549,6 +550,35 @@ export function AppProvider({ children }) {
     router.push('/');
   };
 
+  const handleAddHistoricalSale = async (saleData) => {
+    let invoice;
+    try {
+      invoice = await addHistoricalInvoice(saleData);
+    } catch (err) {
+      return;
+    }
+
+    const invoiceNo = invoice.invoiceNo || 'INV';
+    const paidAmountBDT = invoice.paidAmountBDT || saleData.paidAmountBDT || 0;
+
+    addActivity({
+      id: `act-${Date.now()}`,
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      user: "Rakibul Riyet",
+      action: "Completed Historical Topup",
+      details: `${invoiceNo} - Backfilled $${(saleData.topupAmountUSD || 0).toFixed(1)} for ${saleData.date} (${saleData.adAccountName})`,
+      type: 'sale',
+      customerId: saleData.customerId || "",
+    });
+
+    triggerToast(
+      'success',
+      'Historical Sale Recorded',
+      `Invoice ${invoiceNo} saved for ${invoice.date}. ৳${Number(paidAmountBDT).toLocaleString()} settled.`,
+    );
+    return invoice;
+  };
+
   const handleTriggerExport = async (format) => {
     const fmt = format === 'excel' ? 'xlsx' : format;
     const url = `/api/reports/export?format=${encodeURIComponent(fmt)}`;
@@ -641,10 +671,13 @@ export function AppProvider({ children }) {
 
   const computeDashboardStats = () => {
     const today = "2026-06-01";
-    const todayInvoices = invoices.filter(inv => inv.date === today && inv.paymentStatus === 'Paid');
+    // Historical backfilled invoices never contribute to the live dashboard
+    // sales figures — they only exist as records in the sales history.
+    const liveInvoices = invoices.filter(inv => inv.source !== "historical");
+    const todayInvoices = liveInvoices.filter(inv => inv.date === today && inv.paymentStatus === 'Paid');
     const todaySales = todayInvoices.reduce((sum, inv) => sum + inv.topupAmountUSD, 0);
 
-    const monthlySales = invoices
+    const monthlySales = liveInvoices
       .filter(inv => inv.paymentStatus === 'Paid')
       .reduce((sum, inv) => sum + inv.topupAmountUSD, 0);
 
@@ -748,6 +781,7 @@ export function AppProvider({ children }) {
     handleUpdateAccountStatus,
     handleBulkUpdateStatus,
     handleExecuteSale,
+    handleAddHistoricalSale,
     handleUpdateInvoice,
     handleApproveInvoice,
     handleRejectInvoice,

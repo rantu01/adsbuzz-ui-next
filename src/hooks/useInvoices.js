@@ -9,9 +9,17 @@ export function useInvoices(triggerToast) {
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const data = await apiFetch('/api/invoices');
-      if (Array.isArray(data.invoices) && data.invoices.length > 0) {
-        setInvoices(data.invoices);
+      const all = [];
+      let page = 1;
+      for (;;) {
+        const data = await apiFetch(`/api/invoices?page=${page}&limit=200`);
+        const items = Array.isArray(data.invoices) ? data.invoices : [];
+        all.push(...items);
+        if (items.length === 0 || page >= Number(data.totalPages || 1)) break;
+        page += 1;
+      }
+      if (all.length > 0) {
+        setInvoices(all);
       }
       setError(null);
     } catch (err) {
@@ -36,6 +44,23 @@ export function useInvoices(triggerToast) {
         return data.invoice;
       } catch (err) {
         triggerToast('error', 'Sale Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [triggerToast],
+  );
+
+  const addHistoricalInvoice = useCallback(
+    async (invoice) => {
+      try {
+        const data = await apiFetch('/api/invoices/historical', {
+          method: 'POST',
+          body: JSON.stringify(invoice),
+        });
+        setInvoices(prev => [data.invoice, ...prev]);
+        return data.invoice;
+      } catch (err) {
+        triggerToast('error', 'Historical Sale Failed', getErrorMessage(err));
         throw err;
       }
     },
@@ -125,6 +150,7 @@ export function useInvoices(triggerToast) {
     loading,
     error,
     addInvoice,
+    addHistoricalInvoice,
     updateInvoice,
     approveInvoice,
     rejectInvoice,

@@ -246,7 +246,9 @@ export async function getCustomerTopupSummary(customerId) {
   if (!customerId) return null;
   const db = await getDb();
   const invoicesCollection = db.collection("invoices");
-  const invoices = await invoicesCollection.find({ customerId }).toArray();
+  // Historical backfilled entries are excluded so they never change the live
+  // lifetime/current-month topup figures used for credit and billing decisions.
+  const invoices = await invoicesCollection.find({ customerId, source: { $ne: "historical" } }).toArray();
 
   const now = new Date();
   const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -284,7 +286,7 @@ export async function getCustomerTopupSummary(customerId) {
   };
 }
 
-async function getNextInvoiceNo() {
+async function getNextInvoiceNo(date = new Date()) {
   const db = await getDb();
   const result = await db.collection("counters").findOneAndUpdate(
     { _id: "invoiceId" },
@@ -292,7 +294,7 @@ async function getNextInvoiceNo() {
     { returnDocument: "after", upsert: true }
   );
   const counter = result.value || result;
-  const now = new Date();
+  const now = new Date(date);
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   return `ADB ${year}${month}${String(counter.seq).padStart(3, "0")}`;
@@ -381,6 +383,83 @@ export async function createInvoice(data = {}) {
   if (invoice.customerId) {
     await applyCustomerCredit(invoice.customerId, invoice.paidAmountBDT, invoice.topupAmountUSD);
   }
+
+  return mapInvoice(invoice);
+}
+
+/**
+ * Creates a historical sales invoice for a sale that happened BEFORE this
+ * system was in use. It mirrors the manual-sale invoice shape so records are
+ * consistent, but deliberately avoids every side effect of a live sale:
+ *  - the ad account is NOT marked Sold,
+ *  - the billing card load is NOT increased,
+ *  - the customer credit/balance is NOT re-applied,
+ *  - the record is created already "Approved" so it never enters the audit queue.
+ * The entry therefore lives purely in the sales records/history and cannot
+ * distort current balances, approvals, or the live sales flow.
+ */
+export async function createHistoricalInvoice(data = {}) {
+  const invoicesCollection = await getCollection("invoices");
+  const settings = await getSettings();
+  const defaultRate = Number(settings.defaultDollarRate) > 0 ? Number(settings.defaultDollarRate) : DEFAULT_DOLLAR_RATE;
+
+  // Historical sales must be dated strictly in the past.
+  const date = dateOnly(data.date || "");
+  if (!date) {
+    const err = new Error("Historical sale date is required.");
+    err.code = "INVALID_HISTORICAL_DATE";
+    throw err;
+  }
+  const chosen = new Date(`${date}T00:00:00Z`);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  if (Number.isNaN(chosen.getTime()) || chosen.getTime() >= today.getTime()) {
+    const err = new Error("Historical sale date must be before today.");
+    err.code = "INVALID_HISTORICAL_DATE";
+    throw err;
+  }
+
+  const dollarRate = Number(data.dollarRate) > 0 ? Number(data.dollarRate) : defaultRate;
+  const topupAmountUSD = Math.round(Number(data.topupAmountUSD || 0) * 100) / 100;
+  const totalAmountBDT = Math.round(Number(data.totalAmountBDT || topupAmountUSD * dollarRate) * 100) / 100;
+  const paidAmountBDT = Math.round(Number(data.paidAmountBDT || 0) * 100) / 100;
+  const dueAmountBDT = Math.round((Number(data.dueAmountBDT ?? (totalAmountBDT - paidAmountBDT)) || 0) * 100) / 100;
+  const paymentStatus = data.paymentStatus || computePaymentStatus({ totalAmountBDT, paidAmountBDT, dueAmountBDT });
+  const approvalStatus = "Approved";
+
+  const invoice = {
+    invoiceNo: await getNextInvoiceNo(date),
+    date,
+    platform: data.platform || detectPlatform(data.adAccountName),
+    adAccountName: String(data.adAccountName || "").trim(),
+    adAccountId: String(data.adAccountId || "").trim(),
+    serviceType: data.serviceType === "Others" ? "Others" : "Ad Account Topup",
+    serviceDetails: data.serviceDetails ? String(data.serviceDetails).trim() : "",
+    serviceFee: Number(data.serviceFee) > 0 ? Number(data.serviceFee) : 0,
+    dollarRate,
+    topupAmountUSD,
+    totalAmountBDT,
+    paidAmountBDT,
+    dueAmountBDT,
+    paymentStatus,
+    paymentMethod: String(data.paymentMethod || "").trim() || "N/A",
+    topupStatus: String(data.topupStatus || "Successfull"),
+    approvalStatus,
+    customerId: String(data.customerId || "").trim(),
+    groupId: String(data.groupId || "").trim(),
+    note: String(data.note || "").trim(),
+    paymentScreenshot: data.paymentScreenshot || "",
+    screenshots: Array.isArray(data.screenshots) ? data.screenshots : [],
+    source: "historical",
+    auditLog: [
+      auditEntry("created", approvalStatus, { actor: data.auditActor || null, reason: String(data.note || "") }),
+    ],
+    createdAtRaw: chosen,
+    updatedAt: new Date(),
+  };
+
+  await invoicesCollection.insertOne(invoice);
+  logger.info(`createHistoricalInvoice: created ${invoice.invoiceNo} (${invoice.topupAmountUSD} USD) for ${invoice.date}`);
 
   return mapInvoice(invoice);
 }
