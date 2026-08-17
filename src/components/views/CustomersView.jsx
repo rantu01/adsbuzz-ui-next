@@ -138,7 +138,7 @@ function CustomersView({
     for (const cust of customers) {
       const id = cust.id;
       const gid = cust.groupId;
-      const accounts = allAccounts.filter(a => a.assignedCustomer === id || (a.userGroupCode && gid === a.userGroupCode));
+      const accounts = allAccounts.filter(a => a.assignedCustomer === id);
       const invs = invoices.filter(inv => inv.customerId === id || (inv.groupId && gid === inv.groupId));
       map[id] = {
         accounts,
