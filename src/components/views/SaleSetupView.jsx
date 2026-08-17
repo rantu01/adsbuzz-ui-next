@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, FileEdit } from 'lucide-react';
+import { Plus, FileEdit, ChevronLeft, ChevronRight } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -132,6 +132,8 @@ function SaleSetupView({
   onPrefillConsumed,
 }) {
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -240,6 +242,28 @@ function SaleSetupView({
     String(s.adName || '').toLowerCase().includes(search.toLowerCase()) ||
     String(s.groupId || '').toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const pageWindow = (() => {
+    const pages = [];
+    const max = totalPages;
+    const current = safePage;
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    for (let p = Math.max(2, current - 1); p <= Math.min(max - 1, current + 1); p++) {
+      pages.push(p);
+    }
+    if (current < max - 2) pages.push('...');
+    if (max > 1) pages.push(max);
+    return pages;
+  })();
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const resetForm = () => {
     setForm({
@@ -718,7 +742,7 @@ function SaleSetupView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filtered.map((s, idx) => {
+              {paginated.map((s, idx) => {
                 const isOthers = ['Others', 'Others Sale Setup'].includes(s.serviceType);
                 return (
                   <tr key={s.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
@@ -763,9 +787,59 @@ function SaleSetupView({
                   </tr>
                 );
               })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center py-8 text-slate-400 italic">
+                    No sale setups match your search.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} setups
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={13} /> Prev
+              </button>
+              {pageWindow.map((p, idx) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      p === safePage
+                        ? 'bg-brand-blue text-white shadow-xs'
+                        : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add Sale Setup Modal */}
