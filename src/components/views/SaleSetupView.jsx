@@ -157,18 +157,15 @@ function SaleSetupView({
   const [editErrors, setEditErrors] = useState({});
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // Only Active customers
-  const activeCustomers = customers.filter(c => c.status === 'Active');
-
-  // Group ID options: derived from active customers with a groupId set
-  const groupIdOptions = activeCustomers
+  // Group ID options: derived from all customers (Active and Inactive) with a groupId set
+  const groupIdOptions = customers
     .filter(c => !!c.groupId)
     .map(c => ({ value: c.groupId, label: c.groupId, sub: c.name }));
 
   // ---- Add-form derived values ----
   const allAccounts = useMemo(() => [...(socialAdAccounts || []), ...(adAccounts || [])], [socialAdAccounts, adAccounts]);
 
-  const addCustomer = activeCustomers.find(c => c.groupId === form.groupId);
+  const addCustomer = customers.find(c => c.groupId === form.groupId);
   const addCustomerAccounts = addCustomer
     ? allAccounts.filter(a =>
         a.assignedCustomer === addCustomer.id ||
@@ -503,7 +500,7 @@ function SaleSetupView({
                   value={groupId}
                   onChange={handleGroupIdChange}
                   placeholder={customersLoading ? 'Loading group IDs...' : 'Select Group ID...'}
-                  emptyText={customersLoading ? 'Loading...' : 'No active clients with Group ID found'}
+                  emptyText={customersLoading ? 'Loading...' : 'No clients with Group ID found'}
                   disabled={customersLoading}
                 />
                 {errors.groupId && (

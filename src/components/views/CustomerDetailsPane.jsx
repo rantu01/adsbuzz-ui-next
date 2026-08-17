@@ -22,6 +22,8 @@ import Button from '@/components/ui/Button';
 import { useCustomerActivities } from '@/hooks/useCustomerActivities';
 
 const INVOICE_PAGE_SIZE = 10;
+const ACCOUNT_PAGE_SIZE = 6;
+const ACTIVITY_PAGE_SIZE = 10;
 
 function CustomerDetailsPane({
   customer,
@@ -40,6 +42,8 @@ function CustomerDetailsPane({
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState('');
   const [invoicePage, setInvoicePage] = useState(1);
+  const [accountPage, setAccountPage] = useState(1);
+  const [activityPage, setActivityPage] = useState(1);
 
   const { activities: historyActivities, loading: historyLoading } = useCustomerActivities(customer?.id);
 
@@ -114,14 +118,26 @@ function CustomerDetailsPane({
     setEditingNotes(false);
     setNotesText(customer?.notes || '');
     setInvoicePage(1);
+    setAccountPage(1);
+    setActivityPage(1);
   }, [customer?.id, customer?.notes]);
 
   const accounts = stats?.accounts || [];
   const invoices = stats?.invoices || [];
+  const accountTotalPages = Math.max(1, Math.ceil(accounts.length / ACCOUNT_PAGE_SIZE));
+  const pagedAccounts = accounts.slice(
+    (accountPage - 1) * ACCOUNT_PAGE_SIZE,
+    accountPage * ACCOUNT_PAGE_SIZE,
+  );
   const invoiceTotalPages = Math.max(1, Math.ceil(invoices.length / INVOICE_PAGE_SIZE));
   const pagedInvoices = invoices.slice(
     (invoicePage - 1) * INVOICE_PAGE_SIZE,
     invoicePage * INVOICE_PAGE_SIZE,
+  );
+  const activityTotalPages = Math.max(1, Math.ceil(historyActivities.length / ACTIVITY_PAGE_SIZE));
+  const pagedActivities = historyActivities.slice(
+    (activityPage - 1) * ACTIVITY_PAGE_SIZE,
+    activityPage * ACTIVITY_PAGE_SIZE,
   );
 
   const handleNotesEditStart = () => {
@@ -303,8 +319,9 @@ function CustomerDetailsPane({
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {accounts.map((acc) => (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {pagedAccounts.map((acc) => (
                   <div
                     key={acc.adAccountId}
                     className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all bg-white dark:bg-slate-900 shadow-sm hover:shadow-md flex flex-col justify-between"
@@ -366,6 +383,8 @@ function CustomerDetailsPane({
                   </div>
                 ))}
               </div>
+              <Pagination page={accountPage} totalPages={accountTotalPages} onPageChange={setAccountPage} />
+            </div>
             )}
           </div>
         )}
@@ -505,8 +524,9 @@ function CustomerDetailsPane({
                 <p className="text-[10px] mt-1">Account assignments, top-ups and profile changes will appear here.</p>
               </div>
             ) : (
-              <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-2.5 pl-3 space-y-5 pb-2">
-                {historyActivities.map((act) => {
+              <div className="space-y-4">
+                <div className="relative border-l-2 border-slate-100 dark:border-slate-800 ml-2.5 pl-3 space-y-5 pb-2">
+                  {pagedActivities.map((act) => {
                   const Icon = TYPE_ICON[act.type] || <Clock size={11} className="text-slate-400" />;
                   return (
                     <div key={act.id || act._id} className="relative pl-3">
@@ -528,6 +548,8 @@ function CustomerDetailsPane({
                     </div>
                   );
                 })}
+                </div>
+                <Pagination page={activityPage} totalPages={activityTotalPages} onPageChange={setActivityPage} />
               </div>
             )}
           </div>
