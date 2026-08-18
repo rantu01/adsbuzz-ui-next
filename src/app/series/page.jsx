@@ -12,6 +12,7 @@ export default function SeriesPage() {
       error={app.seriesError}
       onRetry={app.refetchSeries}
       adAccounts={app.adAccounts}
+      socialAdAccounts={app.socialAdAccounts}
       onUpdateSeries={app.handleUpdateSeries}
       onAddSeries={app.addSeries}
       onDeleteSeries={app.handleDeleteSeries}

@@ -1569,11 +1569,12 @@ function SalesView({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-950/20 font-bold border-b border-slate-100 dark:border-slate-800 text-slate-500">
               <tr>
-                <th scope="col" className="py-3.5 pl-4">Group ID</th>
-                <th scope="col" className="py-3.5">Customer Name</th>
+                <th scope="col" className="py-3.5 pl-4">Date</th>
+                <th scope="col" className="py-3.5">Invoice No</th>
+                <th scope="col" className="py-3.5">Group ID</th>
                 <th scope="col" className="py-3.5">Ad Account Name</th>
-                <th scope="col" className="py-3.5 text-right">Topup (USD)</th>
-                <th scope="col" className="py-3.5 text-right">Topup (BDT)</th>
+                <th scope="col" className="py-3.5 text-right">Topup USD</th>
+                <th scope="col" className="py-3.5 text-right">Topup BDT</th>
                 <th scope="col" className="py-3.5 text-center">Payment Status</th>
                 <th scope="col" className="py-3.5 text-center">Approval Status</th>
                 <th scope="col" className="py-3.5 pr-4 text-right">Actions</th>
@@ -1581,15 +1582,15 @@ function SalesView({
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {paginatedInvoices.map((inv) => {
-                const custName = customers.find(c => c.id === inv.customerId)?.name || "Cash Client";
                 const displayGroupCode = inv.groupId || inv.invoiceNo;
                 const paymentStatus = inv.paymentStatus || computePaymentLabel(inv);
                 const approvalStatus = inv.approvalStatus || 'Pending';
                 const logEntries = auditLogOf(inv);
                 return (
                   <tr key={inv.invoiceNo} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                    <td className="py-3 pl-4 font-bold text-slate-800 dark:text-slate-200 font-mono">{displayGroupCode}</td>
-                    <td className="py-3 font-semibold text-slate-900 dark:text-white">{custName}</td>
+                    <td className="py-3 pl-4 font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">{inv.date || '—'}</td>
+                    <td className="py-3 font-bold text-slate-800 dark:text-slate-200 font-mono whitespace-nowrap">{inv.invoiceNo}</td>
+                    <td className="py-3 font-bold text-slate-800 dark:text-slate-200 font-mono">{displayGroupCode}</td>
                     <td className="py-3 font-medium text-slate-700 dark:text-slate-300 truncate max-w-[160px]">{inv.adAccountName}</td>
                     <td className="py-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${inv.topupAmountUSD}</td>
                     <td className="py-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">৳{(inv.totalAmountBDT ?? 0).toLocaleString()}</td>

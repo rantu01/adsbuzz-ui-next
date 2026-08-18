@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import SearchBar from '@/components/ui/SearchBar';
 
-function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteSeries, error, onRetry }) {
+function SeriesView({ series, adAccounts, socialAdAccounts, onAddSeries, onUpdateSeries, onDeleteSeries, error, onRetry }) {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -28,7 +28,8 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteS
   const filtered = series.filter(s => s.seriesName.toLowerCase().includes(search.toLowerCase()) || s.seriesId.toLowerCase().includes(search.toLowerCase()));
 
   const activeSeries = series.find(s => s.seriesId === selectedSeriesId) || series[0];
-  const linkedAccounts = adAccounts ? adAccounts.filter(acc => acc.seriesId === activeSeries?.seriesId && (statusFilter === 'All' || acc.accountStatus === statusFilter)) : [];
+  const allAccounts = [...(adAccounts || []), ...(socialAdAccounts || [])];
+  const linkedAccounts = allAccounts ? allAccounts.filter(acc => acc.seriesId === activeSeries?.seriesId && (statusFilter === 'All' || acc.accountStatus === statusFilter)) : [];
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -93,7 +94,7 @@ function SeriesView({ series, adAccounts, onAddSeries, onUpdateSeries, onDeleteS
   };
 
   const totalSeries = series.length;
-  const totalAdAccounts = adAccounts ? adAccounts.length : 0;
+  const totalAdAccounts = allAccounts.length;
   const totalPlatforms = new Set(series.map(s => s.platform)).size;
 
   return (
