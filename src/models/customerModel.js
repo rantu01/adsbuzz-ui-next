@@ -16,6 +16,9 @@ function ensureInitialSync() {
   if (!initialSyncPromise) {
     initialSyncPromise = (async () => {
       await migrateLegacyCustomerIds();
+      await resolveDuplicateCustomerIds();
+      await ensureCustomerIdUniqueIndex();
+      await alignCustomerIdCounter();
       await syncCustomersFromUsers();
       await ensureLegacyInvoicesSynced();
     })().catch((error) => {
@@ -76,6 +79,97 @@ export async function migrateLegacyCustomerIds() {
     logger.error("migrateLegacyCustomerIds failed.", error);
     return { migrated: 0, skipped: false, error: error.message };
   }
+}
+
+/**
+ * One-time, idempotent repair for any accidentally duplicated customer ids
+ * (e.g. ADB550022 existing on two different customer documents). For each id
+ * held by more than one customer, the "primary" record (the user-synced one
+ * carrying a uid, otherwise the earliest created) keeps the id and every other
+ * document is renumbered to a fresh counter-generated id. Because all cross
+ * references (ad accounts, invoices, activities) are keyed on the customer id
+ * string, existing business data stays attached to the kept record and the
+ * renumbered document simply becomes its own distinct customer.
+ */
+let duplicateFixDone = false;
+export async function resolveDuplicateCustomerIds() {
+  if (duplicateFixDone) return { fixed: 0, skipped: true };
+  try {
+    const db = await getDb();
+    const customersCollection = db.collection("customers");
+
+    const groups = await customersCollection
+      .aggregate([
+        { $group: { _id: "$id", docs: { $push: "$$ROOT" } } },
+        { $match: { $expr: { $gt: [{ $size: "$docs" }, 1] } } },
+      ])
+      .toArray();
+
+    let fixed = 0;
+    for (const group of groups) {
+      const docs = group.docs;
+      const primary =
+        docs.find((d) => d.uid) ||
+        docs.reduce((a, b) => (String(a.createdAt || "") <= String(b.createdAt || "") ? a : b));
+      for (const doc of docs) {
+        if (String(doc._id) === String(primary._id)) continue;
+        const newId = await getNextCustomerId();
+        await customersCollection.updateOne(
+          { _id: doc._id },
+          { $set: { id: newId, updatedAt: new Date() } }
+        );
+        fixed += 1;
+        logger.info(
+          `resolveDuplicateCustomerIds: renumbered ${doc.id} (${doc.name || doc.email}) -> ${newId}`
+        );
+      }
+    }
+    duplicateFixDone = true;
+    if (fixed > 0) logger.info(`resolveDuplicateCustomerIds: ${fixed} duplicate customer id(s) fixed.`);
+    return { fixed, skipped: false };
+  } catch (error) {
+    logger.error("resolveDuplicateCustomerIds failed.", error);
+    return { fixed: 0, skipped: false, error: error.message };
+  }
+}
+
+/**
+ * Creates a unique index on customers.id so the database itself rejects any
+ * future duplicate customer ids, even when two requests race concurrently.
+ */
+export async function ensureCustomerIdUniqueIndex() {
+  const collection = await getCollection("customers");
+  await collection.createIndex(
+    { id: 1 },
+    { unique: true, sparse: true, name: "unique_customer_id" }
+  );
+  return { ok: true };
+}
+
+/**
+ * Re-aligns the customerId counter so newly generated ids can never re-enter
+ * the range already occupied by user-synced customers (whose ids are derived
+ * from the user record and were never tracked by the counter). The counter is
+ * only ever raised, never lowered.
+ */
+export async function alignCustomerIdCounter() {
+  const db = await getDb();
+  const customersCollection = db.collection("customers");
+  const maxDoc = await customersCollection
+    .find({ id: { $regex: "^ADB\\d{6}$" } })
+    .project({ id: 1 })
+    .sort({ id: -1 })
+    .limit(1)
+    .toArray();
+  const maxNumeric = maxDoc.length ? Number(maxDoc[0].id.slice(3)) : 0;
+  // The counter stores the offset from CUSTOMER_ID_BASE (seq 1 -> ADB550001),
+  // so the highest existing id's offset is maxNumeric - 550000.
+  const maxSeq = Math.max(0, maxNumeric - 550000);
+  await db.collection("counters").updateOne(
+    { _id: "customerId", seq: { $lt: maxSeq } },
+    { $set: { seq: maxSeq } }
+  );
+  return { maxSeq };
 }
 
 function toDateString(value) {
@@ -150,13 +244,21 @@ function mapUserToCustomer(user) {
 
 async function getNextCustomerId() {
   const db = await getDb();
-  const result = await db.collection("counters").findOneAndUpdate(
-    { _id: "customerId" },
-    { $inc: { seq: 1 } },
-    { returnDocument: "after", upsert: true }
-  );
-  const counter = result.value || result;
-  return `ADB${String(550000 + counter.seq)}`;
+  const customersCollection = db.collection("customers");
+  // The counter increment is atomic, but the id space is shared with
+  // user-synced customers whose ids were never tracked by the counter. Loop
+  // until we land on an id that is not already in use.
+  for (;;) {
+    const result = await db.collection("counters").findOneAndUpdate(
+      { _id: "customerId" },
+      { $inc: { seq: 1 } },
+      { returnDocument: "after", upsert: true }
+    );
+    const counter = result.value || result;
+    const id = `ADB${String(550000 + counter.seq)}`;
+    const taken = await customersCollection.findOne({ id }, { projection: { _id: 1 } });
+    if (!taken) return id;
+  }
 }
 
 export async function syncCustomersFromUsers() {
@@ -174,32 +276,65 @@ export async function syncCustomersFromUsers() {
 
     for (const user of users) {
       const base = mapUserToCustomer(user);
-      const result = await customersCollection.updateOne(
-        { id: base.id },
-        {
-          $set: {
-            uid: base.uid,
-            name: base.name,
-            email: base.email,
-            phone: base.phone,
-            groupId: base.groupId,
-            role: base.role,
-            updatedAt: new Date(),
-          },
-          $setOnInsert: {
-            companyName: "",
-            status: base.status,
-            createdAt: base.createdAt,
-            balanceBDT: base.balanceBDT,
-            balanceUSD: base.balanceUSD,
-            creditLimitUSD: base.creditLimitUSD,
-            notes: "",
-            avatar: base.avatar,
-            favorite: false,
-          },
-        },
-        { upsert: true }
+
+      // The user's customer may already exist under a different id than the
+      // one derived from the user record (e.g. a previous collision fell back
+      // to the counter). Reuse that id so a user never spawns duplicate docs.
+      const existingByUid = await customersCollection.findOne(
+        { uid: base.uid },
+        { projection: { id: 1 } }
       );
+      if (existingByUid) {
+        base.id = existingByUid.id;
+      } else {
+        // The user-derived id space (ADB55xxxx from user customId/numericId)
+        // overlaps the counter-generated range. Never hijack an id owned by a
+        // different customer — allocate a fresh counter id instead.
+        const takenById = await customersCollection.findOne(
+          { id: base.id },
+          { projection: { uid: 1 } }
+        );
+        if (takenById && takenById.uid && takenById.uid !== base.uid) {
+          base.id = await getNextCustomerId();
+        }
+      }
+
+      const update = {
+        $set: {
+          uid: base.uid,
+          name: base.name,
+          email: base.email,
+          phone: base.phone,
+          groupId: base.groupId,
+          role: base.role,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          companyName: "",
+          status: base.status,
+          createdAt: base.createdAt,
+          balanceBDT: base.balanceBDT,
+          balanceUSD: base.balanceUSD,
+          creditLimitUSD: base.creditLimitUSD,
+          notes: "",
+          avatar: base.avatar,
+          favorite: false,
+        },
+      };
+
+      let result;
+      try {
+        result = await customersCollection.updateOne({ id: base.id }, update, { upsert: true });
+      } catch (err) {
+        // Rare race with a concurrent insert — the unique id index rejected us,
+        // so grab a fresh counter id and retry once.
+        if (err?.code === 11000) {
+          base.id = await getNextCustomerId();
+          result = await customersCollection.updateOne({ id: base.id }, update, { upsert: true });
+        } else {
+          throw err;
+        }
+      }
       if (result.upsertedCount > 0) inserted += 1;
       else updated += 1;
     }
@@ -256,7 +391,6 @@ export async function getCustomerById(id) {
 export async function createCustomer(data = {}) {
   await ensureInitialSync();
   const collection = await getCollection("customers");
-  const id = await getNextCustomerId();
 
   const explicitGroupId = data.groupId?.trim() || "";
   let groupId = explicitGroupId;
@@ -279,28 +413,45 @@ export async function createCustomer(data = {}) {
   const name = String(data.name || "").trim();
   const email = String(data.email || "").trim().toLowerCase();
 
-  const customer = {
-    id,
-    uid: null,
-    name,
-    email,
-    phone: String(data.phone || "").trim(),
-    companyName: String(data.companyName || "").trim(),
-    status: CUSTOMER_STATUS.includes(data.status) ? data.status : "Active",
-    createdAt: toDateString(new Date()),
-    balanceBDT: 0,
-    balanceUSD: 0,
-    creditLimitUSD: Number(data.creditLimitUSD) > 0 ? Number(data.creditLimitUSD) : 0,
-    groupId,
-    notes: "",
-    avatar: initials(name) || "",
-    favorite: false,
-    role: "customer",
-    createdAtRaw: new Date(),
-    updatedAt: new Date(),
-  };
+  // Allocate an id that is verified free up-front, then insert with a bounded
+  // retry so a concurrent request racing to the same counter value can never
+  // create a duplicate (the unique id index is the final backstop).
+  let customer = null;
+  for (let attempt = 0; attempt < 5 && !customer; attempt += 1) {
+    const id = await getNextCustomerId();
+    const candidate = {
+      id,
+      uid: null,
+      name,
+      email,
+      phone: String(data.phone || "").trim(),
+      companyName: String(data.companyName || "").trim(),
+      status: CUSTOMER_STATUS.includes(data.status) ? data.status : "Active",
+      createdAt: toDateString(new Date()),
+      balanceBDT: 0,
+      balanceUSD: 0,
+      creditLimitUSD: Number(data.creditLimitUSD) > 0 ? Number(data.creditLimitUSD) : 0,
+      groupId,
+      notes: "",
+      avatar: initials(name) || "",
+      favorite: false,
+      role: "customer",
+      createdAtRaw: new Date(),
+      updatedAt: new Date(),
+    };
+    try {
+      await collection.insertOne(candidate);
+      customer = candidate;
+    } catch (err) {
+      if (err?.code === 11000) continue;
+      throw err;
+    }
+  }
 
-  await collection.insertOne(customer);
+  if (!customer) {
+    throw new Error("Could not allocate a unique customer id. Please retry.");
+  }
+
   logger.info(`createCustomer: created ${customer.id} (${customer.groupId})`);
   return customer;
 }
