@@ -6,7 +6,8 @@ import { markAccountSold } from "@/models/adAccountModel";
 import { applyCardLoad, getCardByName } from "@/models/cardModel";
 import { applyCustomerCredit } from "@/models/customerModel";
 import { normalizeCustomerId } from "@/utils/customerIds";
-import { round2, dateOnly, detectPlatform, invoiceNoFromLegacyId, computePaymentStatus } from "@/utils/invoiceMath";
+import { round2, dateOnly, detectPlatform, invoiceNoFromLegacyId, computePaymentStatus, applyPayment } from "@/utils/invoiceMath";
+import { persistDataUrl } from "@/utils/upload";
 
 export const DEFAULT_DOLLAR_RATE = 132;
 export const DEFAULT_CREDIT_LIMIT = 1000;
@@ -43,12 +44,82 @@ function auditEntry(action, status, { reason = "", actor = null } = {}) {
 // persisted (detected via the presence of migrated legacy invoices).
 let legacyInvoiceSyncPromise = null;
 
+const INVOICE_INDEXES = [
+  { key: { createdAtRaw: -1, date: -1 }, name: "invoices_createdAt_date" },
+  { key: { approvalStatus: 1, createdAtRaw: -1 }, name: "invoices_approval_status" },
+  { key: { topupStatus: 1 }, name: "invoices_topup_status" },
+  { key: { paymentStatus: 1 }, name: "invoices_payment_status" },
+  { key: { customerId: 1 }, name: "invoices_customer_id" },
+  { key: { source: 1 }, name: "invoices_source" },
+];
+
+/**
+ * Best-effort, idempotent index creation for the invoice collection. The shared
+ * MongoDB instance is pathologically slow for unindexed scans/sorts, so the
+ * list queries (Topups, Invoices, Reports) rely on these to stay fast.
+ */
+export async function ensureInvoicesIndexes() {
+  const invoicesCollection = await getCollection("invoices");
+  await Promise.all(
+    INVOICE_INDEXES.map(({ key, name }) => invoicesCollection.createIndex(key, { name }))
+  );
+  return { ok: true };
+}
+
+/**
+ * Historically, some invoices embedded full base64 image data URLs in
+ * `paymentScreenshot` (2-3 MB each) when the upload fallback fired during a
+ * sale. Those embedded payloads made every list read transfer megabytes of
+ * image data, stalling the Topups/Invoices pages for minutes on throttled
+ * connections. This persists each embedded screenshot as a normal upload file
+ * (a plain `/uploads/...` URL, exactly what the View Screenshot modal renders)
+ * and rewrites the invoice to reference the file. Idempotent and non-destructive.
+ */
+export async function migrateEmbeddedPaymentScreenshots() {
+  const invoicesCollection = await getCollection("invoices");
+  const docs = await invoicesCollection
+    .find({ paymentScreenshot: { $regex: "^data:" } })
+    .toArray();
+
+  let migrated = 0;
+  for (const doc of docs) {
+    const url = await persistDataUrl({
+      data: doc.paymentScreenshot,
+      name: `${doc.invoiceNo || "screenshot"}.png`,
+    });
+    if (!url) continue;
+    await invoicesCollection.updateOne(
+      { _id: doc._id },
+      { $set: { paymentScreenshot: url, updatedAt: new Date() } }
+    );
+    migrated += 1;
+  }
+
+  if (migrated > 0) {
+    logger.info(`migrateEmbeddedPaymentScreenshots: ${migrated} embedded screenshot(s) moved to upload files.`);
+  }
+  return { migrated };
+}
+
 export function ensureLegacyInvoicesSynced() {
   if (legacyInvoiceSyncPromise) return legacyInvoiceSyncPromise;
 
   legacyInvoiceSyncPromise = (async () => {
     const db = await getDb();
     const invoicesCollection = db.collection("invoices");
+
+    // Index + payload maintenance: idempotent, best-effort, never blocks reads.
+    try {
+      await ensureInvoicesIndexes();
+    } catch (error) {
+      logger.error("ensureInvoicesIndexes failed.", error);
+    }
+    try {
+      await migrateEmbeddedPaymentScreenshots();
+    } catch (error) {
+      logger.error("migrateEmbeddedPaymentScreenshots failed.", error);
+    }
+
     const legacyCount = await invoicesCollection.countDocuments({
       $or: [{ source: "legacy_sync" }, { legacyId: { $exists: true, $ne: "" } }],
     });
@@ -578,6 +649,87 @@ export async function updateInvoice(invoiceNo, data = {}) {
     }
   );
   const updated = await invoicesCollection.findOne({ invoiceNo });
+  return mapInvoice(updated);
+}
+
+/**
+ * Records a BDT payment against an invoice with a remaining due balance.
+ * Recomputes paid/due/payment status, persists the payment entry, pushes a
+ * `payment_received` audit log entry (actor + timestamp + amount), and credits
+ * the customer's BDT balance with the newly received amount (the USD was
+ * already credited at sale creation).
+ *
+ * Only invoices with a payment status of "Due" or "Partially Paid" (remaining
+ * due > 0) accept payments; paying more than the outstanding balance is
+ * rejected. Already-paid invoices throw an `INVOICE_FULLY_PAID` code so the
+ * API can respond 400 instead of silently mutating settled records.
+ */
+export async function recordInvoicePayment(invoiceNo, { amountBDT = 0, paymentMethod = "", date = "", transactionId = "", note = "", actor = null } = {}) {
+  const invoicesCollection = await getCollection("invoices");
+  const existing = await invoicesCollection.findOne({ invoiceNo });
+  if (!existing) return null;
+
+  const total = round2(Number(existing.totalAmountBDT) || 0);
+  const paid = round2(Number(existing.paidAmountBDT) || 0);
+  const due = round2(Number(existing.dueAmountBDT) || Math.max(0, total - paid));
+  const amount = round2(Number(amountBDT) || 0);
+
+  if (!(amount > 0)) {
+    const err = new Error("Payment amount must be a positive number.");
+    err.code = "INVALID_PAYMENT_AMOUNT";
+    throw err;
+  }
+  if (due <= 0) {
+    const err = new Error("This invoice is already fully paid. No outstanding balance remains.");
+    err.code = "INVOICE_FULLY_PAID";
+    throw err;
+  }
+  if (amount > due) {
+    const err = new Error(
+      `Payment of ৳${amount.toLocaleString()} exceeds the outstanding due of ৳${due.toLocaleString()}.`
+    );
+    err.code = "PAYMENT_EXCEEDS_DUE";
+    throw err;
+  }
+
+  const next = applyPayment({ totalAmountBDT: total, paidAmountBDT: paid, dueAmountBDT: due, amountBDT: amount });
+
+  const paymentEntry = {
+    amountBDT: amount,
+    paymentMethod: String(paymentMethod || "").trim() || existing.paymentMethod || "N/A",
+    date: String(date || "").trim() || new Date().toISOString().split("T")[0],
+    transactionId: String(transactionId || "").trim() || `PAY-${Date.now().toString().slice(-8)}`,
+    note: String(note || "").trim(),
+    actor: actor || null,
+    at: new Date().toISOString(),
+  };
+
+  await invoicesCollection.updateOne(
+    { invoiceNo },
+    {
+      $set: {
+        paidAmountBDT: next.paidAmountBDT,
+        dueAmountBDT: next.dueAmountBDT,
+        paymentStatus: next.paymentStatus,
+        paymentMethod: paymentEntry.paymentMethod,
+        updatedAt: new Date(),
+      },
+      $push: {
+        payments: paymentEntry,
+        auditLog: auditEntry("payment_received", next.paymentStatus, {
+          actor,
+          reason: `Payment of ৳${amount.toLocaleString()} received${paymentEntry.paymentMethod !== "N/A" ? ` via ${paymentEntry.paymentMethod}` : ""}.${note ? ` ${note}` : ""}`,
+        }),
+      },
+    }
+  );
+
+  if (existing.customerId) {
+    await applyCustomerCredit(existing.customerId, amount, 0);
+  }
+
+  const updated = await invoicesCollection.findOne({ invoiceNo });
+  logger.info(`recordInvoicePayment: ৳${amount} recorded against ${invoiceNo} (${next.paymentStatus}).`);
   return mapInvoice(updated);
 }
 

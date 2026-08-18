@@ -110,6 +110,7 @@ export function AppProvider({ children }) {
     approveInvoice: rawApproveInvoice,
     rejectInvoice: rawRejectInvoice,
     syncTopupStatus: rawSyncTopupStatus,
+    recordPayment: rawRecordPayment,
     refetch: refetchInvoices,
   } = useInvoices(triggerToast);
 
@@ -210,6 +211,19 @@ export function AppProvider({ children }) {
   const handleUpdateInvoice = async (inv) => {
     const result = await rawUpdateInvoice(inv);
     logActivityFx("Rakibul R.", "Updated Invoice", `Invoice ${inv?.invoiceNo} edited.`, "payment", inv?.customerId);
+    return result;
+  };
+
+  const handleRecordInvoicePayment = async (invoiceNo, payload) => {
+    const result = await rawRecordPayment(invoiceNo, payload);
+    const amountBDT = Number(payload?.amountBDT || 0);
+    logActivityFx(
+      "Rakibul R.",
+      "Invoice Payment Received",
+      `Invoice ${invoiceNo} — ৳${amountBDT.toLocaleString()} payment recorded. Balance now ${result?.paymentStatus || ""}.`,
+      "payment",
+      result?.customerId || payload?.customerId,
+    );
     return result;
   };
 
@@ -786,6 +800,7 @@ export function AppProvider({ children }) {
     handleApproveInvoice,
     handleRejectInvoice,
     handleSyncTopupStatus,
+    handleRecordInvoicePayment,
     updateCard,
     handleToggleCardStatus,
     handleDeleteCard,

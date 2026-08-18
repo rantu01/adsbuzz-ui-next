@@ -31,6 +31,27 @@ export function computePaymentStatus({ totalAmountBDT = 0, paidAmountBDT = 0, du
   return "Due";
 }
 
+/**
+ * Applies an incoming BDT payment to an invoice's running totals.
+ * Returns the new paid amount, due amount, and derived payment status.
+ * Used by both the backend (`recordInvoicePayment`) and the UI payment form.
+ */
+export function applyPayment({ totalAmountBDT = 0, paidAmountBDT = 0, dueAmountBDT = 0, amountBDT = 0 } = {}) {
+  const total = round2(Number(totalAmountBDT) || 0);
+  const paid = round2(Number(paidAmountBDT) || 0);
+  const due = round2(Number(dueAmountBDT) || 0);
+  const amount = round2(Number(amountBDT) || 0);
+
+  const nextPaid = round2(Math.min(total, Math.max(0, paid + amount)));
+  const nextDue = round2(Math.max(0, total - nextPaid));
+
+  return {
+    paidAmountBDT: nextPaid,
+    dueAmountBDT: nextDue,
+    paymentStatus: computePaymentStatus({ totalAmountBDT: total, paidAmountBDT: nextPaid, dueAmountBDT: nextDue }),
+  };
+}
+
 export function invoiceNoFromLegacyId(legacyId) {
   const hex = String(legacyId).replace(/[^0-9a-f]/gi, "").slice(-6) || "0";
   const num = parseInt(hex, 16) % 1000000;

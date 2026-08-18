@@ -13,6 +13,7 @@ import * as topupsRoute from '@/app/api/topups/route';
 import * as approveRoute from '@/app/api/invoices/[invoiceNo]/approve/route';
 import * as rejectRoute from '@/app/api/invoices/[invoiceNo]/reject/route';
 import * as syncRoute from '@/app/api/invoices/[invoiceNo]/sync-topup/route';
+import * as payRoute from '@/app/api/invoices/[invoiceNo]/pay/route';
 import * as feedbackRoute from '@/app/api/topups/[id]/feedback/route';
 import * as finalApproveRoute from '@/app/api/topups/[id]/final-approve/route';
 import * as finalRejectRoute from '@/app/api/topups/[id]/final-reject/route';
@@ -512,6 +513,104 @@ test('PATCH sync-topup updates topup status', async () => {
 
 test('PATCH approve unknown invoice returns 404', async () => {
   const res = await approveRoute.PATCH(makeRequest('/api/invoices/ADB 999999/approve', { method: 'PATCH' }), params('ADB 999999'));
+  assert.equal(res.status, 404);
+});
+
+test('E2E: record payments against a Due invoice updates totals and logs history', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Pay Client', email: 'pay@example.com', companyName: 'Pay Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: { customerId, adAccountId: 'test-pay-001', adAccountName: 'ADS_Pay_001', topupAmountUSD: 100, dollarRate: 132, approvalStatus: 'Approved', topupStatus: 'Successfull', note: 'Pay flow test note' },
+    }),
+  );
+  assert.equal(invRes.status, 201);
+  const { invoice } = await invRes.json();
+  assert.equal(invoice.paymentStatus, 'Due');
+  assert.equal(invoice.paidAmountBDT, 0);
+  assert.equal(invoice.dueAmountBDT, 13200);
+
+  // Partial payment: Due → Partially Paid
+  const pay1Res = await payRoute.POST(
+    makeRequest(`/api/invoices/${invoice.invoiceNo}/pay`, {
+      method: 'POST',
+      body: { amountBDT: 5000, paymentMethod: 'bKash', date: '2026-06-15', transactionId: 'TXN-PAY-001', note: 'First installment' },
+    }),
+    params(invoice.invoiceNo),
+  );
+  assert.equal(pay1Res.status, 201);
+  const paid1 = (await pay1Res.json()).invoice;
+  assert.equal(paid1.paymentStatus, 'Partially Paid');
+  assert.equal(paid1.paidAmountBDT, 5000);
+  assert.equal(paid1.dueAmountBDT, 8200);
+  assert.ok(Array.isArray(paid1.payments));
+  assert.equal(paid1.payments.length, 1);
+  assert.equal(paid1.payments[0].amountBDT, 5000);
+  assert.equal(paid1.payments[0].paymentMethod, 'bKash');
+  assert.equal(paid1.payments[0].transactionId, 'TXN-PAY-001');
+  assert.ok(paid1.auditLog.some((e) => e.action === 'payment_received' && e.status === 'Partially Paid'));
+
+  // Remaining payment: Partially Paid → Paid
+  const pay2Res = await payRoute.POST(
+    makeRequest(`/api/invoices/${invoice.invoiceNo}/pay`, {
+      method: 'POST',
+      body: { amountBDT: 8200, paymentMethod: 'Nagad' },
+    }),
+    params(invoice.invoiceNo),
+  );
+  assert.equal(pay2Res.status, 201);
+  const paid2 = (await pay2Res.json()).invoice;
+  assert.equal(paid2.paymentStatus, 'Paid');
+  assert.equal(paid2.paidAmountBDT, 13200);
+  assert.equal(paid2.dueAmountBDT, 0);
+  assert.equal(paid2.payments.length, 2);
+  assert.ok(paid2.auditLog.some((e) => e.action === 'payment_received' && e.status === 'Paid'));
+
+  // Fully-paid invoices reject further payments
+  const overPayRes = await payRoute.POST(
+    makeRequest(`/api/invoices/${invoice.invoiceNo}/pay`, {
+      method: 'POST',
+      body: { amountBDT: 100 },
+    }),
+    params(invoice.invoiceNo),
+  );
+  assert.equal(overPayRes.status, 400);
+  const overBody = await overPayRes.json();
+  assert.match(overBody.message, /fully paid|outstanding/i);
+});
+
+test('POST /api/invoices/:invoiceNo/pay rejects overpayment beyond the due', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Overpay Client', email: 'overpay@example.com', companyName: 'Overpay Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: { customerId, adAccountId: 'test-overpay-001', topupAmountUSD: 50, dollarRate: 132, approvalStatus: 'Approved', topupStatus: 'Successfull', note: 'Overpay test' },
+    }),
+  );
+  const { invoice } = await invRes.json();
+
+  const res = await payRoute.POST(
+    makeRequest(`/api/invoices/${invoice.invoiceNo}/pay`, { method: 'POST', body: { amountBDT: 999999 } }),
+    params(invoice.invoiceNo),
+  );
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.match(body.message, /exceeds the outstanding due/i);
+});
+
+test('POST /api/invoices/:invoiceNo/pay returns 404 for unknown invoice', async () => {
+  const res = await payRoute.POST(
+    makeRequest('/api/invoices/ADB 888888/pay', { method: 'POST', body: { amountBDT: 100 } }),
+    params('ADB 888888'),
+  );
   assert.equal(res.status, 404);
 });
 

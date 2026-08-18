@@ -189,9 +189,9 @@ function SalesView({
 
   // Calculations State
   const [dollarRate, setDollarRate] = useState(132);
-  const [topupAmountUSD, setTopupAmountUSD] = useState(100);
-  const [totalBDT, setTotalBDT] = useState(13200);
-  const [paidBDT, setPaidBDT] = useState(13200);
+  const [topupAmountUSD, setTopupAmountUSD] = useState('');
+  const [totalBDT, setTotalBDT] = useState(0);
+  const [paidBDT, setPaidBDT] = useState('');
   const [dueBDT, setDueBDT] = useState(0);
   
   // Payment Details State
@@ -353,8 +353,6 @@ function SalesView({
     if (activeAccount) {
       const rate = getEffectiveRate(activeAccount);
       setDollarRate(rate);
-      // Default: customer has paid the full BDT total so status is "Paid"
-      setPaidBDT(Math.round(topupAmountUSD * rate * 100) / 100);
     }
   }, [selectedAccountId, activeAccount, activeAccountSetup]);
 
@@ -521,8 +519,8 @@ function SalesView({
 
     // Reset checkout state
     setCurrentStep(1);
-    setTopupAmountUSD(100);
-    setPaidBDT(13200);
+    setTopupAmountUSD('');
+    setPaidBDT('');
     setNoteText('');
     setPaymentScreenshot(undefined);
     setScreenshotName('');
@@ -1159,8 +1157,7 @@ function SalesView({
                         onChange={(e) => setTopupStatus(e.target.value)}
                       >
                         <option value="Successfull">Successful</option>
-                        <option value="Pending">Pending Sync</option>
-                        <option value="Failed">Failed / Declined</option>
+                        <option value="NotYet">NOT YET</option>
                       </select>
                     </div>
                   </div>
@@ -1321,7 +1318,7 @@ function SalesView({
                   <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue">
                     <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">BDT Amount Paid</p>
-                      <p className="font-black text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">৳{paidBDT.toLocaleString()}</p>
+                      <p className="font-black text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">৳{Number(paidBDT || 0).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Remaining Due</p>
@@ -1506,7 +1503,7 @@ function SalesView({
             <div className="pt-6 border-t border-border-blue-light dark:border-border-blue-light space-y-2">
               <div className="flex justify-between text-xs text-slate-500">
                 <span>Topup Value (USD)</span>
-                <span className="font-semibold text-slate-700 dark:text-slate-300">${topupAmountUSD.toFixed(1)}</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">${Number(topupAmountUSD || 0).toFixed(1)}</span>
               </div>
               <div className="flex justify-between text-xs text-slate-500">
                 <span>Account Dollar Rate (BDT)</span>
@@ -1526,7 +1523,7 @@ function SalesView({
             <div className="pt-4 border-t border-dashed border-border-blue-light dark:border-border-blue-light space-y-2 text-xs">
               <div className="flex justify-between text-slate-500">
                 <span>Paid Amount BDT</span>
-                <span className="font-semibold text-emerald-600">৳{paidBDT.toLocaleString()}</span>
+                <span className="font-semibold text-emerald-600">৳{Number(paidBDT || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between font-bold pt-1">
                 <span>Remaining Account Due</span>

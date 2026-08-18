@@ -145,6 +145,30 @@ export function useInvoices(triggerToast) {
     [triggerToast],
   );
 
+  const recordPayment = useCallback(
+    async (invoiceNo, payload) => {
+      try {
+        const data = await apiFetch(`/api/invoices/${encodeURIComponent(invoiceNo)}/pay`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        setInvoices(prev =>
+          prev.map(inv => (inv.invoiceNo === invoiceNo ? data.invoice : inv)),
+        );
+        triggerToast(
+          'success',
+          'Payment Recorded',
+          `৳${Number(payload.amountBDT || 0).toLocaleString()} recorded against invoice ${invoiceNo}.`,
+        );
+        return data.invoice;
+      } catch (err) {
+        triggerToast('error', 'Payment Recording Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [triggerToast],
+  );
+
   return {
     invoices,
     loading,
@@ -155,6 +179,7 @@ export function useInvoices(triggerToast) {
     approveInvoice,
     rejectInvoice,
     syncTopupStatus,
+    recordPayment,
     refetch: fetchInvoices,
   };
 }

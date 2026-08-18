@@ -13,6 +13,7 @@ export default function InvoicesPage() {
       onRetry={app.refetchInvoices}
       customers={app.customers}
       onUpdateInvoice={app.handleUpdateInvoice}
+      onRecordPayment={app.handleRecordInvoicePayment}
     />
   );
 }
