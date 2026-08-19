@@ -34,6 +34,26 @@ export async function getCollection(name) {
   return db.collection(name);
 }
 
+async function getMetaCollection() {
+  const db = await getDb();
+  return db.collection("_meta");
+}
+
+export async function hasSeeded(key) {
+  const meta = await getMetaCollection();
+  const doc = await meta.findOne({ key: `seed:${key}` });
+  return !!doc;
+}
+
+export async function markSeeded(key) {
+  const meta = await getMetaCollection();
+  await meta.updateOne(
+    { key: `seed:${key}` },
+    { $set: { seededAt: new Date() } },
+    { upsert: true }
+  );
+}
+
 export async function pingDatabase() {
   try {
     const client = await getClient();

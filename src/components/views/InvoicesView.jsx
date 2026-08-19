@@ -58,7 +58,7 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, error, onRetry }) {
+function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, error, onRetry, paymentMethods }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -285,6 +285,15 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
       })
       .catch(() => { });
   };
+
+  // Payment methods available in the Record Payment modal: the configured
+  // settings methods plus any method already associated with the invoice.
+  const availablePaymentMethods = (() => {
+    const methods = new Set((paymentMethods || []).map(m => String(m).trim()).filter(Boolean));
+    const existing = String(paymentTarget?.paymentMethod || '').trim();
+    if (existing) methods.add(existing);
+    return Array.from(methods);
+  })();
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -817,13 +826,16 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Method</label>
-              <input
-                type="text"
+              <select
                 value={paymentForm.paymentMethod}
                 onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-                placeholder="e.g. bKash / Nagad / Bank"
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-              />
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                <option value="">Select Payment Method</option>
+                {availablePaymentMethods.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Date</label>

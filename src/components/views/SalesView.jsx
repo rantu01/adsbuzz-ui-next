@@ -678,23 +678,20 @@ function SalesView({
   const buildInvoiceText = () => {
     const date = new Date().toLocaleDateString('en-GB');
     const invNo = previewInvoiceNo || `ADB ${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}000`;
-    const platformName = `${platform} Ad Account`;
-    const topupLabel = topupStatus === 'Successfull' ? 'Successful' : topupStatus;
+    const custName = activeCustomer?.name || 'Cash Client';
     const paymentLabel = paymentStatusBadge.label;
     return [
       `Date: ${date}`,
       `Invoice no: ${invNo}`,
       `Group ID: ${groupIdCode || ''}`,
-      `Platform Name: ${platformName}`,
+      `Customer: ${custName}`,
       `Ad Account Name: ${activeAccount?.adAccountName || ''}`,
-      `Ad Account ID: ${activeAccount?.adAccountId || ''}`,
-      `USD Dollar rate: ${dollarRate}`,
-      `Amount in USD: ${topupAmountUSD}`,
-      `Amount in BDT: ${totalBDT}`,
+      `Amount in USD: ${topupAmountUSD || 0}`,
+      `Total (BDT): ${totalBDT || 0}`,
+      `Paid Amount: ${Number.isFinite(Number(paidBDT)) ? paidBDT : 0}`,
+      `Due Amount: ${Number.isFinite(Number(dueBDT)) ? dueBDT : 0}`,
       `Payment Status: ${paymentLabel}`,
-      `TopUp Status: ${topupLabel}`,
-      `Paid Amount: ${Number.isFinite(paidBDT) ? paidBDT : 0}`,
-      `Due Amount: ${Number.isFinite(dueBDT) ? dueBDT : 0}`,
+      `Approval Status: ${approvalStatus}`,
     ].join('\n');
   };
 
@@ -713,24 +710,19 @@ function SalesView({
   // table without relying on the checkout state.
   const buildRecordInvoiceText = (inv) => {
     const custName = customers.find(c => c.id === inv.customerId)?.name || "Cash Client";
-    const platformName = `${inv.platform || ''} Ad Account`.trim();
-    const topupLabel = inv.topupStatus === 'Successfull' ? 'Successful' : (inv.topupStatus || '');
     const paymentLabel = inv.paymentStatus || computePaymentLabel(inv);
     return [
       `Date: ${inv.date || ''}`,
       `Invoice no: ${inv.invoiceNo || ''}`,
       `Group ID: ${inv.groupId || ''}`,
       `Customer: ${custName}`,
-      `Platform Name: ${platformName}`,
       `Ad Account Name: ${inv.adAccountName || ''}`,
-      `Ad Account ID: ${inv.adAccountId || ''}`,
-      `USD Dollar rate: ${inv.dollarRate || 0}`,
       `Amount in USD: ${inv.topupAmountUSD || 0}`,
-      `Amount in BDT: ${inv.totalAmountBDT || 0}`,
-      `Payment Status: ${paymentLabel}`,
-      `TopUp Status: ${topupLabel}`,
+      `Total (BDT): ${inv.totalAmountBDT || 0}`,
       `Paid Amount: ${Number.isFinite(Number(inv.paidAmountBDT)) ? inv.paidAmountBDT : 0}`,
       `Due Amount: ${Number.isFinite(Number(inv.dueAmountBDT)) ? inv.dueAmountBDT : 0}`,
+      `Payment Status: ${paymentLabel}`,
+      `Approval Status: ${inv.approvalStatus || inv.paymentVerificationStatus || ''}`,
     ].join('\n');
   };
 

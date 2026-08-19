@@ -19,11 +19,15 @@ function sanitize(input = {}) {
 
 export async function getSettings() {
   const collection = await getCollection("settings");
+  const collectionPaymentMethods = await getCollectionPaymentMethods();
 
   const existing = await collection.findOne({ _id: APP_DOC_ID });
   if (existing) {
     const { _id, ...rest } = existing;
-    return rest;
+    return {
+      ...rest,
+      paymentMethods: mergePaymentMethods(rest.paymentMethods, collectionPaymentMethods),
+    };
   }
 
   const doc = {
@@ -36,7 +40,37 @@ export async function getSettings() {
   await collection.updateOne({ _id: APP_DOC_ID }, { $setOnInsert: doc }, { upsert: true });
   const { _id, ...rest } = doc;
   logger.info("getSettings: seeded default settings.");
-  return rest;
+  return {
+    ...rest,
+    paymentMethods: mergePaymentMethods(rest.paymentMethods, collectionPaymentMethods),
+  };
+}
+
+async function getCollectionPaymentMethods() {
+  const collection = await getCollection("paymentMethods");
+  const docs = await collection.find({}).toArray();
+  return docs
+    .map((doc) => String(doc.referenceId || doc.name || doc.label || "").trim())
+    .filter(Boolean);
+}
+
+function normalizePaymentMethodName(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function mergePaymentMethods(primary, secondary) {
+  const merged = [];
+  const seen = new Set();
+  const add = (value) => {
+    const method = String(value || "").trim();
+    const key = normalizePaymentMethodName(method);
+    if (!method || seen.has(key)) return;
+    seen.add(key);
+    merged.push(method);
+  };
+  (primary || []).forEach(add);
+  (secondary || []).forEach(add);
+  return merged;
 }
 
 export async function updateSettings(data = {}) {

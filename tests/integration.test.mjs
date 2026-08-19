@@ -6,6 +6,10 @@ import * as settingsRoute from '@/app/api/settings/route';
 import * as customersRoute from '@/app/api/customers/route';
 import * as cardsRoute from '@/app/api/cards/route';
 import * as cardDetailRoute from '@/app/api/cards/[id]/route';
+import * as platformsRoute from '@/app/api/platforms/route';
+import * as platformDetailRoute from '@/app/api/platforms/[id]/route';
+import * as walletsRoute from '@/app/api/wallets/route';
+import * as walletDetailRoute from '@/app/api/wallets/[id]/route';
 import * as invoicesRoute from '@/app/api/invoices/route';
 import * as historicalInvoicesRoute from '@/app/api/invoices/historical/route';
 import { getCustomerTopupSummary } from '@/models/invoiceModel';
@@ -165,6 +169,28 @@ test('POST /api/customers rejects invalid email', async () => {
   assert.match(body.message, /email/i);
 });
 
+test('deleted seed card does not reappear on subsequent lists', async () => {
+  const listRes = await cardsRoute.GET(makeRequest('/api/cards'));
+  const { cards } = await listRes.json();
+  const seedCard = cards.find((c) => c.cardName === 'ADSBUZZ EBL - 1342');
+  assert.ok(seedCard, 'seed card should be present');
+
+  const delRes = await cardDetailRoute.DELETE(
+    makeRequest(`/api/cards/${seedCard.id}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: seedCard.id }) },
+  );
+  assert.equal(delRes.status, 200);
+
+  for (let i = 0; i < 2; i += 1) {
+    const again = await cardsRoute.GET(makeRequest('/api/cards'));
+    const list = await again.json();
+    assert.ok(
+      !list.cards.some((c) => c.id === seedCard.id),
+      `seed card must stay deleted after list call #${i + 1}`,
+    );
+  }
+});
+
 test('POST /api/cards registers a card and GET lists it', async () => {
   const res = await cardsRoute.POST(
     makeRequest('/api/cards', {
@@ -255,6 +281,63 @@ test('DELETE /api/cards/:id returns 404 for unknown card', async () => {
     { params: Promise.resolve({ id: 'DOES-NOT-EXIST' }) },
   );
   assert.equal(res.status, 404);
+});
+
+test('deleted seed platform does not reappear on subsequent lists', async () => {
+  const listRes = await platformsRoute.GET(makeRequest('/api/platforms'));
+  const { platforms } = await listRes.json();
+  const seed = platforms.find((p) => p.platformId === 'PLAT-001');
+  assert.ok(seed, 'seed platform should be present');
+
+  const delRes = await platformDetailRoute.DELETE(
+    makeRequest(`/api/platforms/${seed.platformId}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: seed.platformId }) },
+  );
+  assert.equal(delRes.status, 200);
+
+  const again = await platformsRoute.GET(makeRequest('/api/platforms'));
+  const list = await again.json();
+  assert.ok(
+    !list.platforms.some((p) => p.platformId === seed.platformId),
+    'seed platform must stay deleted',
+  );
+});
+
+test('deleting all platforms does not re-seed them', async () => {
+  const listRes = await platformsRoute.GET(makeRequest('/api/platforms'));
+  const { platforms } = await listRes.json();
+
+  for (const p of platforms) {
+    const delRes = await platformDetailRoute.DELETE(
+      makeRequest(`/api/platforms/${p.platformId}`, { method: 'DELETE' }),
+      { params: Promise.resolve({ id: p.platformId }) },
+    );
+    assert.equal(delRes.status, 200);
+  }
+
+  const after = await platformsRoute.GET(makeRequest('/api/platforms'));
+  const { platforms: afterList } = await after.json();
+  assert.equal(afterList.length, 0, 'emptied platform collection must not be re-seeded');
+});
+
+test('deleted seed wallet does not reappear on subsequent lists', async () => {
+  const listRes = await walletsRoute.GET(makeRequest('/api/wallets'));
+  const { wallets } = await listRes.json();
+  const seed = wallets.find((w) => w.walletId === 'WALLET-001');
+  assert.ok(seed, 'seed wallet should be present');
+
+  const delRes = await walletDetailRoute.DELETE(
+    makeRequest(`/api/wallets/${seed.walletId}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: seed.walletId }) },
+  );
+  assert.equal(delRes.status, 200);
+
+  const again = await walletsRoute.GET(makeRequest('/api/wallets'));
+  const list = await again.json();
+  assert.ok(
+    !list.wallets.some((w) => w.walletId === seed.walletId),
+    'seed wallet must stay deleted',
+  );
 });
 
 test('E2E: create sale invoice, then approve topup via audit queue', async () => {

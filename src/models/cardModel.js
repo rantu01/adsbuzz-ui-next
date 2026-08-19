@@ -1,4 +1,4 @@
-import { getCollection } from "@/lib/db";
+import { getCollection, hasSeeded, markSeeded } from "@/lib/db";
 import logger from "@/utils/logger";
 import { INITIAL_CARDS } from "@/data/seedData";
 
@@ -32,33 +32,38 @@ function sanitize(input = {}) {
 }
 
 export async function seedCards() {
+  if (await hasSeeded("cards")) return { seeded: 0 };
+
   const collection = await getCollection("cards");
   await collection.createIndex({ cardName: 1 }, { unique: true });
 
   let seeded = 0;
-  for (const c of INITIAL_CARDS) {
-    const doc = {
-      id: String(c.id || `CARD-${c.cardName}`),
-      cardName: String(c.cardName || ""),
-      cardInitial: String(c.cardInitial || "").toUpperCase(),
-      cardType: String(c.cardType || "Visa"),
-      cardPlatform: String(c.cardPlatform || ""),
-      status: CARD_STATUS.includes(c.status) ? c.status : "Active",
-      platformId: String(c.platformId || ""),
-      walletId: String(c.walletId || ""),
-      cardWallet: String(c.cardWallet || ""),
-      linkedAccountsCount: Number(c.linkedAccountsCount) || 0,
-      usageCount: Number(c.usageCount) || 0,
-      totalLoadedUSD: Number(c.totalLoadedUSD) || 0,
-      updatedAt: new Date(),
-    };
-    const result = await collection.updateOne(
-      { cardName: doc.cardName },
-      { $setOnInsert: doc },
-      { upsert: true }
-    );
-    if (result.upsertedCount > 0) seeded += 1;
+  if ((await collection.countDocuments()) === 0) {
+    for (const c of INITIAL_CARDS) {
+      const doc = {
+        id: String(c.id || `CARD-${c.cardName}`),
+        cardName: String(c.cardName || ""),
+        cardInitial: String(c.cardInitial || "").toUpperCase(),
+        cardType: String(c.cardType || "Visa"),
+        cardPlatform: String(c.cardPlatform || ""),
+        status: CARD_STATUS.includes(c.status) ? c.status : "Active",
+        platformId: String(c.platformId || ""),
+        walletId: String(c.walletId || ""),
+        cardWallet: String(c.cardWallet || ""),
+        linkedAccountsCount: Number(c.linkedAccountsCount) || 0,
+        usageCount: Number(c.usageCount) || 0,
+        totalLoadedUSD: Number(c.totalLoadedUSD) || 0,
+        updatedAt: new Date(),
+      };
+      const result = await collection.updateOne(
+        { cardName: doc.cardName },
+        { $setOnInsert: doc },
+        { upsert: true }
+      );
+      if (result.upsertedCount > 0) seeded += 1;
+    }
   }
+  await markSeeded("cards");
   logger.info(`seedCards: seeded ${seeded} cards.`);
   return { seeded };
 }

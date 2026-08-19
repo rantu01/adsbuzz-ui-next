@@ -1,4 +1,4 @@
-import { getCollection } from "@/lib/db";
+import { getCollection, hasSeeded, markSeeded } from "@/lib/db";
 import logger from "@/utils/logger";
 import { INITIAL_WALLETS } from "@/data/seedData";
 
@@ -19,27 +19,33 @@ function sanitize(input = {}) {
 }
 
 export async function seedWallets() {
+  if (await hasSeeded("wallets")) return { seeded: 0 };
+
   const collection = await getCollection("wallets");
-  const count = await collection.countDocuments();
-  if (count > 0) return { seeded: 0 };
+  let seeded = 0;
 
-  const docs = INITIAL_WALLETS.map((w) => ({
-    ...w,
-    walletId: String(w.walletId || `WALLET-${Date.now()}`),
-    ownerName: String(w.ownerName || ""),
-    idCardInfo: String(w.idCardInfo || ""),
-    sourceBy: String(w.sourceBy || ""),
-    email: String(w.email || "").trim().toLowerCase(),
-    accountSecurityStatus: SECURITY_STATUS.includes(w.accountSecurityStatus) ? w.accountSecurityStatus : "Medium",
-    walletStatus: WALLET_STATUS.includes(w.walletStatus) ? w.walletStatus : "Active",
-    updatedAt: new Date(),
-  }));
+  if ((await collection.countDocuments()) === 0) {
+    const docs = INITIAL_WALLETS.map((w) => ({
+      ...w,
+      walletId: String(w.walletId || `WALLET-${Date.now()}`),
+      ownerName: String(w.ownerName || ""),
+      idCardInfo: String(w.idCardInfo || ""),
+      sourceBy: String(w.sourceBy || ""),
+      email: String(w.email || "").trim().toLowerCase(),
+      accountSecurityStatus: SECURITY_STATUS.includes(w.accountSecurityStatus) ? w.accountSecurityStatus : "Medium",
+      walletStatus: WALLET_STATUS.includes(w.walletStatus) ? w.walletStatus : "Active",
+      updatedAt: new Date(),
+    }));
 
-  if (docs.length > 0) {
-    await collection.insertMany(docs);
+    if (docs.length > 0) {
+      await collection.insertMany(docs);
+    }
+    seeded = docs.length;
   }
-  logger.info(`seedWallets: seeded ${docs.length} wallets.`);
-  return { seeded: docs.length };
+
+  await markSeeded("wallets");
+  logger.info(`seedWallets: seeded ${seeded} wallets.`);
+  return { seeded };
 }
 
 function mapWallet({ _id, ...rest }) {

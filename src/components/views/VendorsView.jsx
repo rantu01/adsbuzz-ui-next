@@ -34,6 +34,20 @@ function sumPaymentBdt(payments, rate) {
 }
 
 function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDeleteVendor, paymentMethods, error, onRetry, dollarRate = 0 }) {
+  // Every payment channel that is available for selection: the configured
+  // settings payment methods plus any method already recorded against a
+  // vendor settlement ledger (those recorded via free-text entries).
+  const availablePaymentMethods = (() => {
+    const methods = new Set((paymentMethods || []).map(m => String(m).trim()).filter(Boolean));
+    vendors.forEach(v =>
+      (v.paymentHistory || []).forEach(ph => {
+        const method = String(ph.paymentMethod || '').trim();
+        if (method) methods.add(method);
+      })
+    );
+    return Array.from(methods);
+  })();
+
   const [search, setSearch] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState(vendors[0]?.id || '');
   const [showModal, setShowModal] = useState(false);
@@ -43,7 +57,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const [showAllPaymentsModal, setShowAllPaymentsModal] = useState(false);
   const [payVendorData, setPayVendorData] = useState(null);
   const [payAmount, setPayAmount] = useState('');
-  const [payChannel, setPayChannel] = useState(paymentMethods[0] ?? '');
+  const [payChannel, setPayChannel] = useState(availablePaymentMethods[0] ?? '');
   const [deleteVendorData, setDeleteVendorData] = useState(null);
 
   const [vendorType, setVendorType] = useState(VENDOR_TYPES[5]);
@@ -62,6 +76,15 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const [vendorPage, setVendorPage] = useState(1);
   const VENDOR_PAGE_SIZE = 10;
 
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const LEDGER_PAGE_SIZE = 5;
+
+  const [overviewPage, setOverviewPage] = useState(1);
+  const OVERVIEW_PAGE_SIZE = 10;
+
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 10;
+
   const query = search.trim().toLowerCase();
   const filtered = vendors.filter(v => {
     if (!query) return true;
@@ -74,6 +97,18 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     setVendorPage(1);
   }, [search]);
 
+  useEffect(() => {
+    setLedgerPage(1);
+  }, [selectedVendorId]);
+
+  useEffect(() => {
+    setOverviewPage(1);
+  }, [overviewMonth, overviewVendor]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [selectedVendorId, showAllPaymentsModal]);
+
   const vendorTotalPages = Math.max(1, Math.ceil(filtered.length / VENDOR_PAGE_SIZE));
   const safeVendorPage = Math.min(vendorPage, vendorTotalPages);
   const pagedVendors = filtered.slice(
@@ -82,6 +117,14 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   );
 
   const activeVendor = vendors.find(v => v.id === selectedVendorId) || vendors[0];
+
+  const ledgerEntries = (activeVendor?.paymentHistory ?? []).map((ph, index) => ({ ph, index }));
+  const ledgerTotalPages = Math.max(1, Math.ceil(ledgerEntries.length / LEDGER_PAGE_SIZE));
+  const safeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
+  const pagedLedger = ledgerEntries.slice(
+    (safeLedgerPage - 1) * LEDGER_PAGE_SIZE,
+    safeLedgerPage * LEDGER_PAGE_SIZE,
+  );
 
   const currentMonth = new Date().toISOString().substring(0, 7);
   const vendorPaidThisMonth = activeVendor
@@ -128,6 +171,16 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     return matchesMonth && matchesVendor;
   });
   const overviewTotalUSD = sumPaymentBdt(overviewPayments, dollarRate);
+
+  const sortedOverviewPayments = overviewPayments
+    .slice()
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const overviewTotalPages = Math.max(1, Math.ceil(sortedOverviewPayments.length / OVERVIEW_PAGE_SIZE));
+  const safeOverviewPage = Math.min(overviewPage, overviewTotalPages);
+  const pagedOverviewPayments = sortedOverviewPayments.slice(
+    (safeOverviewPage - 1) * OVERVIEW_PAGE_SIZE,
+    safeOverviewPage * OVERVIEW_PAGE_SIZE,
+  );
 
   const availableMonths = Array.from(
     new Set(allVendorPayments.filter(ph => ph.date).map(ph => ph.date.slice(0, 7)))
@@ -205,7 +258,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
     setShowPayModal(false);
     setPayVendorData(null);
     setPayAmount('');
-    setPayChannel(paymentMethods[0] ?? '');
+    setPayChannel(availablePaymentMethods[0] ?? '');
   };
 
   const openEditModal = (v) => {
@@ -216,7 +269,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
   const openPayModal = (v) => {
     setPayVendorData(v);
     setPayAmount('');
-    setPayChannel(paymentMethods[0] ?? '');
+    setPayChannel(availablePaymentMethods[0] ?? '');
     setShowPayModal(true);
   };
 
@@ -288,6 +341,13 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
       ...ph,
     }))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const historyTotalPages = Math.max(1, Math.ceil(selectedVendorPayments.length / HISTORY_PAGE_SIZE));
+  const safeHistoryPage = Math.min(historyPage, historyTotalPages);
+  const pagedHistoryPayments = selectedVendorPayments.slice(
+    (safeHistoryPage - 1) * HISTORY_PAGE_SIZE,
+    safeHistoryPage * HISTORY_PAGE_SIZE,
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -512,7 +572,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 <p className="text-xs text-slate-400 italic">No bank wire settlement logs on file for this partner.</p>
               ) : (
                 <div className="space-y-2.5">
-                   {activeVendor.paymentHistory.map((ph, index) => (
+                   {pagedLedger.map(({ ph, index }) => (
                      <div key={index} className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs">
                        <div>
                          <p className="font-semibold text-slate-800 dark:text-slate-200">{ph.paymentMethod}</p>
@@ -541,6 +601,14 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                        </div>
                      </div>
                    ))}
+                   {ledgerEntries.length > 0 && (
+                     <div className="flex items-center justify-between pt-1">
+                       <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                         Showing {(safeLedgerPage - 1) * LEDGER_PAGE_SIZE + 1}–{Math.min(safeLedgerPage * LEDGER_PAGE_SIZE, ledgerEntries.length)} of {ledgerEntries.length}
+                       </span>
+                     </div>
+                   )}
+                   <Pagination page={safeLedgerPage} totalPages={ledgerTotalPages} onPageChange={setLedgerPage} />
                  </div>
               )}
             </div>
@@ -603,10 +671,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                   </tr>
                 </thead>
                 <tbody>
-                  {overviewPayments
-                    .slice()
-                    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-                    .map((ph, idx) => (
+                  {pagedOverviewPayments.map((ph, idx) => (
                       <tr key={idx} className="border-t border-slate-100 dark:border-slate-800">
                         <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
                         <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold">{ph.vendorName}</td>
@@ -618,6 +683,10 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 </tbody>
               </table>
             </div>
+          )}
+
+          {overviewPayments.length > 0 && (
+            <Pagination page={safeOverviewPage} totalPages={overviewTotalPages} onPageChange={setOverviewPage} />
           )}
 
           {overviewPayments.length > 0 && (
@@ -726,7 +795,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
               onChange={(e) => setPayChannel(e.target.value)}
               className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
             >
-              {paymentMethods.map(pm => (
+              {availablePaymentMethods.map(pm => (
                 <option key={pm} value={pm}>{pm}</option>
               ))}
             </select>
@@ -844,7 +913,7 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedVendorPayments.map((ph, index) => (
+                  {pagedHistoryPayments.map((ph, index) => (
                     <tr key={index} className="border-t border-slate-100 dark:border-slate-800">
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{ph.date || '—'}</td>
                       <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">{ph.paymentMethod || '—'}</td>
@@ -855,6 +924,9 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
                 </tbody>
               </table>
             </div>
+          )}
+          {selectedVendorPayments.length > 0 && (
+            <Pagination page={safeHistoryPage} totalPages={historyTotalPages} onPageChange={setHistoryPage} />
           )}
           <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">

@@ -12,6 +12,7 @@ export default function InvoicesPage() {
       error={app.invoicesError}
       onRetry={app.refetchInvoices}
       customers={app.customers}
+      paymentMethods={app.settings.paymentMethods}
       onUpdateInvoice={app.handleUpdateInvoice}
       onRecordPayment={app.handleRecordInvoicePayment}
     />

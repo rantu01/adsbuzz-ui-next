@@ -1,4 +1,4 @@
-import { getCollection } from "@/lib/db";
+import { getCollection, hasSeeded, markSeeded } from "@/lib/db";
 import logger from "@/utils/logger";
 import { INITIAL_PLATFORMS } from "@/data/seedData";
 
@@ -13,24 +13,30 @@ function sanitize(input = {}) {
 }
 
 export async function seedPlatforms() {
+  if (await hasSeeded("platforms")) return { seeded: 0 };
+
   const collection = await getCollection("platforms");
-  const count = await collection.countDocuments();
-  if (count > 0) return { seeded: 0 };
+  let seeded = 0;
 
-  const docs = INITIAL_PLATFORMS.map((p) => ({
-    ...p,
-    platformId: String(p.platformId || `PLAT-${Date.now()}`),
-    platformName: String(p.platformName || ""),
-    platformLogo: String(p.platformLogo || ""),
-    status: PLATFORM_STATUS.includes(p.status) ? p.status : "Active",
-    updatedAt: new Date(),
-  }));
+  if ((await collection.countDocuments()) === 0) {
+    const docs = INITIAL_PLATFORMS.map((p) => ({
+      ...p,
+      platformId: String(p.platformId || `PLAT-${Date.now()}`),
+      platformName: String(p.platformName || ""),
+      platformLogo: String(p.platformLogo || ""),
+      status: PLATFORM_STATUS.includes(p.status) ? p.status : "Active",
+      updatedAt: new Date(),
+    }));
 
-  if (docs.length > 0) {
-    await collection.insertMany(docs);
+    if (docs.length > 0) {
+      await collection.insertMany(docs);
+    }
+    seeded = docs.length;
   }
-  logger.info(`seedPlatforms: seeded ${docs.length} platforms.`);
-  return { seeded: docs.length };
+
+  await markSeeded("platforms");
+  logger.info(`seedPlatforms: seeded ${seeded} platforms.`);
+  return { seeded };
 }
 
 function mapPlatform({ _id, ...rest }) {
