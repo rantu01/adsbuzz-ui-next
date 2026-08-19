@@ -730,4 +730,41 @@ test('E2E: unassigning an ad account auto-terminates its Sale Setup but keeps hi
   assert.ok(saved, 'sales history must remain after unassign');
   assert.equal(saved.topupAmountUSD, 100);
   assert.equal(saved.customerId, customer.id);
+
+  // Re-assign the same account to the same group and create a NEW setup.
+  // The terminated setup must no longer block a fresh setup, and the old
+  // terminated record must stay in the database for history.
+  const reassignRes = await assignRoute.POST(
+    makeRequest(`/api/ad-accounts/${account.adAccountId}/assign`, { method: 'POST', body: { customerId: customer.id } }),
+    accountParams(account.adAccountId),
+  );
+  assert.equal(reassignRes.status, 200);
+
+  const recreateRes = await saleSetupsRoute.POST(
+    makeRequest('/api/sale-setups', {
+      method: 'POST',
+      body: {
+        groupId: customer.groupId,
+        serviceType: 'Ad Account Sales Setup',
+        adAccountId: account.adAccountId,
+        adName: account.adAccountName,
+        platform: 'Facebook',
+        dollarRate: 135,
+        monthlySpending: 600,
+        status: 'Active',
+      },
+    }),
+  );
+  assert.equal(recreateRes.status, 201, 'terminated setup must not block a new setup');
+  const { setup: fresh } = await recreateRes.json();
+  assert.equal(fresh.status, 'Active');
+  assert.notEqual(fresh.id, setup.id, 'new setup must be a separate record');
+
+  const oldSetupRes = await saleSetupDetailRoute.GET(
+    makeRequest(`/api/sale-setups/${setup.id}`),
+    setupParams(setup.id),
+  );
+  assert.equal(oldSetupRes.status, 200);
+  const { setup: oldSetup } = await oldSetupRes.json();
+  assert.equal(oldSetup.status, 'Terminated', 'old terminated setup must remain for history');
 });

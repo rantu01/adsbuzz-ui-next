@@ -19,6 +19,7 @@ import {
 import PlatformText from '@/components/common/PlatformText';
 import Pagination from '@/components/common/Pagination';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 import { useCustomerActivities } from '@/hooks/useCustomerActivities';
 
 const INVOICE_PAGE_SIZE = 10;
@@ -45,7 +46,20 @@ function CustomerDetailsPane({
   const [accountPage, setAccountPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
 
+  // Unassign Ad Account reason popup state
+  const [unassignTarget, setUnassignTarget] = useState(null);
+  const [unassignReason, setUnassignReason] = useState('');
+  const [unassigning, setUnassigning] = useState(false);
+
   const { activities: historyActivities, loading: historyLoading } = useCustomerActivities(customer?.id);
+
+  // The Activity / History tab is scoped strictly to Assign / Unassign logs.
+  // Topup records live in the dedicated "Topup Ledger History" tab, so they are
+  // excluded here.
+  const assignActivities = useMemo(
+    () => historyActivities.filter(a => /assign|unassign/i.test(a.action || '')),
+    [historyActivities],
+  );
 
   // Active "Ad Account Sales Setup" entries keyed by adAccountId for this customer's group.
   // If a setup record exists for the account + group the account is "configured"; otherwise we
@@ -60,14 +74,21 @@ function CustomerDetailsPane({
     return map;
   }, [setups]);
 
-  // Latest Active Sale Setup record (by adAccountId + customer group) so the
-  // "Rate" shown for an assigned account reflects the Dollar Rate configured in
-  // Sales Setup instead of the ad account's bootstrap/default value.
+  // Latest ACTIVE "Ad Account Sales Setup" record (keyed by adAccountId +
+  // customer group) so the card reflects the CURRENT setup. When an account was
+  // unassigned and later re-assigned to the same group there are two records —
+  // an old Terminated one and a fresh Active one. Only ACTIVE records are
+  // considered, and the most recently updated one wins, so a stale/terminated
+  // setup never overrides the new active setup on the card.
   const setupRecordByAccountAndGroup = useMemo(() => {
     const map = new Map();
     (setups || []).forEach((s) => {
       if (s.serviceType !== 'Ad Account Sales Setup' || s.status !== 'Active' || !s.adAccountId) return;
-      map.set(`${s.adAccountId}|${s.groupId}`, s);
+      const key = `${s.adAccountId}|${s.groupId}`;
+      const existing = map.get(key);
+      if (!existing || new Date(s.updatedAt || 0) > new Date(existing.updatedAt || 0)) {
+        map.set(key, s);
+      }
     });
     return map;
   }, [setups]);
@@ -124,6 +145,27 @@ function CustomerDetailsPane({
 
   const accounts = stats?.accounts || [];
   const invoices = stats?.invoices || [];
+
+  // Per-ad-account Current Month / Last Month topup totals (USD) derived from
+  // this customer's invoices so the assigned-account cards can display them.
+  const accountTopupTotals = useMemo(() => {
+    const now = new Date();
+    const curPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevPrefix = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    const totals = {};
+    for (const inv of invoices) {
+      const key = inv.adAccountId;
+      if (!key) continue;
+      if (!totals[key]) totals[key] = { current: 0, last: 0 };
+      const prefix = String(inv.date || inv.createdAtRaw || "").slice(0, 7);
+      const usd = Number(inv.topupAmountUSD || 0);
+      if (prefix === curPrefix) totals[key].current += usd;
+      else if (prefix === prevPrefix) totals[key].last += usd;
+    }
+    return totals;
+  }, [invoices]);
+
   const accountTotalPages = Math.max(1, Math.ceil(accounts.length / ACCOUNT_PAGE_SIZE));
   const pagedAccounts = accounts.slice(
     (accountPage - 1) * ACCOUNT_PAGE_SIZE,
@@ -134,8 +176,8 @@ function CustomerDetailsPane({
     (invoicePage - 1) * INVOICE_PAGE_SIZE,
     invoicePage * INVOICE_PAGE_SIZE,
   );
-  const activityTotalPages = Math.max(1, Math.ceil(historyActivities.length / ACTIVITY_PAGE_SIZE));
-  const pagedActivities = historyActivities.slice(
+  const activityTotalPages = Math.max(1, Math.ceil(assignActivities.length / ACTIVITY_PAGE_SIZE));
+  const pagedActivities = assignActivities.slice(
     (activityPage - 1) * ACTIVITY_PAGE_SIZE,
     activityPage * ACTIVITY_PAGE_SIZE,
   );
@@ -149,6 +191,32 @@ function CustomerDetailsPane({
   const handleNotesSave = () => {
     if (customer) onNotesSave(customer.id, notesText);
     setEditingNotes(false);
+  };
+
+  const openUnassignDialog = useCallback((acc) => {
+    setUnassignTarget(acc);
+    setUnassignReason('');
+  }, []);
+
+  const closeUnassignDialog = useCallback(() => {
+    if (unassigning) return;
+    setUnassignTarget(null);
+    setUnassignReason('');
+  }, [unassigning]);
+
+  // Persist the unassign with the user-supplied reason, then close the popup.
+  const handleConfirmUnassign = async () => {
+    if (!unassignTarget || !unassignReason.trim()) return;
+    setUnassigning(true);
+    try {
+      await onUnassignAdAccount(unassignTarget.adAccountId, unassignReason.trim());
+      setUnassignTarget(null);
+      setUnassignReason('');
+    } catch {
+      // Error toast is raised by the hook; keep the popup open so the user can retry.
+    } finally {
+      setUnassigning(false);
+    }
   };
 
   return (
@@ -297,7 +365,7 @@ function CustomerDetailsPane({
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
         >
-          Activity / History ({historyActivities.length})
+          Activity / History ({assignActivities.length})
         </button>
       </div>
 
@@ -321,7 +389,10 @@ function CustomerDetailsPane({
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {pagedAccounts.map((acc) => (
+                  {pagedAccounts.map((acc) => {
+                    const topups = accountTopupTotals[acc.adAccountId] || { current: 0, last: 0 };
+                    const setup = getConfiguredSetup(acc);
+                    return (
                   <div
                     key={acc.adAccountId}
                     className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all bg-white dark:bg-slate-900 shadow-sm hover:shadow-md flex flex-col justify-between"
@@ -331,27 +402,26 @@ function CustomerDetailsPane({
                         <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate pr-2">
                           {acc.adAccountName}
                         </h4>
-                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          acc.accountStatus === 'Active'
-                            ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400'
-                        }`}>
-                          {acc.accountStatus}
-                        </span>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            setup
+                              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                          }`}>
+                            {setup ? `Sales Setup: ${setup.status}` : 'No Setup'}
+                          </span>
+                          <span className="text-[10px] text-slate-400">Account: <span className="font-semibold text-slate-600 dark:text-slate-300">{acc.accountStatus}</span></span>
+                          <span className="text-[10px] text-slate-400">Platform: <PlatformText platform={acc.platform} className="font-semibold text-[10px]" /></span>
+                        </div>
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono mt-1">ID: {acc.adAccountId}</div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center gap-2 text-[10px]">
-                      <span className="text-slate-400">Platform: <PlatformText platform={acc.platform} className="font-semibold text-[10px]" /></span>
-                      <span className="flex items-center gap-2.5 flex-wrap justify-end">
-                        {getDisplayRate(acc) !== null && (
-                          <span className="text-slate-400">Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">৳{getDisplayRate(acc)}</span></span>
-                        )}
-                        {getDisplayMonthlySpending(acc) !== null && (
-                          <span className="text-slate-400">Monthly Spending: <span className="font-semibold text-slate-600 dark:text-slate-300">${getDisplayMonthlySpending(acc).toLocaleString()}</span></span>
-                        )}
-                      </span>
+                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
+                      <span className="text-slate-400">Dollar Rate: <span className="font-semibold text-slate-600 dark:text-slate-300">{getDisplayRate(acc) !== null ? `৳${getDisplayRate(acc)}` : '—'}</span></span>
+                      <span className="text-slate-400">Monthly Spending: <span className="font-semibold text-slate-600 dark:text-slate-300">{getDisplayMonthlySpending(acc) !== null ? `$${getDisplayMonthlySpending(acc).toLocaleString()}` : '—'}</span></span>
+                      <span className="text-slate-400">Current Month Topup: <span className="font-semibold text-emerald-600 dark:text-emerald-400">${(topups.current || 0).toLocaleString()}</span></span>
+                      <span className="text-slate-400">Last Month Topup: <span className="font-semibold text-slate-600 dark:text-slate-300">${(topups.last || 0).toLocaleString()}</span></span>
                     </div>
 
                     {!isSalesSetupConfigured(acc) && (
@@ -374,14 +444,15 @@ function CustomerDetailsPane({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => onUnassignAdAccount(acc.adAccountId)}
+                        onClick={() => openUnassignDialog(acc)}
                         leftIcon={<UserX size={11} />}
                       >
                         Unassign
                       </Button>
                     </div>
                   </div>
-                ))}
+                );
+                })}
               </div>
               <Pagination page={accountPage} totalPages={accountTotalPages} onPageChange={setAccountPage} />
             </div>
@@ -402,20 +473,24 @@ function CustomerDetailsPane({
                 <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400 border-collapse table-fixed">
                   <thead className="bg-brand-blue text-white">
                     <tr>
-                      <th scope="col" className="py-2 px-1.5 sm:px-2.5 font-bold tracking-tight text-[10px] sm:text-xs w-[28%]">Invoice No</th>
-                      <th scope="col" className="py-2 px-1.5 sm:px-2.5 font-bold tracking-tight text-[10px] sm:text-xs w-[22%]">Date</th>
-                      <th scope="col" className="py-2 px-1 sm:px-2 text-right font-bold tracking-tight text-[10px] sm:text-xs w-[18%]">Amount USD</th>
-                      <th scope="col" className="py-2 px-1 sm:px-2 text-right font-bold tracking-tight text-[10px] sm:text-xs w-[18%]">Paid BDT</th>
-                      <th scope="col" className="py-2 px-1 sm:px-2 text-center font-bold tracking-tight text-[10px] sm:text-xs w-[14%]">Status</th>
+                      <th scope="col" className="py-2 px-1.5 sm:px-2.5 font-bold tracking-tight text-[10px] sm:text-xs w-[28%]">Date &amp; Invoice No.</th>
+                      <th scope="col" className="py-2 px-1.5 sm:px-2.5 font-bold tracking-tight text-[10px] sm:text-xs w-[32%]">Ad Account Name</th>
+                      <th scope="col" className="py-2 px-1 sm:px-2 text-right font-bold tracking-tight text-[10px] sm:text-xs w-[26%]">Amount USD &amp; BDT</th>
+                      <th scope="col" className="py-2 px-1 sm:px-2 text-center font-bold tracking-tight text-[10px] sm:text-xs w-[14%]">Payment Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                     {pagedInvoices.map((inv) => (
                       <tr key={inv.invoiceNo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="py-2 px-1.5 sm:px-2.5 font-bold text-slate-900 dark:text-white font-mono text-[10px] sm:text-xs truncate" title={inv.invoiceNo}>{inv.invoiceNo}</td>
-                        <td className="py-2 px-1.5 sm:px-2.5 text-slate-600 dark:text-slate-400 font-medium text-[10px] sm:text-xs truncate">{inv.date}</td>
-                        <td className="py-2 px-1 sm:px-2 text-right font-black text-slate-900 dark:text-slate-100 text-[10px] sm:text-xs">${(inv.topupAmountUSD || 0).toLocaleString()}</td>
-                        <td className="py-2 px-1 sm:px-2 text-right font-bold text-slate-700 dark:text-slate-300 text-[10px] sm:text-xs">৳{(inv.paidAmountBDT || 0).toLocaleString()}</td>
+                        <td className="py-2 px-1.5 sm:px-2.5">
+                          <div className="text-slate-600 dark:text-slate-400 font-medium text-[10px] sm:text-xs">{inv.date}</div>
+                          <div className="font-mono font-bold text-slate-900 dark:text-white text-[10px] sm:text-xs truncate mt-0.5" title={inv.invoiceNo}>{inv.invoiceNo}</div>
+                        </td>
+                        <td className="py-2 px-1.5 sm:px-2.5 font-semibold text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs truncate" title={inv.adAccountName}>{inv.adAccountName || '—'}</td>
+                        <td className="py-2 px-1 sm:px-2 text-right">
+                          <div className="font-black text-slate-900 dark:text-slate-100 text-[10px] sm:text-xs">${(inv.topupAmountUSD || 0).toLocaleString()} USD</div>
+                          <div className="font-bold text-slate-700 dark:text-slate-300 text-[10px] sm:text-xs mt-0.5">৳{(inv.paidAmountBDT || 0).toLocaleString()} BDT</div>
+                        </td>
                         <td className="py-2 px-1 sm:px-2 text-center">
                           <span className={`inline-block px-1 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold truncate max-w-full ${
                             inv.paymentStatus === 'Paid'
@@ -517,11 +592,11 @@ function CustomerDetailsPane({
                   </div>
                 ))}
               </div>
-            ) : historyActivities.length === 0 ? (
+            ) : assignActivities.length === 0 ? (
               <div className="py-12 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-100 dark:border-slate-800 rounded-xl">
                 <Clock className="mx-auto mb-2 opacity-40" size={32} />
-                <p className="text-xs">No activity recorded for this customer yet.</p>
-                <p className="text-[10px] mt-1">Account assignments, top-ups and profile changes will appear here.</p>
+                <p className="text-xs">No assign / unassign activity recorded for this customer yet.</p>
+                <p className="text-[10px] mt-1">Account assignment and unassignment logs will appear here.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -555,6 +630,50 @@ function CustomerDetailsPane({
           </div>
         )}
       </div>
+
+      {/* Unassign Ad Account Reason popup */}
+      <Modal
+        isOpen={!!unassignTarget}
+        onClose={closeUnassignDialog}
+        title="Unassign Ad Account"
+        description={unassignTarget ? `Provide a reason before returning ${unassignTarget.adAccountName} to the available pool.` : undefined}
+        size="md"
+        variant="animated"
+      >
+        <div className="p-6 space-y-4">
+          {unassignTarget && (
+            <div className="p-3 rounded-xl bg-surface-blue-light dark:bg-surface-blue-light border border-border-blue-light dark:border-border-blue-light text-xs text-brand-blue-deep dark:text-brand-blue-deep">
+              <p className="font-bold">{unassignTarget.adAccountName}</p>
+              <p className="mt-0.5">Platform: <span className="font-semibold">{unassignTarget.platform}</span> · ID: <span className="font-mono">{unassignTarget.adAccountId}</span></p>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Reason for Unassign</label>
+            <textarea
+              id="unassign-reason-input"
+              rows={3}
+              required
+              placeholder="e.g. Customer requested account release / switch to a new account"
+              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+              value={unassignReason}
+              onChange={(e) => setUnassignReason(e.target.value)}
+            />
+            <p className="mt-1 text-[10px] text-slate-400">This reason will be saved and shown in the Activity / History log.</p>
+          </div>
+          <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button type="button" variant="ghost" onClick={closeUnassignDialog} disabled={unassigning}>Cancel</Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleConfirmUnassign}
+              disabled={!unassignReason.trim() || unassigning}
+              leftIcon={<UserX size={11} />}
+            >
+              {unassigning ? 'Unassigning...' : 'Unassign Account'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

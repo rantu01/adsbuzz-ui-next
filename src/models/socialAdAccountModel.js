@@ -224,26 +224,28 @@ export async function markSocialAccountSold(identifier, customerId) {
  * Unassigns a social ad account, returning it to the available pool. Only the
  * account record changes — existing sales/history is never touched.
  */
-export async function unassignSocialAccount(identifier) {
+export async function unassignSocialAccount(identifier, reason = "") {
   const collection = await getCollection("socialAdAccounts");
   const doc = await getSocialAdAccountById(identifier);
   if (!doc) return null;
 
+  const update = {
+    accountStatus: "Available",
+    status: "available",
+    assignedCustomer: "",
+    uid: "",
+    assignedBy: null,
+    assignedAt: null,
+    unassignedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const cleanReason = String(reason || "").trim();
+  if (cleanReason) update.lastUnassignReason = cleanReason;
+
   const { ObjectId } = await import("mongodb");
   await collection.updateOne(
     { _id: new ObjectId(doc._id) },
-    {
-      $set: {
-        accountStatus: "Available",
-        status: "available",
-        assignedCustomer: "",
-        uid: "",
-        assignedBy: null,
-        assignedAt: null,
-        unassignedAt: new Date(),
-        updatedAt: new Date(),
-      },
-    }
+    { $set: update }
   );
   const saved = await collection.findOne({ _id: new ObjectId(doc._id) });
   logger.info(`unassignSocialAccount: ${doc.adAccountName} returned to the available pool.`);

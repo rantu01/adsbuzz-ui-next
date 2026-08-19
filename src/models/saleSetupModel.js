@@ -129,10 +129,14 @@ export async function createSaleSetup(data) {
     throw new Error("DETAILS_REQUIRED");
   }
 
+  // A new setup is only blocked when an ACTIVE setup already exists for the same
+  // group + ad account. Terminated (e.g. unassigned) or replaced setups stay in
+  // the database for history but no longer prevent creating a fresh setup from
+  // scratch when the account is assigned to the group again.
   const duplicateQuery =
     setup.serviceType === "Others Sale Setup"
-      ? { groupId: setup.groupId, serviceType: "Others Sale Setup", serviceDetails: setup.serviceDetails }
-      : { groupId: setup.groupId, adAccountId: setup.adAccountId };
+      ? { groupId: setup.groupId, serviceType: "Others Sale Setup", serviceDetails: setup.serviceDetails, status: "Active" }
+      : { groupId: setup.groupId, adAccountId: setup.adAccountId, status: "Active" };
   const existing = await collection.findOne(duplicateQuery);
   if (existing) {
     throw new Error("DUPLICATE");
@@ -209,6 +213,31 @@ export async function terminateSaleSetupsForAccount({ adAccountId, groupId } = {
   });
   if (result.modifiedCount > 0) {
     logger.info(`terminateSaleSetupsForAccount: terminated ${result.modifiedCount} setup(s) for account ${account}.`);
+  }
+  return result.modifiedCount;
+}
+
+/**
+ * Terminates every active "Ad Account Sales Setup" tied to a customer group.
+ * Used when a customer is deleted so the setups for that group are automatically
+ * closed. Only the setup records' status flips to "Terminated" — existing
+ * sales/history (invoices) are never touched.
+ */
+export async function terminateSaleSetupsForGroup(groupId) {
+  const group = String(groupId || "").trim();
+  if (!group) return 0;
+
+  const collection = await getCollection("saleSetups");
+  const result = await collection.updateMany(
+    {
+      serviceType: "Ad Account Sales Setup",
+      groupId: group,
+      status: "Active",
+    },
+    { $set: { status: "Terminated", updatedAt: new Date() } }
+  );
+  if (result.modifiedCount > 0) {
+    logger.info(`terminateSaleSetupsForGroup: terminated ${result.modifiedCount} setup(s) for group ${group}.`);
   }
   return result.modifiedCount;
 }

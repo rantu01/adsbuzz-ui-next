@@ -142,7 +142,7 @@ function CustomersView({
       const invs = invoices.filter(inv => inv.customerId === id || (inv.groupId && gid === inv.groupId));
       map[id] = {
         accounts,
-        activeAccounts: accounts.filter(a => a.accountStatus === 'Active').length,
+        activeAccounts: accounts.length,
         invoices: invs,
         totalUSD: invs.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0),
         totalBDT: invs.reduce((sum, inv) => sum + (inv.paidAmountBDT || 0), 0),
@@ -264,12 +264,13 @@ function CustomersView({
   };
 
   // Route the "Unassign" action in the customer details pane to the social
-  // handler when the assigned account lives in the social collection.
+  // handler when the assigned account lives in the social collection. The reason
+  // captured from the pane's popup is forwarded so it can be persisted + logged.
   const handlePaneUnassign = useCallback(
-    (adAccountId) => {
+    (adAccountId, reason) => {
       const isSocial = (socialAdAccounts || []).some(a => a.adAccountId === adAccountId);
       const unassignHandler = isSocial ? onUnassignSocialAdAccount : onUnassignAdAccount;
-      if (unassignHandler) unassignHandler(adAccountId);
+      if (unassignHandler) unassignHandler(adAccountId, reason);
     },
     [socialAdAccounts, onUnassignAdAccount, onUnassignSocialAdAccount],
   );

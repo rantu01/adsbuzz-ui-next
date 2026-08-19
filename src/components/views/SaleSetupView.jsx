@@ -173,13 +173,15 @@ function SaleSetupView({
       )
     : [];
 
-  // Accounts that already have a Sale Setup configured. Only accounts that do NOT
-  // yet have a setup are offered when creating a new Sale Setup entry.
+  // Accounts that already have an ACTIVE Sale Setup configured. Only accounts that
+  // do NOT yet have an active setup are offered when creating a new Sale Setup
+  // entry. Terminated (unassigned) or replaced setups remain for history but do
+  // not block creating a fresh setup for the same account + group.
   const configuredAccountIds = useMemo(
     () =>
       new Set(
         (setups || [])
-          .filter((s) => s.serviceType === 'Ad Account Sales Setup' && s.adAccountId)
+          .filter((s) => s.serviceType === 'Ad Account Sales Setup' && s.adAccountId && s.status === 'Active')
           .map((s) => s.adAccountId),
       ),
     [setups],

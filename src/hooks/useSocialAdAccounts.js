@@ -138,7 +138,7 @@ export function useSocialAdAccounts(triggerToast) {
   );
 
   const unassignSocialAdAccount = useCallback(
-    async (adAccountId) => {
+    async (adAccountId, reason) => {
       const prev = socialAdAccounts.find(a => a._id === adAccountId || a.adAccountId === adAccountId);
       if (prev) {
         setSocialAdAccounts(prevList =>
@@ -152,8 +152,12 @@ export function useSocialAdAccounts(triggerToast) {
       try {
         const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(adAccountId)}/unassign`, {
           method: 'POST',
+          body: JSON.stringify({ reason: reason || '' }),
         });
-        const saved = data.adAccount;
+        const saved = {
+          ...data.adAccount,
+          previousCustomerId: data.previousCustomerId || prev?.assignedCustomer || '',
+        };
         setSocialAdAccounts(prevList => prevList.map(a => (a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a)));
         triggerToast('success', 'Ad Account Unassigned', `${saved.adAccountName} returned to the available pool.`);
         return saved;

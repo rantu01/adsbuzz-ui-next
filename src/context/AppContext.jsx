@@ -269,9 +269,18 @@ export function AppProvider({ children }) {
     return result;
   };
 
-  const handleUnassignAdAccount = async (adAccountId) => {
-    const result = await rawUnassignAdAccount(adAccountId);
-    if (result) logActivityFx("Rakibul R.", "Unassigned Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account", result.assignedCustomer);
+  const handleUnassignAdAccount = async (adAccountId, reason) => {
+    const result = await rawUnassignAdAccount(adAccountId, reason);
+    if (result) {
+      const reasonText = reason ? ` Reason: ${reason}.` : "";
+      logActivityFx(
+        "Rakibul R.",
+        "Unassigned Ad Account",
+        `${result.adAccountName} unassigned and returned to available pool.${reasonText}`,
+        "account",
+        result.previousCustomerId || "",
+      );
+    }
     return result;
   };
 
@@ -281,9 +290,18 @@ export function AppProvider({ children }) {
     return result;
   };
 
-  const handleUnassignSocialAdAccount = async (adAccountId) => {
-    const result = await rawUnassignSocialAdAccount(adAccountId);
-    if (result) logActivityFx("Rakibul R.", "Unassigned Social Ad Account", `${result.adAccountName} unassigned and returned to available pool.`, "account", result.assignedCustomer);
+  const handleUnassignSocialAdAccount = async (adAccountId, reason) => {
+    const result = await rawUnassignSocialAdAccount(adAccountId, reason);
+    if (result) {
+      const reasonText = reason ? ` Reason: ${reason}.` : "";
+      logActivityFx(
+        "Rakibul R.",
+        "Unassigned Social Ad Account",
+        `${result.adAccountName} unassigned and returned to available pool.${reasonText}`,
+        "account",
+        result.previousCustomerId || "",
+      );
+    }
     return result;
   };
 

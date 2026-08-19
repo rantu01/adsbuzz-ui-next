@@ -11,6 +11,16 @@ const SOCIAL_CACHE_PREFIX = "GET:/api/social-ad-accounts";
 export const POST = asyncHandler(async (request, { params }) => {
   const { id } = await params;
 
+  // Unassign may be called without a body (e.g. quick actions); a reason is
+  // optional and only recorded when supplied.
+  let reason = "";
+  try {
+    const body = await request.json();
+    reason = String(body?.reason || "").trim();
+  } catch {
+    // no body — nothing to read
+  }
+
   const account = await getAdAccountUiByIdentifier(id);
   const social = account ? null : await getSocialAdAccountById(id);
   const target = account || social;
@@ -19,12 +29,14 @@ export const POST = asyncHandler(async (request, { params }) => {
   }
 
   // Capture the assigned customer before unassigning so the topup setup tied to
-  // that customer/account can be auto-terminated afterwards.
-  const customer = target.assignedCustomer ? await getCustomerById(target.assignedCustomer) : null;
+  // that customer/account can be auto-terminated afterwards and the unassign can
+  // be logged against the right customer in the activity feed.
+  const previousCustomerId = target.assignedCustomer || "";
+  const customer = previousCustomerId ? await getCustomerById(previousCustomerId) : null;
 
   const saved = account
-    ? await unassignAccount(id)
-    : await unassignSocialAccount(id);
+    ? await unassignAccount(id, reason)
+    : await unassignSocialAccount(id, reason);
   if (!saved) {
     return notFound("Ad account not found.");
   }
@@ -38,5 +50,9 @@ export const POST = asyncHandler(async (request, { params }) => {
 
   cacheInvalidate(CACHE_PREFIX);
   if (social) cacheInvalidate(SOCIAL_CACHE_PREFIX);
-  return ok({ message: "Ad account unassigned from customer.", adAccount: saved });
+  return ok({
+    message: "Ad account unassigned from customer.",
+    adAccount: saved,
+    previousCustomerId,
+  });
 });

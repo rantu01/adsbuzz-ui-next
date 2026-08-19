@@ -287,26 +287,25 @@ export async function markAccountSold(identifier, customerId) {
   return toUiAccount(saved);
 }
 
-export async function unassignAccount(identifier) {
+export async function unassignAccount(identifier, reason = "") {
   const collection = await getCollection("adAccounts");
   const doc = await getAdAccountByIdentifier(identifier);
   if (!doc) return null;
 
-  await collection.updateOne(
-    { _id: doc._id },
-    {
-      $set: {
-        accountStatus: "Available",
-        status: "paused",
-        assignedCustomer: "",
-        uid: "",
-        assignedBy: null,
-        assignedAt: null,
-        unassignedAt: new Date(),
-        updatedAt: new Date(),
-      },
-    }
-  );
+  const update = {
+    accountStatus: "Available",
+    status: "paused",
+    assignedCustomer: "",
+    uid: "",
+    assignedBy: null,
+    assignedAt: null,
+    unassignedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const cleanReason = String(reason || "").trim();
+  if (cleanReason) update.lastUnassignReason = cleanReason;
+
+  await collection.updateOne({ _id: doc._id }, { $set: update });
   const saved = await collection.findOne({ _id: doc._id });
   return toUiAccount(saved);
 }

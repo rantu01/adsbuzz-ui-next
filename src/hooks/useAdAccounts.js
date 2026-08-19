@@ -238,7 +238,7 @@ export function useAdAccounts(triggerToast) {
   );
 
   const unassignAdAccount = useCallback(
-    async (adAccountId) => {
+    async (adAccountId, reason) => {
       const prev = adAccounts.find(a => a._id === adAccountId || a.adAccountId === adAccountId);
 
       // Optimistic unassign — return to the available pool instantly, rolled back on failure.
@@ -255,8 +255,12 @@ export function useAdAccounts(triggerToast) {
       try {
         const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(adAccountId)}/unassign`, {
           method: 'POST',
+          body: JSON.stringify({ reason: reason || '' }),
         });
-        const saved = data.adAccount;
+        const saved = {
+          ...data.adAccount,
+          previousCustomerId: data.previousCustomerId || prev?.assignedCustomer || '',
+        };
         setAdAccounts(prevList =>
           prevList.map(a => (a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a)),
         );

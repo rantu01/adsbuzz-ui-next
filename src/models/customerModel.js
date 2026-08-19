@@ -2,6 +2,7 @@ import { getDb, getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
 import { normalizeCustomerId, formatCustomerId } from "@/utils/customerIds";
 import { ensureLegacyInvoicesSynced } from "@/models/invoiceModel";
+import { terminateSaleSetupsForGroup } from "@/models/saleSetupModel";
 
 export const CUSTOMER_STATUS = ["Active", "Inactive", "Lost"];
 const DEFAULT_DOLLAR_RATE = 132;
@@ -147,6 +148,54 @@ export async function ensureCustomerIdUniqueIndex() {
 }
 
 /**
+ * Cheap, idempotent safety net that runs on every customer list read. It groups
+ * customers by their *normalised* id (so legacy CUST-* vs ADB* collisions are
+ * caught too) and renumbers any duplicate that somehow slipped in (e.g. a race
+ * before the unique index existed). The unique index prevents new duplicates,
+ * so this is normally a no-op; it only does work when a duplicate exists.
+ */
+export async function reconcileDuplicateCustomerIds() {
+  const collection = await getCollection("customers");
+  const docs = await collection
+    .find({ id: { $exists: true, $ne: "" } })
+    .project({ id: 1, uid: 1, createdAt: 1 })
+    .toArray();
+
+  const byNormalized = new Map();
+  for (const doc of docs) {
+    const normalized = normalizeCustomerId(doc.id);
+    if (!normalized) continue;
+    if (!byNormalized.has(normalized)) byNormalized.set(normalized, []);
+    byNormalized.get(normalized).push(doc);
+  }
+
+  let fixed = 0;
+  for (const [, group] of byNormalized) {
+    if (group.length <= 1) continue;
+    const primary =
+      group.find((d) => d.uid) ||
+      group.reduce((a, b) =>
+        String(a.createdAt || "") <= String(b.createdAt || "") ? a : b
+      );
+    for (const doc of group) {
+      if (String(doc._id) === String(primary._id)) continue;
+      const newId = await getNextCustomerId();
+      await collection.updateOne(
+        { _id: doc._id },
+        { $set: { id: newId, updatedAt: new Date() } }
+      );
+      fixed += 1;
+      logger.info(
+        `reconcileDuplicateCustomerIds: renumbered ${doc.id} -> ${newId}`
+      );
+    }
+  }
+
+  if (fixed > 0) logger.info(`reconcileDuplicateCustomerIds: ${fixed} duplicate customer id(s) fixed.`);
+  return { fixed };
+}
+
+/**
  * Re-aligns the customerId counter so newly generated ids can never re-enter
  * the range already occupied by user-synced customers (whose ids are derived
  * from the user record and were never tracked by the counter). The counter is
@@ -242,23 +291,35 @@ function mapUserToCustomer(user) {
   };
 }
 
-async function getNextCustomerId() {
-  const db = await getDb();
-  const customersCollection = db.collection("customers");
-  // The counter increment is atomic, but the id space is shared with
-  // user-synced customers whose ids were never tracked by the counter. Loop
-  // until we land on an id that is not already in use.
-  for (;;) {
-    const result = await db.collection("counters").findOneAndUpdate(
-      { _id: "customerId" },
-      { $inc: { seq: 1 } },
-      { returnDocument: "after", upsert: true }
-    );
-    const counter = result.value || result;
-    const id = `ADB${String(550000 + counter.seq)}`;
-    const taken = await customersCollection.findOne({ id }, { projection: { _id: 1 } });
-    if (!taken) return id;
-  }
+// Serialises every customer-id allocation through a single promise chain so two
+// concurrent requests can never observe the same counter value before either one
+// has inserted its document (the unique id index remains the final backstop).
+let customerIdChain = Promise.resolve();
+function withCustomerIdLock(fn) {
+  const run = customerIdChain.then(fn, fn);
+  customerIdChain = run.catch(() => {});
+  return run;
+}
+
+function getNextCustomerId() {
+  return withCustomerIdLock(async () => {
+    const db = await getDb();
+    const customersCollection = db.collection("customers");
+    // The counter increment is atomic, but the id space is shared with
+    // user-synced customers whose ids were never tracked by the counter. Loop
+    // until we land on an id that is not already in use.
+    for (;;) {
+      const result = await db.collection("counters").findOneAndUpdate(
+        { _id: "customerId" },
+        { $inc: { seq: 1 } },
+        { returnDocument: "after", upsert: true }
+      );
+      const counter = result.value || result;
+      const id = `ADB${String(550000 + counter.seq)}`;
+      const taken = await customersCollection.findOne({ id }, { projection: { _id: 1 } });
+      if (!taken) return id;
+    }
+  });
 }
 
 export async function syncCustomersFromUsers() {
@@ -266,7 +327,7 @@ export async function syncCustomersFromUsers() {
     const db = await getDb();
     const users = await db
       .collection("users")
-      .find({ role: "customer" })
+      .find({ role: "customer", deleted: { $ne: true } })
       .project({ password: 0 })
       .toArray();
 
@@ -354,6 +415,10 @@ export async function listCustomers({ search = "", status = "", favorite = "" } 
   const filter = {};
   if (status && status !== "All") filter.status = status;
   if (favorite === "true") filter.favorite = true;
+
+  // Guard against any customer-id duplicates slipping into the collection so the
+  // UI can never display two rows with the same Customer ID.
+  await reconcileDuplicateCustomerIds();
 
   let cursor = collection.find(filter).sort({ createdAt: 1, name: 1 });
   const customers = await cursor.toArray();
@@ -589,6 +654,61 @@ export async function applyCustomerCredit(customerId, paidBDT, usd) {
   return collection.findOne({ id: customerId });
 }
 
+/**
+ * Releases every ad account (main inventory + social) still assigned to a
+ * deleted customer and auto-terminates the customer's active sale setups, so no
+ * dangling references survive the deletion.
+ */
+export async function freeAdAccountsAssignedTo(customerId, groupId) {
+  if (!customerId) return { freed: 0 };
+  const db = await getDb();
+  const now = new Date();
+
+  const adAccountsCollection = db.collection("adAccounts");
+  const adResult = await adAccountsCollection.updateMany(
+    { assignedCustomer: customerId },
+    {
+      $set: {
+        accountStatus: "Available",
+        status: "paused",
+        assignedCustomer: "",
+        uid: "",
+        assignedBy: null,
+        assignedAt: null,
+        unassignedAt: now,
+        updatedAt: now,
+      },
+    }
+  );
+
+  const socialCollection = db.collection("socialAdAccounts");
+  const socialResult = await socialCollection.updateMany(
+    { assignedCustomer: customerId },
+    {
+      $set: {
+        accountStatus: "Available",
+        status: "available",
+        assignedCustomer: "",
+        uid: "",
+        assignedBy: null,
+        assignedAt: null,
+        unassignedAt: now,
+        updatedAt: now,
+      },
+    }
+  );
+
+  if (groupId) {
+    await terminateSaleSetupsForGroup(groupId);
+  }
+
+  return {
+    freed: adResult.modifiedCount + socialResult.modifiedCount,
+    adAccounts: adResult.modifiedCount,
+    socialAccounts: socialResult.modifiedCount,
+  };
+}
+
 export async function deleteCustomer(id) {
   if (!id) return null;
   const collection = await getCollection("customers");
@@ -596,5 +716,23 @@ export async function deleteCustomer(id) {
   if (!existing) return null;
 
   await collection.deleteOne({ id });
+
+  // Unassign any ad accounts still attached to this customer and terminate their
+  // sale setups so a deleted customer never leaves dangling assignments behind.
+  await freeAdAccountsAssignedTo(existing.id, existing.groupId);
+
+  // Mark the underlying user as deleted so the one-time users -> customers sync
+  // (which re-runs on every server restart) never resurrects this customer.
+  if (existing.uid) {
+    const db = await getDb();
+    await db
+      .collection("users")
+      .updateOne(
+        { uid: existing.uid },
+        { $set: { deleted: true, deletedAt: new Date(), updatedAt: new Date() } }
+      );
+  }
+
+  logger.info(`deleteCustomer: deleted ${existing.id} (${existing.name || existing.email})`);
   return existing;
 }
