@@ -2,6 +2,7 @@
 import { memo, useEffect, useState } from 'react';
 import {
   AlertCircle,
+  Award,
   Banknote,
   Calendar,
   CheckCheck,
@@ -91,10 +92,10 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
   const filtered = invoices.filter(inv => {
     const custName = getCustName(inv.customerId).toLowerCase();
     const matchesSearch = inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
-                          (inv.groupId && inv.groupId.toLowerCase().includes(search.toLowerCase())) ||
-                          inv.adAccountName.toLowerCase().includes(search.toLowerCase()) ||
-                          custName.includes(search.toLowerCase()) ||
-                          (inv.serviceDetails && inv.serviceDetails.toLowerCase().includes(search.toLowerCase()));
+      (inv.groupId && inv.groupId.toLowerCase().includes(search.toLowerCase())) ||
+      inv.adAccountName.toLowerCase().includes(search.toLowerCase()) ||
+      custName.includes(search.toLowerCase()) ||
+      (inv.serviceDetails && inv.serviceDetails.toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = statusFilter === 'All' ? true : inv.paymentStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -153,6 +154,43 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
   const dailyOthers = dailyInvoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
   const dailyOthersUSD = dailyOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
   const dailyOthersBDT = dailyOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+
+  // Lifetime (All-Time) metrics
+  const lifetimeInvoicesCount = invoices.length;
+  const lifetimeUSD = invoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
+  const lifetimeBDT = invoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+  const lifetimeOthers = invoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
+  const lifetimeOthersUSD = lifetimeOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
+  const lifetimeOthersBDT = lifetimeOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+
+  // Current Year metrics
+  const currentYearStr = todayStrFor.substring(0, 4);
+  const currentYearInvoices = invoices.filter(inv => inv.date && inv.date.startsWith(currentYearStr));
+  const currentYearInvoicesCount = currentYearInvoices.length;
+  const currentYearUSD = currentYearInvoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
+  const currentYearBDT = currentYearInvoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+  const currentYearOthers = currentYearInvoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
+  const currentYearOthersUSD = currentYearOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
+  const currentYearOthersBDT = currentYearOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+
+  // Payment status summary (Amount received for Paid/Partially Paid, outstanding for Due)
+  const summarizePayments = (list) => {
+    const byStatus = (status, amountKey) => {
+      const items = list.filter(inv => inv.paymentStatus === status);
+      return {
+        count: items.length,
+        bdt: items.reduce((sum, inv) => sum + (Number(inv[amountKey]) || 0), 0),
+      };
+    };
+    return {
+      paid: byStatus('Paid', 'paidAmountBDT'),
+      partiallyPaid: byStatus('Partially Paid', 'paidAmountBDT'),
+      due: byStatus('Due', 'dueAmountBDT'),
+    };
+  };
+
+  const lifetimePaymentSummary = summarizePayments(invoices);
+  const currentMonthPaymentSummary = summarizePayments(currentMonthInvoices);
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
@@ -218,7 +256,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
         setShowPaymentModal(false);
         setPaymentTarget(null);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const buildCopyText = (inv) => {
@@ -245,7 +283,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
         setCopiedRecord(inv.invoiceNo);
         setTimeout(() => setCopiedRecord(''), 2000);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   return (
@@ -270,20 +308,20 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3 pt-1">
-            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue-light dark:border-border-blue-light shadow-xs">
-              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Invoices</p>
-              <p className="text-xl font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">{currentMonthInvoicesCount}</p>
-              <p className="text-[9px] font-semibold text-brand-blue-deep/65 dark:text-brand-blue-deep/65">Month records</p>
+            <div className="bg-emerald-50 dark:bg-emerald-500/10 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800 shadow-xs">
+              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">Paid</p>
+              <p className="text-sm font-black text-emerald-800 dark:text-emerald-300 mt-1">৳{currentMonthPaymentSummary.paid.bdt.toLocaleString()}</p>
+              <p className="text-[9px] font-semibold text-emerald-700/70 dark:text-emerald-400/70">{currentMonthPaymentSummary.paid.count} transactions</p>
             </div>
-            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue-light dark:border-border-blue-light shadow-xs">
-              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Sales (USD &amp; BDT)</p>
-              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentMonthUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{currentMonthBDT.toLocaleString()}</p>
+            <div className="bg-amber-50 dark:bg-amber-500/10 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 shadow-xs">
+              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Partially Paid</p>
+              <p className="text-sm font-black text-amber-800 dark:text-amber-300 mt-1">৳{currentMonthPaymentSummary.partiallyPaid.bdt.toLocaleString()}</p>
+              <p className="text-[9px] font-semibold text-amber-700/70 dark:text-amber-400/70">{currentMonthPaymentSummary.partiallyPaid.count} transactions</p>
             </div>
-            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue-light dark:border-border-blue-light shadow-xs">
-              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Other Service Sales</p>
-              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentMonthOthersUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{currentMonthOthersBDT.toLocaleString()}</p>
+            <div className="bg-rose-50 dark:bg-rose-500/10 p-3.5 rounded-xl border border-rose-200 dark:border-rose-800 shadow-xs">
+              <p className="text-[10px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wide">Due</p>
+              <p className="text-sm font-black text-rose-800 dark:text-rose-300 mt-1">৳{currentMonthPaymentSummary.due.bdt.toLocaleString()}</p>
+              <p className="text-[9px] font-semibold text-rose-700/70 dark:text-rose-400/70">{currentMonthPaymentSummary.due.count} transactions</p>
             </div>
           </div>
         </div>
@@ -316,6 +354,101 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
               <p className="text-[10px] font-bold text-status-green-deep dark:text-status-green-deep">৳{dailyOthersBDT.toLocaleString()}</p>
             </div>
           </div>
+
+        </div>
+        {/* Lifetime Legendary Overview Card */}
+        <div className="bg-surface-rose dark:bg-surface-rose p-5 rounded-2xl border border-border-rose dark:border-border-rose space-y-3">
+          <div className="flex justify-between items-center border-b border-border-rose dark:border-border-rose pb-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-brand-blue-deep dark:text-brand-blue-deep flex items-center gap-1.5">
+              <Award size={14} className="text-brand-orange-dark dark:text-brand-orange-dark" />
+              Lifetime Legendary
+            </h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface dark:bg-surface text-brand-blue-deep dark:text-brand-blue-deep border border-border-rose dark:border-border-rose">
+              All-Time Summary
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 pt-1">
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-rose dark:border-border-rose shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Invoices</p>
+              <p className="text-xl font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">{lifetimeInvoicesCount}</p>
+              <p className="text-[9px] font-semibold text-brand-blue-deep/65 dark:text-brand-blue-deep/65">Lifetime records</p>
+            </div>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-rose dark:border-border-rose shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Sales (USD &amp; BDT)</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${lifetimeUSD.toLocaleString()}</p>
+              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{lifetimeBDT.toLocaleString()}</p>
+            </div>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-rose dark:border-border-rose shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Other Service Sales</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${lifetimeOthersUSD.toLocaleString()}</p>
+              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{lifetimeOthersBDT.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+        {/* Current Year Legendary Overview Card */}
+        <div className="bg-surface-orange dark:bg-surface-orange p-5 rounded-2xl border border-border-orange dark:border-border-orange space-y-3">
+          <div className="flex justify-between items-center border-b border-border-orange dark:border-border-orange pb-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-brand-blue-deep dark:text-brand-blue-deep flex items-center gap-1.5">
+              <Calendar size={14} className="text-brand-orange-dark dark:text-brand-orange-dark" />
+              Current Year ({currentYearStr})
+            </h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface dark:bg-surface text-brand-blue-deep dark:text-brand-blue-deep border border-border-orange dark:border-border-orange">
+              Yearly Summary
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 pt-1">
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Invoices</p>
+              <p className="text-xl font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">{currentYearInvoicesCount}</p>
+              <p className="text-[9px] font-semibold text-brand-blue-deep/65 dark:text-brand-blue-deep/65">Yearly records</p>
+            </div>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Sales (USD &amp; BDT)</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentYearUSD.toLocaleString()}</p>
+              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{currentYearBDT.toLocaleString()}</p>
+            </div>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Other Service Sales</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentYearOthersUSD.toLocaleString()}</p>
+              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{currentYearOthersBDT.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+
+      </div>
+
+
+
+
+
+      {/* Payment Status Insights Card */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+            <Banknote size={14} className="text-emerald-600 dark:text-emerald-400" />
+            Payment Status Insights
+          </h3>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface dark:bg-surface text-brand-blue-deep dark:text-brand-blue-deep border border-slate-200 dark:border-slate-700">
+            All-Time Summary
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div className="bg-emerald-50 dark:bg-emerald-500/10 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800 shadow-xs">
+            <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">Paid</p>
+            <p className="text-sm font-black text-emerald-800 dark:text-emerald-300 mt-1">৳{lifetimePaymentSummary.paid.bdt.toLocaleString()}</p>
+            <p className="text-[9px] font-semibold text-emerald-700/70 dark:text-emerald-400/70">{lifetimePaymentSummary.paid.count} transactions</p>
+          </div>
+          <div className="bg-amber-50 dark:bg-amber-500/10 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 shadow-xs">
+            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Partially Paid</p>
+            <p className="text-sm font-black text-amber-800 dark:text-amber-300 mt-1">৳{lifetimePaymentSummary.partiallyPaid.bdt.toLocaleString()}</p>
+            <p className="text-[9px] font-semibold text-amber-700/70 dark:text-amber-400/70">{lifetimePaymentSummary.partiallyPaid.count} transactions</p>
+          </div>
+          <div className="bg-rose-50 dark:bg-rose-500/10 p-3.5 rounded-xl border border-rose-200 dark:border-rose-800 shadow-xs">
+            <p className="text-[10px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wide">Due</p>
+            <p className="text-sm font-black text-rose-800 dark:text-rose-300 mt-1">৳{lifetimePaymentSummary.due.bdt.toLocaleString()}</p>
+            <p className="text-[9px] font-semibold text-rose-700/70 dark:text-rose-400/70">{lifetimePaymentSummary.due.count} transactions</p>
+          </div>
         </div>
       </div>
 
@@ -339,11 +472,10 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
                   color: '#ffffff',
                   borderColor: isSelected ? '#1F5E98' : '#F68B2D',
                 }}
-                className={`text-xs font-black px-3.5 py-1.5 rounded-xl border transition-all cursor-pointer shadow-xs ${
-                  isSelected
+                className={`text-xs font-black px-3.5 py-1.5 rounded-xl border transition-all cursor-pointer shadow-xs ${isSelected
                     ? 'ring-2 ring-blue-500/40 scale-105 opacity-100'
                     : 'opacity-85 hover:opacity-100 hover:scale-102'
-                }`}
+                  }`}
               >
                 {st}
               </button>
@@ -393,20 +525,18 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
                     <td className="py-2.5 px-1 sm:px-1.5 text-center font-bold text-emerald-700 dark:text-emerald-400 text-[10px] sm:text-[11px]">৳{(inv.paidAmountBDT || 0).toLocaleString()}</td>
                     <td className="py-2.5 px-1 sm:px-1.5 text-center font-bold text-rose-600 dark:text-rose-400 text-[10px] sm:text-[11px]">৳{(inv.dueAmountBDT || 0).toLocaleString()}</td>
                     <td className="py-2.5 px-0.5 sm:px-1 text-center">
-                      <span className={`inline-block px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold truncate max-w-full ${
-                        inv.paymentStatus === 'Paid' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' :
-                        inv.paymentStatus === 'Partially Paid' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800' :
-                        'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                      }`}>
+                      <span className={`inline-block px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold truncate max-w-full ${inv.paymentStatus === 'Paid' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' :
+                          inv.paymentStatus === 'Partially Paid' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800' :
+                            'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                        }`}>
                         {inv.paymentStatus}
                       </span>
                     </td>
                     <td className="py-2.5 px-0.5 sm:px-1 text-center">
-                      <span className={`inline-block px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold truncate max-w-full ${
-                        approvalStatus === 'Approved' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' :
-                        approvalStatus === 'Pending' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800' :
-                        'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                      }`}>
+                      <span className={`inline-block px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold truncate max-w-full ${approvalStatus === 'Approved' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' :
+                          approvalStatus === 'Pending' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800' :
+                            'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                        }`}>
                         {approvalStatus}
                       </span>
                     </td>
@@ -426,11 +556,10 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
                         <button
                           type="button"
                           onClick={() => handleCopyInvoice(inv)}
-                          className={`inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-lg border cursor-pointer transition-colors ${
-                            copiedRecord === inv.invoiceNo
+                          className={`inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-lg border cursor-pointer transition-colors ${copiedRecord === inv.invoiceNo
                               ? 'bg-emerald-500 text-white border-emerald-500'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
-                          }`}
+                            }`}
                         >
                           {copiedRecord === inv.invoiceNo ? <CopyCheck size={10} /> : <Copy size={10} />}
                           {copiedRecord === inv.invoiceNo ? 'Copied' : 'Copy Invoice'}
@@ -488,11 +617,10 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
                     key={p}
                     type="button"
                     onClick={() => setCurrentPage(p)}
-                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                      p === safePage
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${p === safePage
                         ? 'bg-brand-blue text-white shadow-xs'
                         : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
+                      }`}
                   >
                     {p}
                   </button>
