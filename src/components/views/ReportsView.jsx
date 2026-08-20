@@ -1,9 +1,84 @@
 'use client';
-import { memo, useEffect, useState } from 'react';
-import { BarChart2, ChevronLeft, ChevronRight, TrendingUp, Calendar, Check, CreditCard, Download, DollarSign } from 'lucide-react';
+import { memo, useCallback, useEffect, useState } from 'react';
+import { BarChart2, Building2, Calendar, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, DollarSign, Download, Landmark, Layers, Loader2, TrendingUp } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import SearchBar from '@/components/ui/SearchBar';
 import Badge from '@/components/ui/Badge';
+import ErrorBanner from '@/components/ui/ErrorBanner';
+import { apiFetch } from '@/utils/api';
+
+function alignClass(align) {
+  return align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+}
+
+function ReportTable({ columns, rows, footer }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-xs">
+        <thead className="bg-slate-50/80 dark:bg-slate-800/60 font-bold border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300">
+          <tr>
+            {columns.map((c, i) => (
+              <th key={i} className={`py-2.5 px-3 first:pl-4 whitespace-nowrap uppercase tracking-wider text-[10px] ${alignClass(c.align)}`}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length} className="text-center py-8 text-slate-400 font-medium italic bg-slate-50/50 dark:bg-slate-900/50">
+                No records found for this month.
+              </td>
+            </tr>
+          ) : (
+            rows.map((row, i) => (
+              <tr key={i} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                {row.map((cell, j) => (
+                  <td key={j} className={`py-2.5 px-3 first:pl-4 whitespace-nowrap ${cell.className || ''} ${alignClass(columns[j]?.align)}`}>
+                    {cell.text}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+        {footer && (
+          <tfoot>
+            <tr className="bg-surface-blue border-t-2 border-border-blue-light text-brand-blue-deep font-extrabold">
+              {footer.map((cell, j) => (
+                <td key={j} className={`py-2.5 px-3 first:pl-4 whitespace-nowrap ${cell.className || ''} ${alignClass(columns[j]?.align)}`}>
+                  {cell.text}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}
+
+function ReportCard({ icon: Icon, title, subtitle, children }) {
+  return (
+    <div className="rounded-2xl border border-border-blue-light bg-surface-blue-light p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+          {subtitle && <p className="mt-1 text-[11px] font-semibold text-slate-500">{subtitle}</p>}
+        </div>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-600 bg-white/80 border border-border-blue-light">
+          <Icon size={16} strokeWidth={1.8} />
+        </span>
+      </div>
+      <div className="mt-4">{children}</div>
+    </div>
+  );
+}
+
+function StatusDot({ color }) {
+  return <span className="h-2 w-2 rounded-full inline-block" style={{ backgroundColor: color }} />;
+}
 
 function ReportsView({ invoices, onTriggerExport }) {
   const [platform, setPlatform] = useState('All');
@@ -12,51 +87,73 @@ function ReportsView({ invoices, onTriggerExport }) {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
+  // ====== Server-computed monthly report (from /api/reports) ======
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState(null);
+
+  const loadReport = useCallback(async (month) => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const data = await apiFetch(`/api/reports?month=${encodeURIComponent(month)}`);
+      setReport(data.report);
+    } catch (err) {
+      setReportError(err);
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReport(reportMonth);
+  }, [reportMonth, loadReport]);
+
+  // ====== Client-side fallbacks (instant paint, matched by server report) ======
   const monthFilteredInvoices = invoices.filter(inv => {
     if (!inv.date) return false;
     return inv.date.startsWith(reportMonth);
   });
 
-  // ====== 6 Functions (computed from monthFilteredInvoices) ======
-  // 1) TOTAL SELL
-  const totalSellUSD = monthFilteredInvoices.reduce((s, inv) => s + (inv.topupAmountUSD || 0), 0);
-  const totalSellBDT = monthFilteredInvoices.reduce((s, inv) => s + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+  const clientTotalSellUSD = monthFilteredInvoices.reduce((s, inv) => s + (inv.topupAmountUSD || 0), 0);
+  const clientTotalSellBDT = monthFilteredInvoices.reduce((s, inv) => s + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+  const clientCount = monthFilteredInvoices.length;
+  const clientAvgSellUSD = clientCount > 0 ? clientTotalSellUSD / clientCount : 0;
+  const clientAvgSellBDT = clientCount > 0 ? clientTotalSellBDT / clientCount : 0;
+  const clientAdTopupInvoices = monthFilteredInvoices.filter(inv => inv.serviceType !== 'Others');
+  const clientAdTopupUSD = clientAdTopupInvoices.reduce((s, inv) => s + (inv.topupAmountUSD || 0), 0);
+  const clientAdTopupBDT = clientAdTopupInvoices.reduce((s, inv) => s + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+  const clientAvgPerDollarBDT = clientTotalSellUSD > 0 ? clientTotalSellBDT / clientTotalSellUSD : 0;
 
-  // 2) AVERAGE SELL (per invoice)
-  const avgSellUSD = monthFilteredInvoices.length > 0 ? totalSellUSD / monthFilteredInvoices.length : 0;
-  const avgSellBDT = monthFilteredInvoices.length > 0 ? totalSellBDT / monthFilteredInvoices.length : 0;
+  const metrics = report?.metrics ?? {
+    totalSellUSD: clientTotalSellUSD,
+    totalSellBDT: clientTotalSellBDT,
+    avgSellUSD: clientAvgSellUSD,
+    avgSellBDT: clientAvgSellBDT,
+    adTopupUSD: clientAdTopupUSD,
+    adTopupBDT: clientAdTopupBDT,
+    avgPerDollarBDT: clientAvgPerDollarBDT,
+  };
 
-  // 3) ADS TOPUP (serviceType === 'Ad Account Topup' OR not Others)
-  const adTopupInvoices = monthFilteredInvoices.filter(inv => inv.serviceType !== 'Others');
-  const adTopupUSD = adTopupInvoices.reduce((s, inv) => s + (inv.topupAmountUSD || 0), 0);
-  const adTopupBDT = adTopupInvoices.reduce((s, inv) => s + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+  const approval = report?.approval ?? {
+    total: clientCount,
+    approved: monthFilteredInvoices.filter(inv => (inv.approvalStatus || inv.paymentVerificationStatus || 'Approved') === 'Approved').length,
+    declined: monthFilteredInvoices.filter(inv => (inv.approvalStatus || inv.paymentVerificationStatus || 'Approved') === 'Rejected' || (inv.approvalStatus || inv.paymentVerificationStatus || 'Approved') === 'Declined').length,
+  };
 
-  // 4) AVG Per $ Sale IN BDT
-  const avgPerDollarBDT = totalSellUSD > 0 ? totalSellBDT / totalSellUSD : 0;
+  const clientPaymentStatus = ['Paid', 'Due', 'Partially Paid'].map(status => {
+    const rows = monthFilteredInvoices.filter(inv => inv.paymentStatus === status);
+    return {
+      status,
+      count: rows.length,
+      totalAmountBDT: rows.reduce((s, inv) => s + (inv.totalAmountBDT || 0), 0),
+      paidAmountBDT: rows.reduce((s, inv) => s + (inv.paidAmountBDT || 0), 0),
+      dueAmountBDT: rows.reduce((s, inv) => s + (inv.dueAmountBDT || 0), 0),
+    };
+  });
+  const paymentStatus = report?.paymentStatus ?? clientPaymentStatus;
 
-  // 5) Payment Approval Status (Total / Approved / Decline)
-  const approvalTotalCount = monthFilteredInvoices.length;
-  const approvalApprovedCount = monthFilteredInvoices.filter(inv => {
-    const a = inv.approvalStatus || inv.paymentVerificationStatus || 'Approved';
-    return a === 'Approved';
-  }).length;
-  const approvalDeclinedCount = monthFilteredInvoices.filter(inv => {
-    const a = inv.approvalStatus || inv.paymentVerificationStatus || 'Approved';
-    return a === 'Rejected' || a === 'Declined';
-  }).length;
-
-  // 6) Payment Status (Paid / Due / Partial Paid)
-  const paidCount = monthFilteredInvoices.filter(inv => inv.paymentStatus === 'Paid').length;
-  const dueCount = monthFilteredInvoices.filter(inv => inv.paymentStatus === 'Due').length;
-  const partialPaidCount = monthFilteredInvoices.filter(inv => inv.paymentStatus === 'Partially Paid').length;
-
-  // 7) Company Summary (BDT)
-  const vendorPaymentBDT = monthFilteredInvoices.reduce((s, inv) => s + (inv.paidAmountBDT || 0), 0);
-  const officeExpenseBDT = monthFilteredInvoices.length > 0 ? 20810 : 0;
-  const refundBDT = 0;
-  const totalCompanyBDT = vendorPaymentBDT + officeExpenseBDT + refundBDT;
-
-  // Available months for the selector (current + last 11 months)
+  // Available months for the selector (current + last 12 months of data)
   const availableMonths = (() => {
     const set = new Set();
     invoices.forEach(inv => {
@@ -96,10 +193,11 @@ function ReportsView({ invoices, onTriggerExport }) {
     setCurrentPage(1);
   }, [platform, search]);
 
-  const formatUSD = (value) => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const formatBDT = (value) => `BDT ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatUSD = (value) => `USD ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatBDT = (value) => `BDT ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const percentOf = (value, total) => total > 0 ? Math.round((value / total) * 100) : 0;
 
+  // ====== Section data ======
   const statementMetrics = [
     {
       title: 'Total Sell',
@@ -108,8 +206,8 @@ function ReportsView({ invoices, onTriggerExport }) {
       border: '#FBD9B9',
       iconBackground: '#FFE8D4',
       values: [
-        { label: 'Total USD', value: formatUSD(totalSellUSD) },
-        { label: 'Total BDT', value: formatBDT(totalSellBDT) },
+        { label: 'Total USD', value: formatUSD(metrics.totalSellUSD) },
+        { label: 'Total BDT', value: formatBDT(metrics.totalSellBDT) },
       ],
     },
     {
@@ -119,8 +217,8 @@ function ReportsView({ invoices, onTriggerExport }) {
       border: '#CFE1F5',
       iconBackground: '#DCEBFA',
       values: [
-        { label: 'Amount USD', value: formatUSD(avgSellUSD) },
-        { label: 'Amount BDT', value: formatBDT(avgSellBDT) },
+        { label: 'Amount USD', value: formatUSD(metrics.avgSellUSD) },
+        { label: 'Amount BDT', value: formatBDT(metrics.avgSellBDT) },
       ],
     },
     {
@@ -130,8 +228,8 @@ function ReportsView({ invoices, onTriggerExport }) {
       border: '#CFEBDD',
       iconBackground: '#DAF5E5',
       values: [
-        { label: 'Topup USD', value: formatUSD(adTopupUSD) },
-        { label: 'Topup BDT', value: formatBDT(adTopupBDT) },
+        { label: 'Topup USD', value: formatUSD(metrics.adTopupUSD) },
+        { label: 'Topup BDT', value: formatBDT(metrics.adTopupBDT) },
       ],
     },
     {
@@ -141,27 +239,131 @@ function ReportsView({ invoices, onTriggerExport }) {
       border: '#F6E7A8',
       iconBackground: '#FEF3C7',
       values: [
-        { label: 'BDT Rate', value: formatBDT(avgPerDollarBDT) },
+        { label: 'BDT Rate', value: formatBDT(metrics.avgPerDollarBDT) },
       ],
     },
   ];
 
   const approvalRows = [
-    { label: 'Total Requests', count: approvalTotalCount, background: '#F4F8FC', border: '#D8E6F3', bar: '#BFD7EA' },
-    { label: 'Approved', count: approvalApprovedCount, background: '#F1FBF5', border: '#CFEBDD', bar: '#A7E5C0' },
-    { label: 'Declined', count: approvalDeclinedCount, background: '#FFF1F2', border: '#F8D6DC', bar: '#F8B4BE' },
+    { label: 'Total Requests', count: approval.total, background: '#F4F8FC', border: '#D8E6F3', bar: '#BFD7EA' },
+    { label: 'Approved', count: approval.approved, background: '#F1FBF5', border: '#CFEBDD', bar: '#A7E5C0' },
+    { label: 'Declined', count: approval.declined, background: '#FFF1F2', border: '#F8D6DC', bar: '#F8B4BE' },
   ];
 
-  const paymentRows = [
-    { label: 'Paid', count: paidCount, background: '#F1FBF5', border: '#CFEBDD', bar: '#A7E5C0' },
-    { label: 'Due', count: dueCount, background: '#FFF7ED', border: '#FBD9B9', bar: '#FDBA74' },
-    { label: 'Partial Paid', count: partialPaidCount, background: '#F0F7FF', border: '#CFE1F5', bar: '#B9D7F0' },
+  const STATUS_COLORS = { Paid: '#10B981', Due: '#F97316', 'Partially Paid': '#3B82F6' };
+
+  const paymentStatusColumns = [
+    { label: 'Status', align: 'left' },
+    { label: 'Count', align: 'right' },
+    { label: 'Total Amount', align: 'right' },
+    { label: 'Paid', align: 'right' },
+    { label: 'Due', align: 'right' },
+  ];
+  const paymentStatusRows = paymentStatus.map(s => [
+    {
+      text: (
+        <span className="inline-flex items-center gap-1.5 font-bold text-slate-900">
+          <StatusDot color={STATUS_COLORS[s.status] || '#94A3B8'} /> {s.status}
+        </span>
+      ),
+      className: '',
+    },
+    { text: s.count.toLocaleString(), className: 'font-semibold text-slate-700' },
+    { text: formatBDT(s.totalAmountBDT), className: 'font-semibold text-slate-900' },
+    { text: formatBDT(s.paidAmountBDT), className: 'font-semibold text-emerald-600' },
+    { text: formatBDT(s.dueAmountBDT), className: 'font-semibold text-rose-500' },
+  ]);
+  const paymentStatusFooter = (() => {
+    const sum = (k) => paymentStatus.reduce((acc, s) => acc + Number(s[k] || 0), 0);
+    return [
+      { text: 'Total', className: '' },
+      { text: paymentStatus.reduce((acc, s) => acc + s.count, 0).toLocaleString(), className: '' },
+      { text: formatBDT(sum('totalAmountBDT')), className: '' },
+      { text: formatBDT(sum('paidAmountBDT')), className: '' },
+      { text: formatBDT(sum('dueAmountBDT')), className: '' },
+    ];
+  })();
+
+  const platformColumns = [
+    { label: 'Platform', align: 'left' },
+    { label: 'Invoices', align: 'right' },
+    { label: 'Total (USD)', align: 'right' },
+    { label: 'Total (BDT)', align: 'right' },
+    { label: 'Paid (BDT)', align: 'right' },
+    { label: 'Due (BDT)', align: 'right' },
+  ];
+  const platformWise = report?.platformWise || [];
+  const platformRows = platformWise.map(p => [
+    { text: <PlatformText platform={p.platform} variant="text" className="font-bold text-slate-900" />, className: '' },
+    { text: p.count.toLocaleString(), className: 'font-semibold text-slate-700' },
+    { text: formatUSD(p.totalUSD), className: 'font-semibold text-slate-900' },
+    { text: formatBDT(p.totalBDT), className: 'font-semibold text-slate-900' },
+    { text: formatBDT(p.paidBDT), className: 'font-semibold text-emerald-600' },
+    { text: formatBDT(p.dueBDT), className: 'font-semibold text-rose-500' },
+  ]);
+  const platformFooter = (() => {
+    const sum = (k) => platformWise.reduce((acc, p) => acc + Number(p[k] || 0), 0);
+    return [
+      { text: 'All Platforms', className: '' },
+      { text: platformWise.reduce((acc, p) => acc + p.count, 0).toLocaleString(), className: '' },
+      { text: formatUSD(sum('totalUSD')), className: '' },
+      { text: formatBDT(sum('totalBDT')), className: '' },
+      { text: formatBDT(sum('paidBDT')), className: '' },
+      { text: formatBDT(sum('dueBDT')), className: '' },
+    ];
+  })();
+
+  const channelColumns = [
+    { label: 'Payment Channel', align: 'left' },
+    { label: 'Transactions', align: 'right' },
+    { label: 'Received Amount', align: 'right' },
+  ];
+  const channelWise = report?.channelWise || [];
+  const channelRows = channelWise.map(c => [
+    { text: c.channel, className: 'font-bold text-slate-900' },
+    { text: c.count.toLocaleString(), className: 'font-semibold text-slate-700' },
+    { text: formatBDT(c.receivedBDT), className: 'font-extrabold text-slate-900' },
+  ]);
+  const channelFooter = [
+    { text: 'All Channels', className: '' },
+    { text: channelWise.reduce((acc, c) => acc + c.count, 0).toLocaleString(), className: '' },
+    { text: formatBDT(channelWise.reduce((acc, c) => acc + Number(c.receivedBDT || 0), 0)), className: '' },
   ];
 
+  const dailyColumns = [
+    { label: 'Date', align: 'left' },
+    { label: 'Invoices', align: 'right' },
+    { label: 'Total (USD)', align: 'right' },
+    { label: 'Total (BDT)', align: 'right' },
+    { label: 'Paid (BDT)', align: 'right' },
+    { label: 'Due (BDT)', align: 'right' },
+  ];
+  const dailyWise = report?.dailyWise || [];
+  const dailyRows = dailyWise.map(d => [
+    { text: d.date, className: 'font-mono font-bold text-slate-900' },
+    { text: d.count.toLocaleString(), className: 'font-semibold text-slate-700' },
+    { text: formatUSD(d.totalUSD), className: 'font-semibold text-slate-900' },
+    { text: formatBDT(d.totalBDT), className: 'font-semibold text-slate-900' },
+    { text: formatBDT(d.paidBDT), className: 'font-semibold text-emerald-600' },
+    { text: formatBDT(d.dueBDT), className: 'font-semibold text-rose-500' },
+  ]);
+  const dailyFooter = (() => {
+    const sum = (k) => dailyWise.reduce((acc, d) => acc + Number(d[k] || 0), 0);
+    return [
+      { text: 'Month Total', className: '' },
+      { text: dailyWise.reduce((acc, d) => acc + d.count, 0).toLocaleString(), className: '' },
+      { text: formatUSD(sum('totalUSD')), className: '' },
+      { text: formatBDT(sum('totalBDT')), className: '' },
+      { text: formatBDT(sum('paidBDT')), className: '' },
+      { text: formatBDT(sum('dueBDT')), className: '' },
+    ];
+  })();
+
+  const company = report?.company ?? { officeExpenseBDT: 0, vendorPaymentBDT: 0, refundBDT: 0, totalCompanyBDT: 0 };
   const companyRows = [
-    { label: 'Office Expense', value: officeExpenseBDT },
-    { label: 'Vendor Payment', value: vendorPaymentBDT },
-    { label: 'Refund', value: refundBDT },
+    { label: 'Office Expense', value: company.officeExpenseBDT },
+    { label: 'Vendor Payment', value: company.vendorPaymentBDT },
+    { label: 'Refund', value: company.refundBDT },
   ];
 
   return (
@@ -186,6 +388,12 @@ function ReportsView({ invoices, onTriggerExport }) {
           </select>
         </div>
       </div>
+
+      {reportError && (
+        <div className="max-w-6xl">
+          <ErrorBanner error={reportError} onRetry={() => loadReport(reportMonth)} title="Could not load report data" />
+        </div>
+      )}
 
       <div className="max-w-6xl space-y-4 text-slate-900 dark:text-slate-100" id="reports-six-functions">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -227,7 +435,7 @@ function ReportsView({ invoices, onTriggerExport }) {
           <div className="rounded-2xl border border-border-blue-light bg-surface-blue-light p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Payment Approval Status</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Payment Approval Status</h3>
                 <p className="mt-1 text-[11px] font-semibold text-slate-500">Approval flow for selected month</p>
               </div>
               <Check size={17} strokeWidth={1.8} className="text-slate-600" />
@@ -235,7 +443,7 @@ function ReportsView({ invoices, onTriggerExport }) {
 
             <div className="mt-4 space-y-2.5">
               {approvalRows.map(row => {
-                const progress = percentOf(row.count, Math.max(approvalTotalCount, 1));
+                const progress = percentOf(row.count, Math.max(approval.total, 1));
                 return (
                   <div
                     key={row.label}
@@ -261,62 +469,76 @@ function ReportsView({ invoices, onTriggerExport }) {
           <div className="rounded-2xl border border-border-blue-light bg-surface-blue-light p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Payment Status</h3>
-                <p className="mt-1 text-[11px] font-semibold text-slate-500">Collection state across invoices</p>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Payment Status Report</h3>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">Amounts by collection state</p>
               </div>
               <CreditCard size={17} strokeWidth={1.8} className="text-slate-600" />
             </div>
 
-            <div className="mt-4 space-y-2.5">
-              {paymentRows.map(row => {
-                const progress = percentOf(row.count, Math.max(approvalTotalCount, 1));
-                return (
-                  <div
-                    key={row.label}
-                    className="rounded-xl border px-3 py-2.5"
-                    style={{ backgroundColor: row.background, borderColor: row.border }}
-                  >
-                    <div className="flex items-center justify-between gap-3 text-xs">
-                      <span className="font-semibold text-slate-700">{row.label}</span>
-                      <span className="font-extrabold text-slate-900">{row.count.toLocaleString()}</span>
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${row.count > 0 ? Math.max(progress, 5) : 0}%`, backgroundColor: row.bar }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="mt-4 rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+              <ReportTable columns={paymentStatusColumns} rows={paymentStatusRows} footer={paymentStatusFooter} />
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border-blue-light bg-surface p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Company Summary</h3>
-              <p className="mt-1 text-[11px] font-semibold text-slate-500">Expense and vendor ledger in BDT</p>
-            </div>
-            <span className="w-fit rounded-full border border-border-orange bg-surface-orange px-3 py-1 text-[11px] font-bold text-[#9a4a05]">
-              Total {formatBDT(totalCompanyBDT)}
-            </span>
+        {!report ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40 p-8 flex items-center justify-center gap-3 text-slate-500 text-sm font-semibold">
+            <Loader2 size={16} className="animate-spin text-brand-orange" />
+            {reportLoading ? 'Preparing report data…' : 'Waiting for report data…'}
           </div>
-
-          <div className="mt-4 overflow-hidden rounded-xl border border-border-blue-light bg-white/75">
-            {companyRows.map(row => (
-              <div key={row.label} className="flex items-center justify-between gap-4 border-b border-border-blue-light px-3 py-3 last:border-b-0">
-                <span className="text-xs font-semibold text-slate-700">{row.label}</span>
-                <span className="text-right text-xs font-extrabold text-slate-900">{formatBDT(row.value)}</span>
+        ) : (
+          <>
+            {/* 1) Platform-Wise Sales Report */}
+            <ReportCard icon={Layers} title="Platform-Wise Sales Report" subtitle="Sales split across publisher platforms">
+              <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+                <ReportTable columns={platformColumns} rows={platformRows} footer={platformFooter} />
               </div>
-            ))}
-            <div className="flex items-center justify-between gap-4 bg-surface-blue px-3 py-3 border-t border-border-blue-light">
-              <span className="text-xs font-extrabold text-brand-blue-deep">Total</span>
-              <span className="text-right text-sm font-black text-brand-blue-deep">{formatBDT(totalCompanyBDT)}</span>
+            </ReportCard>
+
+            {/* 3) Payment Channel-Wise Report */}
+            <ReportCard icon={Landmark} title="Payment Channel-Wise Report" subtitle="Received amounts by bank / mobile wallet channel">
+              <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+                <ReportTable columns={channelColumns} rows={channelRows} footer={channelFooter} />
+              </div>
+            </ReportCard>
+
+            {/* 4) Day-Wise Sales Report */}
+            <ReportCard icon={CalendarDays} title="Day-Wise Sales Report" subtitle="Daily sales activity for the selected month">
+              <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+                <ReportTable columns={dailyColumns} rows={dailyRows} footer={dailyFooter} />
+              </div>
+            </ReportCard>
+
+            {/* 5) Company Expense Summary */}
+            <div className="rounded-2xl border border-border-blue-light bg-surface p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Company Expense Summary</h3>
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500">Live expense and vendor ledger in BDT</p>
+                </div>
+                <span className="w-fit rounded-full border border-border-orange bg-surface-orange px-3 py-1 text-[11px] font-bold text-[#9a4a05]">
+                  Total {formatBDT(company.totalCompanyBDT)}
+                </span>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60">
+                {companyRows.map(row => (
+                  <div key={row.label} className="flex items-center justify-between gap-4 border-b border-border-blue-light px-3 py-3 last:border-b-0">
+                    <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <Building2 size={14} className="text-slate-400" />
+                      {row.label}
+                    </span>
+                    <span className="text-right text-xs font-extrabold text-slate-900">{formatBDT(row.value)}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-4 bg-surface-blue px-3 py-3 border-t border-border-blue-light">
+                  <span className="text-xs font-extrabold text-brand-blue-deep">Total</span>
+                  <span className="text-right text-sm font-black text-brand-blue-deep">{formatBDT(company.totalCompanyBDT)}</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 max-w-6xl">
@@ -363,7 +585,7 @@ function ReportsView({ invoices, onTriggerExport }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               id="export-pdf"
-              onClick={() => onTriggerExport('pdf')}
+              onClick={() => onTriggerExport('pdf', reportMonth)}
               className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-between cursor-pointer group shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
             >
               <div className="flex items-center gap-2.5">
@@ -375,7 +597,7 @@ function ReportsView({ invoices, onTriggerExport }) {
 
             <button
               id="export-excel"
-              onClick={() => onTriggerExport('excel')}
+              onClick={() => onTriggerExport('excel', reportMonth)}
               className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-between cursor-pointer group shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
             >
               <div className="flex items-center gap-2.5">
@@ -387,7 +609,7 @@ function ReportsView({ invoices, onTriggerExport }) {
 
             <button
               id="export-csv"
-              onClick={() => onTriggerExport('csv')}
+              onClick={() => onTriggerExport('csv', reportMonth)}
               className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-between cursor-pointer group shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
             >
               <div className="flex items-center gap-2.5">

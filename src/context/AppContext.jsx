@@ -618,9 +618,11 @@ export function AppProvider({ children }) {
     return invoice;
   };
 
-  const handleTriggerExport = async (format) => {
+  const handleTriggerExport = async (format, month) => {
     const fmt = format === 'excel' ? 'xlsx' : format;
-    const url = `/api/reports/export?format=${encodeURIComponent(fmt)}`;
+    const params = new URLSearchParams({ format: fmt });
+    if (month) params.set('month', month);
+    const url = `/api/reports/export?${params.toString()}`;
 
     triggerToast(
       'info',

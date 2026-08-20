@@ -7,32 +7,82 @@ function round2(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
-const OFFICE_EXPENSE_BDT = 20810;
-
 function normalizeMonth(value) {
   const str = String(value || "").trim();
   if (/^\d{4}-\d{2}$/.test(str)) return str;
   return new Date().toISOString().slice(0, 7);
 }
 
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Categorizes a vendor payment into one of the Company Expense Summary
+ * buckets. This is fully data-driven: the special vendor records created in
+ * the `vendors` collection ("Refund Client", "Others Payment", "Adsbuzz Own")
+ * represent refunds and office expenses respectively; every other vendor is a
+ * real ad-credit supplier whose payments are "Vendor Payment".
+ */
+function vendorExpenseCategory(vendor) {
+  const name = String(vendor?.name || "").toLowerCase();
+  if (name.includes("refund")) return "refund";
+  if (name.includes("others payment") || name.includes("adsbuzz own") || name.includes("office")) return "office";
+  return "vendor";
+}
+
+/**
+ * Builds the list of actually-received BDT payments for an invoice, each with
+ * its own payment channel. Invoices that had partial payments recorded through
+ * the pay endpoint carry a `payments[]` sub-array; each entry keeps the channel
+ * it was received through. Invoices without one attribute `paidAmountBDT` to
+ * the invoice-level `paymentMethod`.
+ */
+function collectChannelPayments(invoice) {
+  const entries = [];
+  const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+  if (payments.length > 0) {
+    for (const p of payments) {
+      const amount = toNumber(p.amountBDT);
+      if (amount > 0) {
+        entries.push({ channel: String(p.paymentMethod || invoice.paymentMethod || "Unknown").trim() || "Unknown", amount });
+      }
+    }
+  } else {
+    const amount = toNumber(invoice.paidAmountBDT);
+    if (amount > 0) {
+      entries.push({ channel: String(invoice.paymentMethod || "Unknown").trim() || "Unknown", amount });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Generates the full monthly report used by the Reporting Desk. Every figure is
+ * aggregated live from the actual database records (invoices, vendors) for the
+ * selected month — nothing is hardcoded.
+ */
 export async function getMonthlyReport(month) {
   const targetMonth = normalizeMonth(month);
   const invoices = await listInvoices();
   const monthInvoices = invoices.filter((inv) => String(inv.date || "").startsWith(targetMonth));
 
-  const totalSellUSD = round2(monthInvoices.reduce((s, inv) => s + Number(inv.topupAmountUSD || 0), 0));
-  const totalSellBDT = round2(monthInvoices.reduce((s, inv) => s + Number(inv.totalAmountBDT || inv.paidAmountBDT || 0), 0));
+  // ===== 1) Statement metrics (Total Sell / Average / Ads Topup / Avg per USD) =====
+  const totalSellUSD = round2(monthInvoices.reduce((s, inv) => s + toNumber(inv.topupAmountUSD), 0));
+  const totalSellBDT = round2(monthInvoices.reduce((s, inv) => s + toNumber(inv.totalAmountBDT || inv.paidAmountBDT), 0));
 
   const count = monthInvoices.length;
   const avgSellUSD = count > 0 ? round2(totalSellUSD / count) : 0;
   const avgSellBDT = count > 0 ? round2(totalSellBDT / count) : 0;
 
   const adTopupInvoices = monthInvoices.filter((inv) => inv.serviceType !== "Others");
-  const adTopupUSD = round2(adTopupInvoices.reduce((s, inv) => s + Number(inv.topupAmountUSD || 0), 0));
-  const adTopupBDT = round2(adTopupInvoices.reduce((s, inv) => s + Number(inv.totalAmountBDT || inv.paidAmountBDT || 0), 0));
+  const adTopupUSD = round2(adTopupInvoices.reduce((s, inv) => s + toNumber(inv.topupAmountUSD), 0));
+  const adTopupBDT = round2(adTopupInvoices.reduce((s, inv) => s + toNumber(inv.totalAmountBDT || inv.paidAmountBDT), 0));
 
   const avgPerDollarBDT = totalSellUSD > 0 ? round2(totalSellBDT / totalSellUSD) : 0;
 
+  // ===== 2) Payment Approval Status =====
   const approvalApprovedCount = monthInvoices.filter((inv) => {
     const a = inv.approvalStatus || inv.paymentVerificationStatus || "Approved";
     return a === "Approved";
@@ -42,14 +92,86 @@ export async function getMonthlyReport(month) {
     return a === "Rejected" || a === "Declined";
   }).length;
 
-  const paidCount = monthInvoices.filter((inv) => inv.paymentStatus === "Paid").length;
-  const dueCount = monthInvoices.filter((inv) => inv.paymentStatus === "Due").length;
-  const partialPaidCount = monthInvoices.filter((inv) => inv.paymentStatus === "Partially Paid").length;
+  // ===== 3) Payment Status Report (counts + amounts) =====
+  const PAYMENT_STATUSES = ["Paid", "Due", "Partially Paid"];
+  const paymentStatus = PAYMENT_STATUSES.map((status) => {
+    const rows = monthInvoices.filter((inv) => inv.paymentStatus === status);
+    return {
+      status,
+      count: rows.length,
+      totalAmountBDT: round2(rows.reduce((s, inv) => s + toNumber(inv.totalAmountBDT), 0)),
+      paidAmountBDT: round2(rows.reduce((s, inv) => s + toNumber(inv.paidAmountBDT), 0)),
+      dueAmountBDT: round2(rows.reduce((s, inv) => s + toNumber(inv.dueAmountBDT), 0)),
+    };
+  });
+  const paidStatus = paymentStatus.find((p) => p.status === "Paid") || { count: 0 };
+  const dueStatus = paymentStatus.find((p) => p.status === "Due") || { count: 0 };
+  const partialPaidStatus = paymentStatus.find((p) => p.status === "Partially Paid") || { count: 0 };
 
-  const vendorPaymentBDT = round2(monthInvoices.reduce((s, inv) => s + Number(inv.paidAmountBDT || 0), 0));
-  const officeExpenseBDT = count > 0 ? OFFICE_EXPENSE_BDT : 0;
-  const refundBDT = 0;
-  const totalCompanyBDT = round2(vendorPaymentBDT + officeExpenseBDT + refundBDT);
+  // ===== 4) Platform-Wise Sales Report =====
+  const platformMap = new Map();
+  for (const inv of monthInvoices) {
+    const platform = String(inv.platform || "").trim() || "Facebook";
+    if (!platformMap.has(platform)) {
+      platformMap.set(platform, { platform, count: 0, totalUSD: 0, totalBDT: 0, paidBDT: 0, dueBDT: 0 });
+    }
+    const entry = platformMap.get(platform);
+    entry.count += 1;
+    entry.totalUSD = round2(entry.totalUSD + toNumber(inv.topupAmountUSD));
+    entry.totalBDT = round2(entry.totalBDT + toNumber(inv.totalAmountBDT || inv.paidAmountBDT));
+    entry.paidBDT = round2(entry.paidBDT + toNumber(inv.paidAmountBDT));
+    entry.dueBDT = round2(entry.dueBDT + toNumber(inv.dueAmountBDT));
+  }
+  const platformWise = Array.from(platformMap.values()).sort((a, b) => b.totalUSD - a.totalUSD);
+
+  // ===== 5) Payment Channel-Wise Report =====
+  const channelMap = new Map();
+  for (const inv of monthInvoices) {
+    for (const { channel, amount } of collectChannelPayments(inv)) {
+      if (!channelMap.has(channel)) channelMap.set(channel, { channel, count: 0, receivedBDT: 0 });
+      const entry = channelMap.get(channel);
+      entry.count += 1;
+      entry.receivedBDT = round2(entry.receivedBDT + amount);
+    }
+  }
+  const channelWise = Array.from(channelMap.values()).sort((a, b) => b.receivedBDT - a.receivedBDT);
+
+  // ===== 6) Day-Wise Sales Report =====
+  const dailyMap = new Map();
+  for (const inv of monthInvoices) {
+    const date = String(inv.date || "").slice(0, 10);
+    if (!date) continue;
+    if (!dailyMap.has(date)) dailyMap.set(date, { date, count: 0, totalUSD: 0, totalBDT: 0, paidBDT: 0, dueBDT: 0 });
+    const entry = dailyMap.get(date);
+    entry.count += 1;
+    entry.totalUSD = round2(entry.totalUSD + toNumber(inv.topupAmountUSD));
+    entry.totalBDT = round2(entry.totalBDT + toNumber(inv.totalAmountBDT || inv.paidAmountBDT));
+    entry.paidBDT = round2(entry.paidBDT + toNumber(inv.paidAmountBDT));
+    entry.dueBDT = round2(entry.dueBDT + toNumber(inv.dueAmountBDT));
+  }
+  const dailyWise = Array.from(dailyMap.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  // ===== 7) Company Expense Summary (from vendors collection) =====
+  const vendorsCollection = await getCollection("vendors");
+  const vendors = await vendorsCollection.find({}).toArray();
+
+  let officeExpenseBDT = 0;
+  let vendorPaymentBDT = 0;
+  let refundBDT = 0;
+
+  for (const vendor of vendors) {
+    const category = vendorExpenseCategory(vendor);
+    for (const payment of vendor.paymentHistory || []) {
+      if (!String(payment.date || "").startsWith(targetMonth)) continue;
+      const amount = toNumber(payment.amountBDT);
+      if (amount <= 0) continue;
+      if (category === "office") officeExpenseBDT = round2(officeExpenseBDT + amount);
+      else if (category === "refund") refundBDT = round2(refundBDT + amount);
+      else vendorPaymentBDT = round2(vendorPaymentBDT + amount);
+    }
+  }
+
+  const totalCompanyBDT = round2(officeExpenseBDT + vendorPaymentBDT + refundBDT);
 
   return {
     month: targetMonth,
@@ -69,13 +191,17 @@ export async function getMonthlyReport(month) {
     },
     payment: {
       total: count,
-      paid: paidCount,
-      due: dueCount,
-      partialPaid: partialPaidCount,
+      paid: paidStatus.count,
+      due: dueStatus.count,
+      partialPaid: partialPaidStatus.count,
     },
+    paymentStatus,
+    platformWise,
+    channelWise,
+    dailyWise,
     company: {
-      vendorPaymentBDT,
       officeExpenseBDT,
+      vendorPaymentBDT,
       refundBDT,
       totalCompanyBDT,
     },
