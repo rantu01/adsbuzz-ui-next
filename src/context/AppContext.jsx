@@ -110,6 +110,7 @@ export function AppProvider({ children }) {
     approveInvoice: rawApproveInvoice,
     rejectInvoice: rawRejectInvoice,
     syncTopupStatus: rawSyncTopupStatus,
+    deleteInvoice: rawDeleteInvoice,
     recordPayment: rawRecordPayment,
     refetch: refetchInvoices,
   } = useInvoices(triggerToast);
@@ -211,6 +212,12 @@ export function AppProvider({ children }) {
   const handleUpdateInvoice = async (inv) => {
     const result = await rawUpdateInvoice(inv);
     logActivityFx("Rakibul R.", "Updated Invoice", `Invoice ${inv?.invoiceNo} edited.`, "payment", inv?.customerId);
+    return result;
+  };
+
+  const handleDeleteInvoice = async (invoiceNo) => {
+    const result = await rawDeleteInvoice(invoiceNo);
+    if (result) logActivityFx("Rakibul R.", "Deleted Sales Entry", `Invoice ${result.invoiceNo} removed from Sales Entry Records.`, "payment", result.customerId);
     return result;
   };
 
@@ -818,6 +825,7 @@ export function AppProvider({ children }) {
     handleApproveInvoice,
     handleRejectInvoice,
     handleSyncTopupStatus,
+    handleDeleteInvoice,
     handleRecordInvoicePayment,
     updateCard,
     handleToggleCardStatus,

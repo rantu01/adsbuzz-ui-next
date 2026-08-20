@@ -24,6 +24,7 @@ function SalesPageInner() {
       onSubmitSale={app.handleExecuteSale}
       onAddHistoricalSale={app.handleAddHistoricalSale}
       onUpdateInvoice={app.handleUpdateInvoice}
+      onDeleteInvoice={app.handleDeleteInvoice}
       onAddCustomer={app.handleAddCustomer}
       onNavigateToCustomers={app.handleNavigateToCustomers}
       defaultDollarRate={app.settings.defaultDollarRate}

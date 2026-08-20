@@ -582,6 +582,16 @@ export async function getInvoiceByNo(invoiceNo) {
   return { ...mapInvoice(doc), _id: doc._id };
 }
 
+export async function deleteInvoice(invoiceNo) {
+  const invoicesCollection = await getCollection("invoices");
+  const existing = await invoicesCollection.findOne({ invoiceNo });
+  if (!existing) return null;
+
+  await invoicesCollection.deleteOne({ invoiceNo });
+  logger.info(`deleteInvoice: deleted ${invoiceNo} (${existing.topupAmountUSD} USD)`);
+  return mapInvoice(existing);
+}
+
 export async function updateInvoice(invoiceNo, data = {}) {
   const invoicesCollection = await getCollection("invoices");
   const existing = await invoicesCollection.findOne({ invoiceNo });

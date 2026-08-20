@@ -11,6 +11,7 @@ import * as platformDetailRoute from '@/app/api/platforms/[id]/route';
 import * as walletsRoute from '@/app/api/wallets/route';
 import * as walletDetailRoute from '@/app/api/wallets/[id]/route';
 import * as invoicesRoute from '@/app/api/invoices/route';
+import * as invoiceDetailRoute from '@/app/api/invoices/[invoiceNo]/route';
 import * as historicalInvoicesRoute from '@/app/api/invoices/historical/route';
 import { getCustomerTopupSummary } from '@/models/invoiceModel';
 import * as topupsRoute from '@/app/api/topups/route';
@@ -440,6 +441,46 @@ test('POST /api/invoices/historical records a past sale without live side effect
   const summary = await getCustomerTopupSummary(customerId);
   assert.equal(summary.lifetimeTotalTopupUSD, 0);
   assert.equal(summary.currentMonthTotalTopupUSD, 0);
+});
+
+test('DELETE /api/invoices/[invoiceNo] removes a sales entry from the records', async () => {
+  const custRes = await customersRoute.POST(
+    makeRequest('/api/customers', { method: 'POST', body: { name: 'Delete Client', email: 'delete@example.com', companyName: 'Delete Ltd' } }),
+  );
+  const customerId = (await custRes.json()).customer.id;
+
+  const invRes = await invoicesRoute.POST(
+    makeRequest('/api/invoices', {
+      method: 'POST',
+      body: { customerId, adAccountId: 'delete-account-001', topupAmountUSD: 75, approvalStatus: 'Pending', topupStatus: 'Pending', note: 'Delete test note' },
+    }),
+  );
+  const { invoice } = await invRes.json();
+
+  // Visible before deletion.
+  const before = await invoicesRoute.GET(makeRequest('/api/invoices', { search: `search=${invoice.invoiceNo}` }));
+  const beforeBody = await before.json();
+  assert.ok(beforeBody.invoices.some((i) => i.invoiceNo === invoice.invoiceNo));
+
+  const delRes = await invoiceDetailRoute.DELETE(
+    makeRequest(`/api/invoices/${invoice.invoiceNo}`, { method: 'DELETE' }),
+    params(invoice.invoiceNo),
+  );
+  assert.equal(delRes.status, 200);
+  const deleted = await delRes.json();
+  assert.equal(deleted.invoice.invoiceNo, invoice.invoiceNo);
+
+  // Removed from the list (Sales Entry Records) afterwards.
+  const after = await invoicesRoute.GET(makeRequest('/api/invoices', { search: `search=${invoice.invoiceNo}` }));
+  const afterBody = await after.json();
+  assert.ok(!afterBody.invoices.some((i) => i.invoiceNo === invoice.invoiceNo));
+
+  // Deleting again yields a 404.
+  const delAgain = await invoiceDetailRoute.DELETE(
+    makeRequest(`/api/invoices/${invoice.invoiceNo}`, { method: 'DELETE' }),
+    params(invoice.invoiceNo),
+  );
+  assert.equal(delAgain.status, 404);
 });
 
 test('POST /api/invoices/historical rejects today/future dates', async () => {

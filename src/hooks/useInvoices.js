@@ -145,6 +145,31 @@ export function useInvoices(triggerToast) {
     [triggerToast],
   );
 
+  const deleteInvoice = useCallback(
+    async (invoiceNo) => {
+      const prev = invoices.find(inv => inv.invoiceNo === invoiceNo);
+      if (!prev) return null;
+
+      setInvoices(prevList => prevList.filter(inv => inv.invoiceNo !== invoiceNo));
+
+      try {
+        const data = await apiFetch(`/api/invoices/${encodeURIComponent(invoiceNo)}`, {
+          method: 'DELETE',
+        });
+        const removed = data.invoice;
+        triggerToast('info', 'Sales Entry Deleted', `Invoice ${removed.invoiceNo} removed from Sales Entry Records.`);
+        return removed;
+      } catch (err) {
+        setInvoices(prevList =>
+          prevList.some(inv => inv.invoiceNo === invoiceNo) ? prevList : [prev, ...prevList],
+        );
+        triggerToast('error', 'Delete Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [invoices, triggerToast],
+  );
+
   const recordPayment = useCallback(
     async (invoiceNo, payload) => {
       try {
@@ -179,6 +204,7 @@ export function useInvoices(triggerToast) {
     approveInvoice,
     rejectInvoice,
     syncTopupStatus,
+    deleteInvoice,
     recordPayment,
     refetch: fetchInvoices,
   };

@@ -25,7 +25,7 @@ import {
   CopyCheck,
   Search,
   History,
-  FileClock,
+FileClock,
   CalendarDays,
   ThumbsUp,
   ThumbsDown,
@@ -35,10 +35,12 @@ import {
   MessageSquare,
   AlertCircle,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { apiFetch } from '@/utils/api';
 
 const STEP_HEADERS = [
@@ -77,6 +79,7 @@ function SalesView({
   onSubmitSale,
   onAddHistoricalSale,
   onUpdateInvoice,
+  onDeleteInvoice,
   onNavigateToCustomers,
   initialCheckoutStep,
   initialCustomerId,
@@ -142,6 +145,9 @@ function SalesView({
 
   // View Log modal state
   const [logTarget, setLogTarget] = useState(null);
+
+  // Delete Sales Entry Record confirmation
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Per-record Copy Invoice feedback
   const [copiedRecord, setCopiedRecord] = useState('');
@@ -742,6 +748,17 @@ function SalesView({
         setTimeout(() => setCopiedRecord(''), 2000);
       })
       .catch(() => {});
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !onDeleteInvoice) return;
+    try {
+      await onDeleteInvoice(deleteTarget.invoiceNo);
+    } catch (err) {
+      // The hook/context already surfaced a toast with the error.
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -1635,6 +1652,13 @@ function SalesView({
                         >
                           <History size={11} /> View Log {logEntries.length > 0 && `(${logEntries.length})`}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(inv)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-100 dark:border-rose-800/60 cursor-pointer transition-colors"
+                        >
+                          <Trash2 size={11} /> Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -2234,6 +2258,17 @@ function SalesView({
           </div>
         </form>
       </Modal>
+
+      {/* Delete Sales Entry Record Confirmation */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Sales Entry?"
+        message={`This will permanently remove invoice ${deleteTarget?.invoiceNo || ''} (${deleteTarget?.adAccountName || '—'}) from the Sales Entry Records. This action cannot be undone.`}
+        confirmLabel="Delete Entry"
+        variant="danger"
+      />
 
     </div>
   );

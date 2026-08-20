@@ -1,6 +1,6 @@
 import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, requirePositiveNumber } from "@/utils/validate";
-import { getInvoiceByNo, updateInvoice } from "@/models/invoiceModel";
+import { getInvoiceByNo, updateInvoice, deleteInvoice } from "@/models/invoiceModel";
 import { getRequestActor } from "@/utils/auditActor";
 import { cacheInvalidate } from "@/lib/cache";
 
@@ -31,4 +31,17 @@ export const PUT = asyncHandler(async (request, { params }) => {
   cacheInvalidate("GET:/api/invoices");
   cacheInvalidate("GET:/api/customers");
   return ok({ message: "Invoice updated.", invoice });
+});
+
+export const DELETE = asyncHandler(async (request, { params }) => {
+  const { invoiceNo } = await params;
+  const existing = await getInvoiceByNo(invoiceNo);
+  if (!existing) {
+    return notFound("Invoice not found.");
+  }
+
+  await deleteInvoice(invoiceNo);
+  cacheInvalidate("GET:/api/invoices");
+  cacheInvalidate("GET:/api/customers");
+  return ok({ message: "Invoice deleted.", invoice: existing });
 });
