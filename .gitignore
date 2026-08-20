@@ -8,3 +8,5 @@ coverage/
 .env
 .env*.local
 !.env.example
+tmp_analyze_reports.mjs
+tmp_vendor_month.mjs
