@@ -118,7 +118,9 @@ function VendorsView({ vendors, onAddVendor, onUpdateVendor, onPayVendor, onDele
 
   const activeVendor = vendors.find(v => v.id === selectedVendorId) || vendors[0];
 
-  const ledgerEntries = (activeVendor?.paymentHistory ?? []).map((ph, index) => ({ ph, index }));
+  const ledgerEntries = (activeVendor?.paymentHistory ?? [])
+    .map((ph, index) => ({ ph, index }))
+    .sort((a, b) => (b.ph.date || '').localeCompare(a.ph.date || ''));
   const ledgerTotalPages = Math.max(1, Math.ceil(ledgerEntries.length / LEDGER_PAGE_SIZE));
   const safeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
   const pagedLedger = ledgerEntries.slice(

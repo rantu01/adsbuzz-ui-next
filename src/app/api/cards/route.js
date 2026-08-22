@@ -24,6 +24,15 @@ export const POST = asyncHandler(async (request) => {
     if (err.message === "DUPLICATE") {
       throw new ApiError(HttpStatus.CONFLICT, "A card with this name already exists.");
     }
+    if (err.message === "INVALID_PLATFORM") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid platform selected.");
+    }
+    if (err.message === "INVALID_WALLET") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid wallet selected.");
+    }
+    if (err.message === "WALLET_PLATFORM_MISMATCH") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Selected wallet does not belong to the selected platform.");
+    }
     throw err;
   }
 });

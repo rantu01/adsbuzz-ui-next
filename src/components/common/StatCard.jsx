@@ -7,6 +7,8 @@ export default function StatCard({ title, value, variant = 'blue', subtext, badg
     emerald: { bg: 'bg-surface-green', border: 'border-border-green', label: 'text-brand-blue-deep', value: 'text-brand-blue-deep', sub: 'text-brand-blue-deep/75' },
     indigo: { bg: 'bg-[#F3F6FF]', border: 'border-[#D8E1FB]', label: 'text-brand-blue-deep', value: 'text-brand-blue-deep', sub: 'text-brand-blue-deep/75' },
     pink: { bg: 'bg-[#FFF3FA]', border: 'border-[#F7D4E8]', label: 'text-brand-blue-deep', value: 'text-brand-blue-deep', sub: 'text-brand-blue-deep/75' },
+    red: { bg: 'bg-red-50', border: 'border-red-200', label: 'text-red-700', value: 'text-red-700', sub: 'text-red-600' },
+    slate: { bg: 'bg-slate-50', border: 'border-slate-200', label: 'text-slate-700', value: 'text-slate-700', sub: 'text-slate-600' },
   };
 
   const sizeStyles = {

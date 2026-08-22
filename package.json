@@ -2,28 +2,29 @@
   "name": "adsbuzz-erp",
   "version": "1.0.0",
   "private": true,
-"scripts": {
-      "dev": "next dev --port 3000",
-      "build": "next build",
-      "start": "next start",
-      "lint": "next lint",
-      "test": "node --import ./tests/load-env.mjs --test-reporter=spec --test tests/invoiceMath.test.mjs tests/formValidation.test.mjs tests/pagination.test.mjs tests/customerIds.test.mjs tests/integration.test.mjs"
-    },
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "node --import ./tests/load-env.mjs --test-reporter=spec --test tests/invoiceMath.test.mjs tests/formValidation.test.mjs tests/pagination.test.mjs tests/customerIds.test.mjs tests/integration.test.mjs"
+  },
   "dependencies": {
     "firebase": "^12.13.0",
     "firebase-admin": "^14.1.0",
+    "lucide-react": "^0.546.0",
     "mongodb": "^7.5.0",
+    "motion": "^12.10.0",
     "next": "^15.3.1",
+    "pdfkit": "^0.19.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.10.0",
     "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.4",
-    "tailwindcss": "^4.1.4",
-    "eslint": "^9.0.0"
+    "eslint": "^9.0.0",
+    "tailwindcss": "^4.1.4"
   },
   "overrides": {
     "jose": "4.15.9"

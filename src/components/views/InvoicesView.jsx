@@ -13,6 +13,7 @@ import {
   CopyCheck,
   FileClock,
   FileEdit,
+  FileText,
   History,
   MessageSquare,
   RefreshCw,
@@ -28,6 +29,7 @@ import SearchBar from '@/components/ui/SearchBar';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import FieldError from '@/components/ui/FieldError';
 import { validate, hasErrors, positiveNumber } from '@/utils/formValidation';
+import { uploadScreenshot } from '@/utils/api';
 
 const ACTION_META = {
   created: { label: 'Entry Created', icon: <FileClock size={13} />, tone: 'text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' },
@@ -76,8 +78,12 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
     date: todayStr(),
     transactionId: '',
     note: '',
+    screenshot: null,
+    screenshotName: '',
   });
   const [paymentFormErrors, setPaymentFormErrors] = useState({});
+  const [screenshotError, setScreenshotError] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
 
   // View Log modal state
   const [logTarget, setLogTarget] = useState(null);
@@ -130,6 +136,12 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
   const activeMonthStr = hasCurrentMonthInvoices
     ? currentMonthStr
     : (invoices.length > 0 && invoices[0].date ? invoices[0].date.substring(0, 7) : currentMonthStr);
+
+  const monthNameLabel = (() => {
+    const [y, m] = activeMonthStr.split('-');
+    const d = new Date(Number(y), Number(m) - 1, 1);
+    return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  })();
 
   const currentMonthInvoices = invoices.filter(inv => inv.date && inv.date.startsWith(activeMonthStr));
   const currentMonthInvoicesCount = currentMonthInvoices.length;
@@ -223,12 +235,15 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
       date: todayStr(),
       transactionId: '',
       note: '',
+      screenshot: null,
+      screenshotName: '',
     });
     setPaymentFormErrors({});
+    setScreenshotError('');
     setShowPaymentModal(true);
   };
 
-  const handlePaymentSubmit = (e) => {
+  const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     if (!paymentTarget || !onRecordPayment) return;
     const due = Number(paymentTarget.dueAmountBDT || 0);
@@ -244,35 +259,57 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
       return;
     }
     setPaymentFormErrors({});
+    setPaymentSubmitting(true);
+
+    let screenshotUrl = '';
+    if (paymentForm.screenshot) {
+      try {
+        screenshotUrl = await uploadScreenshot({
+          name: paymentForm.screenshotName || 'payment-screenshot.png',
+          data: paymentForm.screenshot,
+        });
+      } catch (uploadErr) {
+        setScreenshotError('Screenshot upload failed. Please try again.');
+        setPaymentSubmitting(false);
+        return;
+      }
+    }
+
     onRecordPayment(paymentTarget.invoiceNo, {
       amountBDT: amount,
       paymentMethod: paymentForm.paymentMethod,
       date: paymentForm.date,
       transactionId: paymentForm.transactionId,
       note: paymentForm.note,
+      screenshot: screenshotUrl,
       customerId: paymentTarget.customerId,
     })
       .then(() => {
         setShowPaymentModal(false);
         setPaymentTarget(null);
+        setScreenshotError('');
       })
-      .catch(() => { });
+      .catch(() => { })
+      .finally(() => {
+        setPaymentSubmitting(false);
+      });
   };
 
   const buildCopyText = (inv) => {
-    const custName = getCustName(inv.customerId);
     return [
       `Date: ${inv.date || ''}`,
-      `Invoice no: ${inv.invoiceNo || ''}`,
+      `Invoice No: ${inv.invoiceNo || ''}`,
       `Group ID: ${inv.groupId || ''}`,
-      `Customer: ${custName}`,
+      `Platform Name: ${inv.platform || ''}`,
       `Ad Account Name: ${inv.adAccountName || ''}`,
+      `Ad Account ID: ${inv.adAccountId || ''}`,
+      `USD Dollar Rate: ${inv.dollarRate || 0}`,
       `Amount in USD: ${inv.topupAmountUSD || 0}`,
-      `Total (BDT): ${inv.totalAmountBDT || 0}`,
+      `Amount in BDT: ${inv.totalAmountBDT || 0}`,
+      `Payment Status: ${inv.paymentStatus || ''}`,
+      `TopUp Status: ${inv.topupStatus || ''}`,
       `Paid Amount: ${Number.isFinite(Number(inv.paidAmountBDT)) ? inv.paidAmountBDT : 0}`,
       `Due Amount: ${Number.isFinite(Number(inv.dueAmountBDT)) ? inv.dueAmountBDT : 0}`,
-      `Payment Status: ${inv.paymentStatus || ''}`,
-      `Approval Status: ${inv.approvalStatus || inv.paymentVerificationStatus || ''}`,
     ].join('\n');
   };
 
@@ -310,27 +347,27 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
           <div className="flex justify-between items-center border-b border-border-blue dark:border-border-blue pb-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-brand-blue-deep dark:text-brand-blue-deep flex items-center gap-1.5">
               <Calendar size={14} className="text-brand-blue-dark dark:text-brand-blue-dark" />
-              Current Month ({activeMonthStr})
+              {monthNameLabel}
             </h3>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface dark:bg-surface text-brand-blue-deep dark:text-brand-blue-deep border border-border-blue dark:border-border-blue">
               Monthly Summary
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3 pt-1">
-            <div className="bg-emerald-50 dark:bg-emerald-500/10 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800 shadow-xs">
-              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">Paid</p>
-              <p className="text-sm font-black text-emerald-800 dark:text-emerald-300 mt-1">৳{currentMonthPaymentSummary.paid.bdt.toLocaleString()}</p>
-              <p className="text-[9px] font-semibold text-emerald-700/70 dark:text-emerald-400/70">{currentMonthPaymentSummary.paid.count} transactions</p>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue dark:border-border-blue shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Invoice</p>
+              <p className="text-xl font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">{currentMonthInvoicesCount}</p>
+              <p className="text-[9px] font-semibold text-brand-blue-deep/65 dark:text-brand-blue-deep/65">Monthly records</p>
             </div>
-            <div className="bg-amber-50 dark:bg-amber-500/10 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 shadow-xs">
-              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Partially Paid</p>
-              <p className="text-sm font-black text-amber-800 dark:text-amber-300 mt-1">৳{currentMonthPaymentSummary.partiallyPaid.bdt.toLocaleString()}</p>
-              <p className="text-[9px] font-semibold text-amber-700/70 dark:text-amber-400/70">{currentMonthPaymentSummary.partiallyPaid.count} transactions</p>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue dark:border-border-blue shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Sell (USD &amp; BDT)</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentMonthUSD.toLocaleString()}</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep">৳{currentMonthBDT.toLocaleString()}</p>
             </div>
-            <div className="bg-rose-50 dark:bg-rose-500/10 p-3.5 rounded-xl border border-rose-200 dark:border-rose-800 shadow-xs">
-              <p className="text-[10px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wide">Due</p>
-              <p className="text-sm font-black text-rose-800 dark:text-rose-300 mt-1">৳{currentMonthPaymentSummary.due.bdt.toLocaleString()}</p>
-              <p className="text-[9px] font-semibold text-rose-700/70 dark:text-rose-400/70">{currentMonthPaymentSummary.due.count} transactions</p>
+            <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue dark:border-border-blue shadow-xs">
+              <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Other Services</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentMonthOthersUSD.toLocaleString()}</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep">৳{currentMonthOthersBDT.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -355,12 +392,12 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
             <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-green dark:border-border-green shadow-xs">
               <p className="text-[10px] font-bold text-status-green-deep/75 dark:text-status-green-deep/75 uppercase tracking-wide">Total Sell (USD &amp; BDT)</p>
               <p className="text-sm font-black text-status-green-deep dark:text-status-green-deep mt-1">${dailyUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-status-green-deep dark:text-status-green-deep">৳{dailyBDT.toLocaleString()}</p>
+              <p className="text-sm font-black text-status-green-deep dark:text-status-green-deep">৳{dailyBDT.toLocaleString()}</p>
             </div>
             <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-green dark:border-border-green shadow-xs">
               <p className="text-[10px] font-bold text-status-green-deep/75 dark:text-status-green-deep/75 uppercase tracking-wide">Total Others Service Sell</p>
               <p className="text-sm font-black text-status-green-deep dark:text-status-green-deep mt-1">${dailyOthersUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-status-green-deep dark:text-status-green-deep">৳{dailyOthersBDT.toLocaleString()}</p>
+              <p className="text-sm font-black text-status-green-deep dark:text-status-green-deep">৳{dailyOthersBDT.toLocaleString()}</p>
             </div>
           </div>
 
@@ -385,12 +422,12 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
             <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-rose dark:border-border-rose shadow-xs">
               <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Sales (USD &amp; BDT)</p>
               <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${lifetimeUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{lifetimeBDT.toLocaleString()}</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep">৳{lifetimeBDT.toLocaleString()}</p>
             </div>
             <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-rose dark:border-border-rose shadow-xs">
               <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Other Service Sales</p>
               <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${lifetimeOthersUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{lifetimeOthersBDT.toLocaleString()}</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep">৳{lifetimeOthersBDT.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -414,12 +451,12 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
             <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
               <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Sales (USD &amp; BDT)</p>
               <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentYearUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{currentYearBDT.toLocaleString()}</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep">৳{currentYearBDT.toLocaleString()}</p>
             </div>
             <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
               <p className="text-[10px] font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wide">Total Other Service Sales</p>
               <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${currentYearOthersUSD.toLocaleString()}</p>
-              <p className="text-[10px] font-bold text-brand-blue-deep dark:text-brand-blue-deep">৳{currentYearOthersBDT.toLocaleString()}</p>
+              <p className="text-sm font-black text-brand-blue-deep dark:text-brand-blue-deep">৳{currentYearOthersBDT.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -476,14 +513,9 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
                 key={st}
                 type="button"
                 onClick={() => setStatusFilter(st)}
-                style={{
-                  backgroundColor: isSelected ? '#1F5E98' : '#F68B2D',
-                  color: '#ffffff',
-                  borderColor: isSelected ? '#1F5E98' : '#F68B2D',
-                }}
-                className={`text-xs font-black px-3.5 py-1.5 rounded-xl border transition-all cursor-pointer shadow-xs ${isSelected
-                    ? 'ring-2 ring-blue-500/40 scale-105 opacity-100'
-                    : 'opacity-85 hover:opacity-100 hover:scale-102'
+                className={`text-xs font-black px-3.5 py-1.5 rounded-xl border transition-all cursor-pointer shadow-xs text-white ${isSelected
+                    ? 'bg-brand-blue border-brand-blue ring-2 ring-blue-500/40 scale-105 opacity-100'
+                    : 'bg-brand-blue-dark border-brand-blue-dark opacity-85 hover:opacity-100 hover:scale-102'
                   }`}
               >
                 {st}
@@ -871,9 +903,75 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
             </div>
           </div>
 
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Screenshot (optional)</label>
+            <div className="space-y-2">
+              {paymentForm.screenshot && paymentForm.screenshotName ? (
+                <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <img src={paymentForm.screenshot} alt="Screenshot preview" className="h-12 w-12 object-cover rounded-lg border" />
+                    <span className="text-xs text-slate-700 dark:text-slate-300 truncate max-w-xs">{paymentForm.screenshotName}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPaymentForm({ ...paymentForm, screenshot: null, screenshotName: '' })}
+                    className="text-rose-600 hover:bg-rose-50 dark:text-rose-400"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-4 text-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      setScreenshotError('');
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) {
+                        setScreenshotError('Please upload a valid image file (PNG, JPG, JPEG, WebP, GIF).');
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        setScreenshotError(`Image is too large. Maximum allowed size is 5 MB.`);
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPaymentForm({
+                          ...paymentForm,
+                          screenshot: typeof reader.result === 'string' ? reader.result : undefined,
+                          screenshotName: file.name,
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="hidden"
+                    id="payment-screenshot-input"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('payment-screenshot-input')?.click()}
+                    leftIcon={<FileText size={14} />}
+                  >
+                    Upload Screenshot
+                  </Button>
+                  <p className="text-[10px] text-slate-500 mt-1">PNG, JPG, WebP, GIF up to 5MB</p>
+                </div>
+              )}
+              {screenshotError && <p className="text-[10px] text-rose-500">{screenshotError}</p>}
+            </div>
+          </div>
+
           <div className="custom-modal-footer flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <Button variant="ghost" onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}>Cancel</Button>
-            <Button type="submit" variant="secondary" leftIcon={<Banknote size={12} />}>Record Payment</Button>
+            <Button type="submit" variant="secondary" leftIcon={<Banknote size={12} />} disabled={paymentSubmitting}>
+              {paymentSubmitting ? 'Recording...' : 'Record Payment'}
+            </Button>
           </div>
         </form>
       </Modal>

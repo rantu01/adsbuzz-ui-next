@@ -1,4 +1,4 @@
-import { asyncHandler, ok, notFound } from "@/utils/http";
+import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import { getCardById, updateCard, toggleCardStatus, deleteCard } from "@/models/cardModel";
 
@@ -22,6 +22,19 @@ export const PATCH = asyncHandler(async (request, { params }) => {
   if (!card) {
     return notFound("Card not found.");
   }
+
+  if (card && typeof card === 'object' && card.error) {
+    if (card.error === "INVALID_PLATFORM") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid platform selected.");
+    }
+    if (card.error === "INVALID_WALLET") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid wallet selected.");
+    }
+    if (card.error === "WALLET_PLATFORM_MISMATCH") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Selected wallet does not belong to the selected platform.");
+    }
+  }
+
   return ok({ message: "Card updated.", card });
 });
 

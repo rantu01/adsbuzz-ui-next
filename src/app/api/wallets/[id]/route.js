@@ -1,4 +1,4 @@
-import { asyncHandler, ok, notFound } from "@/utils/http";
+import { asyncHandler, ok, notFound, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import { getWalletById, updateWallet, deleteWallet } from "@/models/walletModel";
 
@@ -20,8 +20,15 @@ export const PATCH = asyncHandler(async (request, { params }) => {
     return notFound("Wallet not found.");
   }
 
-  const wallet = await updateWallet(id, body);
-  return ok({ message: "Wallet updated.", wallet });
+  try {
+    const wallet = await updateWallet(id, body);
+    return ok({ message: "Wallet updated.", wallet });
+  } catch (err) {
+    if (err.message === "INVALID_PLATFORM") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid platform selected.");
+    }
+    throw err;
+  }
 });
 
 export const DELETE = asyncHandler(async (request, { params }) => {

@@ -35,6 +35,7 @@ export const POST = asyncHandler(async (request, { params }) => {
       date,
       transactionId,
       note,
+      screenshot: body.screenshot || "",
       actor,
     });
     if (!invoice) {

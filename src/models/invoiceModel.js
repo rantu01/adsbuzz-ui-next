@@ -674,7 +674,7 @@ export async function updateInvoice(invoiceNo, data = {}) {
  * rejected. Already-paid invoices throw an `INVOICE_FULLY_PAID` code so the
  * API can respond 400 instead of silently mutating settled records.
  */
-export async function recordInvoicePayment(invoiceNo, { amountBDT = 0, paymentMethod = "", date = "", transactionId = "", note = "", actor = null } = {}) {
+export async function recordInvoicePayment(invoiceNo, { amountBDT = 0, paymentMethod = "", date = "", transactionId = "", note = "", screenshot = "", actor = null } = {}) {
   const invoicesCollection = await getCollection("invoices");
   const existing = await invoicesCollection.findOne({ invoiceNo });
   if (!existing) return null;
@@ -710,6 +710,7 @@ export async function recordInvoicePayment(invoiceNo, { amountBDT = 0, paymentMe
     date: String(date || "").trim() || new Date().toISOString().split("T")[0],
     transactionId: String(transactionId || "").trim() || `PAY-${Date.now().toString().slice(-8)}`,
     note: String(note || "").trim(),
+    screenshot: String(screenshot || "").trim() || "",
     actor: actor || null,
     at: new Date().toISOString(),
   };
@@ -722,13 +723,14 @@ export async function recordInvoicePayment(invoiceNo, { amountBDT = 0, paymentMe
         dueAmountBDT: next.dueAmountBDT,
         paymentStatus: next.paymentStatus,
         paymentMethod: paymentEntry.paymentMethod,
+        approvalStatus: "Pending",
         updatedAt: new Date(),
       },
       $push: {
         payments: paymentEntry,
         auditLog: auditEntry("payment_received", next.paymentStatus, {
           actor,
-          reason: `Payment of ৳${amount.toLocaleString()} received${paymentEntry.paymentMethod !== "N/A" ? ` via ${paymentEntry.paymentMethod}` : ""}.${note ? ` ${note}` : ""}`,
+          reason: `Payment of ৳${amount.toLocaleString()} received${paymentEntry.paymentMethod !== "N/A" ? ` via ${paymentEntry.paymentMethod}` : ""}.${note ? ` ${note}` : ""}. Approval reset to Pending.`,
         }),
       },
     }

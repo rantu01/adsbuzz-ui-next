@@ -145,6 +145,9 @@ function CardsView({
   const [newCardWallet, setNewCardWallet] = useState('');
   const [newCardStatus, setNewCardStatus] = useState('Active');
 
+  // Filter wallets based on selected platform
+  const filteredWallets = wallets.filter(w => !newCardPlatform || w.platformId === newCardPlatform);
+
   const [addFormErrors, setAddFormErrors] = useState({});
   const [editFormErrors, setEditFormErrors] = useState({});
 
@@ -587,7 +590,10 @@ Edit
               id="add-card-platform"
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={newCardPlatform}
-              onChange={(e) => setNewCardPlatform(e.target.value)}
+              onChange={(e) => {
+                setNewCardPlatform(e.target.value);
+                setNewCardWallet('');
+              }}
             >
               <option value="">Select platform</option>
               {platforms.map((p) => (
@@ -604,10 +610,13 @@ Edit
               onChange={(e) => setNewCardWallet(e.target.value)}
             >
               <option value="">Select wallet</option>
-              {wallets.map((w) => (
+              {filteredWallets.map((w) => (
                 <option key={w.walletId} value={w.walletId}>{w.ownerName}</option>
               ))}
             </select>
+            {newCardPlatform && filteredWallets.length === 0 && (
+              <p className="text-[10px] text-amber-500 mt-1">No wallets available for this platform. Add a wallet first.</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
@@ -678,7 +687,7 @@ Edit
               id="edit-card-platform"
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={editCardData?.platformId || editCardData?.cardPlatform || ''}
-              onChange={(e) => editCardData && setEditCardData({ ...editCardData, platformId: e.target.value, cardPlatform: platforms.find(p => p.platformId === e.target.value)?.platformName || e.target.value })}
+              onChange={(e) => editCardData && setEditCardData({ ...editCardData, platformId: e.target.value, cardPlatform: platforms.find(p => p.platformId === e.target.value)?.platformName || e.target.value, walletId: '', cardWallet: '' })}
             >
               <option value="">Select platform</option>
               {platforms.map((p) => (
@@ -695,10 +704,13 @@ Edit
               onChange={(e) => editCardData && setEditCardData({ ...editCardData, walletId: e.target.value, cardWallet: wallets.find(w => w.walletId === e.target.value)?.ownerName || '' })}
             >
               <option value="">Select wallet</option>
-              {wallets.map((w) => (
+              {wallets.filter(w => !editCardData?.platformId || w.platformId === editCardData.platformId).map((w) => (
                 <option key={w.walletId} value={w.walletId}>{w.ownerName}</option>
               ))}
             </select>
+            {editCardData?.platformId && wallets.filter(w => w.platformId === editCardData.platformId).length === 0 && (
+              <p className="text-[10px] text-amber-500 mt-1">No wallets available for this platform. Add a wallet first.</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Total Loaded USD ($)</label>

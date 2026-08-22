@@ -9,6 +9,7 @@ export default function WalletsPage() {
   return (
     <WalletsView
       wallets={app.wallets}
+      platforms={app.platforms}
       error={app.walletsError}
       onRetry={app.refetchWallets}
       onUpdateWallet={app.handleUpdateWallet}

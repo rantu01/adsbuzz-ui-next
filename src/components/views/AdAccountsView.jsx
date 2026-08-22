@@ -58,6 +58,15 @@ function AdAccountsView({
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
 
+  // Copy to clipboard state
+  const [copiedCell, setCopiedCell] = useState(null);
+
+  const copyToClipboard = (text, cellKey) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCell(cellKey);
+    setTimeout(() => setCopiedCell(null), 1500);
+  };
+
   // Add Account Modal
   const [showAddModal, setShowAddModal] = useState(autoOpenAddModal);
   const [newAccountId, setNewAccountId] = useState('');
@@ -378,12 +387,20 @@ function AdAccountsView({
     ? getAssignedCustomer(assignCustomerId)
     : null;
 
-  const totalAdAccounts = adAccounts.length;
-  const soldAccounts = adAccounts.filter(acc => getEffectiveAccountStatus(acc) === 'Sold').length;
-  const needSupportAccounts = adAccounts.filter(acc => isProblemAccountStatus(getEffectiveAccountStatus(acc))).length;
-  const availableAccounts = adAccounts.filter(acc => 
+  const allAccounts = [...(socialAdAccounts || []), ...(adAccounts || [])];
+
+  const totalAdAccounts = allAccounts.length;
+  const soldAccounts = allAccounts.filter(acc => getEffectiveAccountStatus(acc) === 'Sold').length;
+  const availableAccounts = allAccounts.filter(acc => 
     getEffectiveAccountStatus(acc) === 'Available'
   ).length;
+  const needSupportAccounts = allAccounts.filter(acc => isProblemAccountStatus(getEffectiveAccountStatus(acc))).length;
+  const terminatedAccounts = allAccounts.filter(acc => getEffectiveAccountStatus(acc) === 'Terminated').length;
+  const disabledAccounts = allAccounts.filter(acc => 
+    getEffectiveAccountStatus(acc) === 'Disabled' || getEffectiveAccountStatus(acc) === 'Disable'
+  ).length;
+  const uniqueSeries = new Set(allAccounts.map(acc => acc.seriesId).filter(Boolean)).size;
+  const uniquePlatforms = new Set(allAccounts.map(acc => acc.platform).filter(Boolean)).size;
 
   return (
     <div className="space-y-8 animate-fade-in" id="ad-accounts-view">
@@ -407,12 +424,24 @@ function AdAccountsView({
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4">
         <StatCard
           title="TOTAL AD ACCOUNTS"
           value={totalAdAccounts}
           variant="blue"
           subtext="All registered social ad accounts"
+        />
+        <StatCard
+          title="NO SERIES"
+          value={uniqueSeries}
+          variant="indigo"
+          subtext="Unique series in inventory"
+        />
+        <StatCard
+          title="NO OF PLATFORM"
+          value={uniquePlatforms}
+          variant="purple"
+          subtext="Platforms represented"
         />
         <StatCard
           title="NO OF SOLD ACCOUNT"
@@ -427,10 +456,22 @@ function AdAccountsView({
           subtext="Ready for assignment & setup"
         />
         <StatCard
+          title="NO OF TERMINATION"
+          value={terminatedAccounts}
+          variant="red"
+          subtext="Terminated ad accounts"
+        />
+        <StatCard
           title="NO OF NEED SUPPORT"
           value={needSupportAccounts}
           variant="rose"
           subtext="Disabled, restricted, or support required"
+        />
+        <StatCard
+          title="NO OF DISABLE"
+          value={disabledAccounts}
+          variant="slate"
+          subtext="Disabled ad accounts"
         />
       </div>
 
@@ -560,8 +601,8 @@ function AdAccountsView({
       {/* Main Table Ledger */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm shadow-slate-100 dark:shadow-none">
         <div className="overflow-x-auto">
-          <table className="w-full text-center text-xs text-slate-600 dark:text-slate-400" id="accounts-table">
-            <thead className="bg-slate-50 dark:bg-slate-950/20 text-slate-400 dark:text-slate-500 font-bold border-b border-slate-100 dark:border-slate-800/80">
+          <table className="w-full text-xs text-slate-600 dark:text-slate-400 select-text" id="accounts-table">
+<thead className="bg-slate-50 dark:bg-slate-950/20 text-slate-400 dark:text-slate-500 font-bold border-b border-slate-100 dark:border-slate-800/80">
               <tr>
                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider w-10 pl-4">
                   <input
@@ -571,16 +612,16 @@ function AdAccountsView({
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
                 </th>
-                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Ad Account Name / ID</th>
+                 <th scope="col" className="py-3.5 text-left uppercase text-[10px] tracking-wider px-3">Ad Account Name / ID</th>
                  <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Platform</th>
-                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">BM Name / ID</th>
+                 <th scope="col" className="py-3.5 text-left uppercase text-[10px] tracking-wider px-3">BM Name / ID</th>
                  <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Billing Card</th>
-                 <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">User</th>
+                 <th scope="col" className="py-3.5 text-left uppercase text-[10px] tracking-wider px-3">User</th>
                  <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Status</th>
                  <th scope="col" className="py-3.5 text-center uppercase text-[10px] tracking-wider">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 select-text">
               {pagedAccounts.map((acc) => {
                  const isChecked = selectedAccountIds.includes(acc.adAccountId);
                  const effectiveStatus = getEffectiveAccountStatus(acc);
@@ -597,12 +638,14 @@ function AdAccountsView({
                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className="py-3.5 px-3 text-center">
-                      <div className="font-bold text-slate-900 dark:text-white text-xs max-w-[180px] mx-auto truncate" title={acc.adAccountName}>
+                    <td className="py-3.5 px-3 text-left">
+                      <div className="font-bold text-slate-900 dark:text-white text-xs max-w-[180px] truncate cursor-pointer hover:underline" title={acc.adAccountName} onClick={() => copyToClipboard(acc.adAccountName, `name-${acc.adAccountId}`)}>
                         {acc.adAccountName}
+                        {copiedCell === `name-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5 cursor-pointer hover:underline" onClick={() => copyToClipboard(acc.adAccountId, `id-${acc.adAccountId}`)}>
                         ID: {acc.adAccountId}
+                        {copiedCell === `id-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                       </div>
                       {acc.assignAdAccount && (
                         <div className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 font-semibold">
@@ -615,34 +658,39 @@ function AdAccountsView({
                         <PlatformText platform={acc.platform} variant="badge" />
                       </span>
                     </td>
-                    <td className="py-3.5 text-center">
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate max-w-[150px] mx-auto" title={acc.bmName || 'N/A'}>
+                    <td className="py-3.5 px-3 text-left">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate max-w-[150px] cursor-pointer hover:underline" title={acc.bmName || 'N/A'} onClick={() => copyToClipboard(acc.bmName || '', `bm-name-${acc.adAccountId}`)}>
                         {acc.bmName || 'N/A'}
+                        {copiedCell === `bm-name-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                       </div>
                       {acc.bmId && (
-                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                        <div className="text-[10px] font-mono text-slate-400 mt-0.5 cursor-pointer hover:underline" onClick={() => copyToClipboard(acc.bmId, `bm-id-${acc.adAccountId}`)}>
                           BM ID: {acc.bmId}
+                          {copiedCell === `bm-id-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                         </div>
                       )}
                     </td>
                     <td className="py-3.5 text-center font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
                       {acc.billingCard ? (
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-1 cursor-pointer hover:underline" onClick={() => copyToClipboard(acc.billingCard, `billing-${acc.adAccountId}`)}>
                           <CreditCard size={11} className="text-slate-400 shrink-0" />
                           <span>{acc.billingCard}</span>
+                          {copiedCell === `billing-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                         </div>
                       ) : (
                         <span className="text-slate-400 italic text-[11px]">-</span>
                       )}
                     </td>
-                    <td className="py-3.5 text-center">
+                    <td className="py-3.5 px-3 text-left">
                       {assignedCustomer ? (
-                        <div className="flex flex-col items-center justify-center text-center">
-                          <span className="font-semibold text-slate-900 dark:text-white text-xs truncate max-w-[140px]" title={assignedCustomer.name}>
+                        <div className="flex flex-col items-start text-left">
+                          <span className="font-semibold text-slate-900 dark:text-white text-xs truncate max-w-[140px] cursor-pointer hover:underline" title={assignedCustomer.name} onClick={() => copyToClipboard(assignedCustomer.name, `user-name-${acc.adAccountId}`)}>
                             {assignedCustomer.name}
+                            {copiedCell === `user-name-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                           </span>
-                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mt-0.5" title={assignedCustomer.groupId}>
+                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 cursor-pointer hover:underline" title={assignedCustomer.groupId} onClick={() => copyToClipboard(assignedCustomer.groupId, `user-group-${acc.adAccountId}`)}>
                             {assignedCustomer.groupId}
+                            {copiedCell === `user-group-${acc.adAccountId}` && <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">Copied</span>}
                           </span>
                         </div>
                       ) : (

@@ -1,9 +1,8 @@
 'use client';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart2, Building2, Calendar, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, DollarSign, Download, Landmark, Layers, Loader2, TrendingUp } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import SearchBar from '@/components/ui/SearchBar';
-import Badge from '@/components/ui/Badge';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { apiFetch } from '@/utils/api';
 
@@ -80,9 +79,11 @@ function StatusDot({ color }) {
   return <span className="h-2 w-2 rounded-full inline-block" style={{ backgroundColor: color }} />;
 }
 
-function ReportsView({ invoices, onTriggerExport }) {
+function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }) {
   const [platform, setPlatform] = useState('All');
   const [search, setSearch] = useState('');
+  const [statementGroup, setStatementGroup] = useState('');
+  const [statementAdAccount, setStatementAdAccount] = useState('');
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().substring(0, 7));
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -163,6 +164,40 @@ function ReportsView({ invoices, onTriggerExport }) {
     set.add(cur);
     return Array.from(set).sort().reverse();
   })();
+
+  // ====== Ad Account Statement selectors (derived from Sales Entry history) ======
+  // A Group ID qualifies an Ad Account for a statement whenever that ad account
+  // has at least one sales entry recorded against the group — regardless of its
+  // current (or previous) assignment status. We derive both lists straight from
+  // the invoice (sales entry) history the user already has loaded.
+  const groupOptions = useMemo(() => {
+    const set = new Set();
+    invoices.forEach(inv => {
+      const g = String(inv.groupId || '').trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort();
+  }, [invoices]);
+
+  const adAccountOptions = useMemo(() => {
+    if (!statementGroup) return [];
+    const map = new Map();
+    const normGroup = String(statementGroup).trim();
+    invoices.forEach(inv => {
+      if (String(inv.groupId || '').trim() !== normGroup) return;
+      const name = String(inv.adAccountName || '').trim();
+      if (!name) return;
+      const id = String(inv.adAccountId || '').trim();
+      const key = id || name;
+      if (!map.has(key)) map.set(key, { id, name });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [invoices, statementGroup]);
+
+  const handleStatementGroupChange = (e) => {
+    setStatementGroup(e.target.value);
+    setStatementAdAccount('');
+  };
 
   const filtered = invoices.filter(inv => {
     const matchesPlatform = platform === 'All' ? true : inv.platform === platform;
@@ -542,23 +577,10 @@ function ReportsView({ invoices, onTriggerExport }) {
       </div>
 
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 max-w-6xl">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white">Cross-Reference Filter Parameters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Publisher Platform</label>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
-              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange"
-            >
-              <option value="All">All Social Networks</option>
-              <option value="Facebook">Facebook Ads</option>
-              <option value="TikTok">TikTok Ads</option>
-              <option value="Google">Google MCC</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Audit Fiscal Date Range</label>
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white">Monthly Statement Generator</h3>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="flex-1">
+            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Select Month</label>
             <select
               value={reportMonth}
               onChange={(e) => setReportMonth(e.target.value)}
@@ -570,53 +592,60 @@ function ReportsView({ invoices, onTriggerExport }) {
               ))}
             </select>
           </div>
+          <button
+            id="export-pdf"
+            onClick={() => onTriggerExport('pdf', reportMonth)}
+            className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-brand-orange hover:bg-brand-orange-dark transition-all flex items-center justify-center gap-2.5 cursor-pointer group shadow-sm text-white font-semibold shrink-0"
+          >
+            <Download size={14} className="transition-colors" />
+            <span className="text-xs font-medium">Download PDF</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Ad Account Statement */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 max-w-6xl">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white">Ad Account Statement</h3>
+        <p className="text-[11px] font-semibold text-slate-500 -mt-3">
+          Lists every Ad Account with Sales Entries under the selected Group — including previously unassigned accounts — and generates a statement from its full sales history.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Gateway Channel</label>
-            <select className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange">
-              <option>All Bank &amp; Mobile Wallets</option>
-              <option>Eastern Bank Ltd (EBL)</option>
-              <option>bKash reselling channel</option>
+            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Select Group ID</label>
+            <select
+              value={statementGroup}
+              onChange={handleStatementGroupChange}
+              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+            >
+              <option value="">All Groups</option>
+              {groupOptions.map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
             </select>
           </div>
-        </div>
-
-        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-          <h4 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Handoff Document Exports</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              id="export-pdf"
-              onClick={() => onTriggerExport('pdf', reportMonth)}
-              className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-between cursor-pointer group shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Select Ad Account</label>
+            <select
+              value={statementAdAccount}
+              onChange={(e) => setStatementAdAccount(e.target.value)}
+              disabled={!statementGroup}
+              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <div className="flex items-center gap-2.5">
-                <Badge tone="danger" style="box" className="uppercase">PDF</Badge>
-                <span className="text-xs font-medium text-slate-800 dark:text-slate-200">Download Statements</span>
-              </div>
-              <Download size={14} className="text-slate-400 group-hover:text-brand-orange transition-colors" />
-            </button>
-
+              <option value="">{statementGroup ? 'Select Ad Account' : 'Select a Group first'}</option>
+              {adAccountOptions.map(opt => (
+                <option key={opt.id || opt.name} value={opt.name}>{opt.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
             <button
-              id="export-excel"
-              onClick={() => onTriggerExport('excel', reportMonth)}
-              className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-between cursor-pointer group shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
+              id="export-ad-account-pdf"
+              onClick={() => onDownloadAdAccountStatement(statementGroup, statementAdAccount)}
+              disabled={!statementGroup || !statementAdAccount}
+              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-brand-orange hover:bg-brand-orange-dark transition-all flex items-center justify-center gap-2.5 cursor-pointer group shadow-sm text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <div className="flex items-center gap-2.5">
-                <Badge tone="success" style="box" className="uppercase">XLS</Badge>
-                <span className="text-xs font-medium text-slate-800 dark:text-slate-200">Excel Spreadsheet</span>
-              </div>
-              <Download size={14} className="text-slate-400 group-hover:text-brand-orange transition-colors" />
-            </button>
-
-            <button
-              id="export-csv"
-              onClick={() => onTriggerExport('csv', reportMonth)}
-              className="py-2.5 px-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all flex items-center justify-between cursor-pointer group shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
-            >
-              <div className="flex items-center gap-2.5">
-                <Badge tone="info" style="box" className="uppercase">CSV</Badge>
-                <span className="text-xs font-medium text-slate-800 dark:text-slate-200">Comma-Separated</span>
-              </div>
-              <Download size={14} className="text-slate-400 group-hover:text-brand-orange transition-colors" />
+              <Download size={14} className="transition-colors" />
+              <span className="text-xs font-medium">Download Statement (PDF)</span>
             </button>
           </div>
         </div>

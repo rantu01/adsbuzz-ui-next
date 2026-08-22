@@ -99,6 +99,31 @@ export async function createCard(data) {
   const collection = await getCollection("cards");
   const card = sanitize(data);
 
+  if (!card.cardName) {
+    throw new Error("CARD_NAME_REQUIRED");
+  }
+
+  // Validate platformId if provided
+  if (card.platformId) {
+    const platformCollection = await getCollection("platforms");
+    const platform = await platformCollection.findOne({ platformId: card.platformId });
+    if (!platform) {
+      throw new Error("INVALID_PLATFORM");
+    }
+  }
+
+  // Validate walletId belongs to the platformId if both are provided
+  if (card.walletId && card.platformId) {
+    const walletCollection = await getCollection("wallets");
+    const wallet = await walletCollection.findOne({ walletId: card.walletId });
+    if (!wallet) {
+      throw new Error("INVALID_WALLET");
+    }
+    if (wallet.platformId !== card.platformId) {
+      throw new Error("WALLET_PLATFORM_MISMATCH");
+    }
+  }
+
   const existing = await collection.findOne({ cardName: card.cardName });
   if (existing) {
     throw new Error("DUPLICATE");
@@ -139,6 +164,29 @@ export async function updateCard(id, data) {
       patch.cardName = String(value || "").trim();
     } else {
       patch[key] = String(value || "").trim();
+    }
+  }
+
+  // Validate platformId if provided
+  if (patch.platformId) {
+    const platformCollection = await getCollection("platforms");
+    const platform = await platformCollection.findOne({ platformId: patch.platformId });
+    if (!platform) {
+      throw new Error("INVALID_PLATFORM");
+    }
+  }
+
+  // Validate walletId belongs to the platformId if both are provided
+  const finalPlatformId = patch.platformId || existing.platformId;
+  const finalWalletId = patch.walletId || existing.walletId;
+  if (finalWalletId && finalPlatformId) {
+    const walletCollection = await getCollection("wallets");
+    const wallet = await walletCollection.findOne({ walletId: finalWalletId });
+    if (!wallet) {
+      throw new Error("INVALID_WALLET");
+    }
+    if (wallet.platformId !== finalPlatformId) {
+      throw new Error("WALLET_PLATFORM_MISMATCH");
     }
   }
 

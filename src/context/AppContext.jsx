@@ -656,6 +656,42 @@ export function AppProvider({ children }) {
     }
   };
 
+  const handleDownloadAdAccountStatement = async (groupId, adAccount) => {
+    const params = new URLSearchParams({ groupId, adAccount });
+    const url = `/api/reports/ad-account-statement/export?${params.toString()}`;
+
+    triggerToast(
+      'info',
+      'Generating statement...',
+      `Compiling Sales Entry history for ${adAccount} under ${groupId}.`,
+    );
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = /filename="?([^"]+)"?/.exec(disposition);
+      const filename = match?.[1] || `AdsBuzz_Statement_${groupId}_${adAccount}.pdf`;
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      triggerToast('success', 'Download Complete', filename);
+    } catch (err) {
+      triggerToast('error', 'Export Failed', err.message);
+    }
+  };
+
   const handleSelectCustomerFromHeader = (id) => {
     setPendingInitialCustomerId(id);
     router.push('/customers?customerId=' + id);
@@ -855,6 +891,7 @@ export function AppProvider({ children }) {
     handleAddPaymentMethod,
     handleDeletePaymentMethod,
     handleTriggerExport,
+    handleDownloadAdAccountStatement,
     handleSelectCustomerFromHeader,
     handleSelectAdAccountFromHeader,
     applyCardLoad,

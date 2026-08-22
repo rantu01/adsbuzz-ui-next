@@ -1,5 +1,6 @@
 import { ApiError, HttpStatus, asyncHandler } from "@/utils/http";
-import { getExportRows, renderCSV, renderXLSXHtml, renderPDFHtml } from "@/models/reportModel";
+import { getExportRows, renderCSV, renderXLSXHtml } from "@/models/reportModel";
+import { generateReportPdf } from "@/lib/pdfReport";
 
 const FORMATS = ["csv", "xlsx", "pdf"];
 
@@ -35,11 +36,13 @@ export const GET = asyncHandler(async (request) => {
     });
   }
 
-  return new Response(renderPDFHtml(report), {
+  const pdfBuffer = await generateReportPdf(report);
+  return new Response(new Uint8Array(pdfBuffer), {
     status: 200,
     headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": `inline; filename="${filename}.html"`,
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}.pdf"`,
+      "Content-Length": String(pdfBuffer.length),
     },
   });
 });

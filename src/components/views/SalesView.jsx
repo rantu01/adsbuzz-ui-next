@@ -688,16 +688,18 @@ function SalesView({
     const paymentLabel = paymentStatusBadge.label;
     return [
       `Date: ${date}`,
-      `Invoice no: ${invNo}`,
+      `Invoice No: ${invNo}`,
       `Group ID: ${groupIdCode || ''}`,
-      `Customer: ${custName}`,
+      `Platform Name: ${activeAccount?.platform || ''}`,
       `Ad Account Name: ${activeAccount?.adAccountName || ''}`,
+      `Ad Account ID: ${activeAccount?.adAccountId || ''}`,
+      `USD Dollar Rate: ${dollarRate || 0}`,
       `Amount in USD: ${topupAmountUSD || 0}`,
-      `Total (BDT): ${totalBDT || 0}`,
+      `Amount in BDT: ${totalBDT || 0}`,
+      `Payment Status: ${paymentLabel}`,
+      `TopUp Status: ${topupStatus}`,
       `Paid Amount: ${Number.isFinite(Number(paidBDT)) ? paidBDT : 0}`,
       `Due Amount: ${Number.isFinite(Number(dueBDT)) ? dueBDT : 0}`,
-      `Payment Status: ${paymentLabel}`,
-      `Approval Status: ${approvalStatus}`,
     ].join('\n');
   };
 
@@ -715,20 +717,20 @@ function SalesView({
   // "Copy Invoice" action in the Sales Entry Records table can be used from the
   // table without relying on the checkout state.
   const buildRecordInvoiceText = (inv) => {
-    const custName = customers.find(c => c.id === inv.customerId)?.name || "Cash Client";
-    const paymentLabel = inv.paymentStatus || computePaymentLabel(inv);
     return [
       `Date: ${inv.date || ''}`,
-      `Invoice no: ${inv.invoiceNo || ''}`,
+      `Invoice No: ${inv.invoiceNo || ''}`,
       `Group ID: ${inv.groupId || ''}`,
-      `Customer: ${custName}`,
+      `Platform Name: ${inv.platform || ''}`,
       `Ad Account Name: ${inv.adAccountName || ''}`,
+      `Ad Account ID: ${inv.adAccountId || ''}`,
+      `USD Dollar Rate: ${inv.dollarRate || 0}`,
       `Amount in USD: ${inv.topupAmountUSD || 0}`,
-      `Total (BDT): ${inv.totalAmountBDT || 0}`,
+      `Amount in BDT: ${inv.totalAmountBDT || 0}`,
+      `Payment Status: ${inv.paymentStatus || ''}`,
+      `TopUp Status: ${inv.topupStatus || ''}`,
       `Paid Amount: ${Number.isFinite(Number(inv.paidAmountBDT)) ? inv.paidAmountBDT : 0}`,
       `Due Amount: ${Number.isFinite(Number(inv.dueAmountBDT)) ? inv.dueAmountBDT : 0}`,
-      `Payment Status: ${paymentLabel}`,
-      `Approval Status: ${inv.approvalStatus || inv.paymentVerificationStatus || ''}`,
     ].join('\n');
   };
 

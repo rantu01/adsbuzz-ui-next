@@ -10,6 +10,7 @@ export default function ReportsPage() {
     <ReportsView
       invoices={app.invoices}
       onTriggerExport={app.handleTriggerExport}
+      onDownloadAdAccountStatement={app.handleDownloadAdAccountStatement}
     />
   );
 }

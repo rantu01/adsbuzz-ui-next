@@ -15,6 +15,7 @@ export const POST = asyncHandler(async (request) => {
   const idCardInfo = optionalString(body.idCardInfo, 200);
   const sourceBy = optionalString(body.sourceBy, 200);
   const email = normalizeEmail(body.email);
+  const platformId = optionalString(body.platformId, 100);
 
   if (!ownerName) {
     throw new ApiError(HttpStatus.BAD_REQUEST, "Owner name is required.");
@@ -28,6 +29,9 @@ export const POST = asyncHandler(async (request) => {
   if (!email) {
     throw new ApiError(HttpStatus.BAD_REQUEST, "Email is required.");
   }
+  if (!platformId) {
+    throw new ApiError(HttpStatus.BAD_REQUEST, "Platform is required.");
+  }
 
   try {
     const wallet = await createWallet({
@@ -36,6 +40,7 @@ export const POST = asyncHandler(async (request) => {
       idCardInfo,
       sourceBy,
       email,
+      platformId,
       accountSecurityStatus: body.accountSecurityStatus,
       walletStatus: body.walletStatus,
     });
@@ -46,6 +51,12 @@ export const POST = asyncHandler(async (request) => {
     }
     if (err.message === "DUPLICATE_EMAIL") {
       throw new ApiError(HttpStatus.CONFLICT, "A wallet with this email already exists.");
+    }
+    if (err.message === "PLATFORM_REQUIRED") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Platform is required.");
+    }
+    if (err.message === "INVALID_PLATFORM") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid platform selected.");
     }
     throw err;
   }

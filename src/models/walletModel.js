@@ -11,11 +11,12 @@ function sanitize(input = {}) {
   const idCardInfo = String(input.idCardInfo || "").trim();
   const sourceBy = String(input.sourceBy || "").trim();
   const email = String(input.email || "").trim().toLowerCase();
+  const platformId = String(input.platformId || "").trim();
   const accountSecurityStatus = SECURITY_STATUS.includes(input.accountSecurityStatus)
     ? input.accountSecurityStatus
     : "Medium";
   const walletStatus = WALLET_STATUS.includes(input.walletStatus) ? input.walletStatus : "Active";
-  return { walletId, ownerName, idCardInfo, sourceBy, email, accountSecurityStatus, walletStatus };
+  return { walletId, ownerName, idCardInfo, sourceBy, email, platformId, accountSecurityStatus, walletStatus };
 }
 
 export async function seedWallets() {
@@ -32,6 +33,7 @@ export async function seedWallets() {
       idCardInfo: String(w.idCardInfo || ""),
       sourceBy: String(w.sourceBy || ""),
       email: String(w.email || "").trim().toLowerCase(),
+      platformId: String(w.platformId || ""),
       accountSecurityStatus: SECURITY_STATUS.includes(w.accountSecurityStatus) ? w.accountSecurityStatus : "Medium",
       walletStatus: WALLET_STATUS.includes(w.walletStatus) ? w.walletStatus : "Active",
       updatedAt: new Date(),
@@ -75,6 +77,16 @@ export async function createWallet(data) {
     wallet.walletId = `WALLET-${Date.now().toString().slice(-3)}`;
   }
 
+  if (!wallet.platformId) {
+    throw new Error("PLATFORM_REQUIRED");
+  }
+
+  const platformCollection = await getCollection("platforms");
+  const platform = await platformCollection.findOne({ platformId: wallet.platformId });
+  if (!platform) {
+    throw new Error("INVALID_PLATFORM");
+  }
+
   const existing = await collection.findOne({ walletId: wallet.walletId });
   if (existing) {
     throw new Error("DUPLICATE");
@@ -95,7 +107,7 @@ export async function updateWallet(walletId, data) {
   const existing = await collection.findOne({ walletId });
   if (!existing) return null;
 
-  const allowed = ["ownerName", "idCardInfo", "sourceBy", "email", "accountSecurityStatus", "walletStatus"];
+  const allowed = ["ownerName", "idCardInfo", "sourceBy", "email", "accountSecurityStatus", "walletStatus", "platformId"];
   const patch = {};
   for (const key of allowed) {
     if (!(key in data)) continue;
@@ -105,6 +117,16 @@ export async function updateWallet(walletId, data) {
       patch.walletStatus = WALLET_STATUS.includes(data[key]) ? data[key] : existing.walletStatus;
     } else if (key === "email") {
       patch.email = String(data[key] || "").trim().toLowerCase();
+    } else if (key === "platformId") {
+      const platformId = String(data[key] || "").trim();
+      if (platformId) {
+        const platformCollection = await getCollection("platforms");
+        const platform = await platformCollection.findOne({ platformId });
+        if (!platform) {
+          throw new Error("INVALID_PLATFORM");
+        }
+      }
+      patch.platformId = platformId;
     } else {
       patch[key] = String(data[key] || "").trim();
     }

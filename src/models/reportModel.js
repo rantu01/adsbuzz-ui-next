@@ -91,6 +91,7 @@ export async function getMonthlyReport(month) {
     const a = inv.approvalStatus || inv.paymentVerificationStatus || "Approved";
     return a === "Rejected" || a === "Declined";
   }).length;
+  const approvalUnapprovedCount = Math.max(0, count - approvalApprovedCount);
 
   // ===== 3) Payment Status Report (counts + amounts) =====
   const PAYMENT_STATUSES = ["Paid", "Due", "Partially Paid"];
@@ -124,7 +125,7 @@ export async function getMonthlyReport(month) {
   }
   const platformWise = Array.from(platformMap.values()).sort((a, b) => b.totalUSD - a.totalUSD);
 
-  // ===== 5) Payment Channel-Wise Report =====
+  // ===== 5) Payment Channel-Wise Report (all configured gateways included) =====
   const channelMap = new Map();
   for (const inv of monthInvoices) {
     for (const { channel, amount } of collectChannelPayments(inv)) {
@@ -134,7 +135,27 @@ export async function getMonthlyReport(month) {
       entry.receivedBDT = round2(entry.receivedBDT + amount);
     }
   }
-  const channelWise = Array.from(channelMap.values()).sort((a, b) => b.receivedBDT - a.receivedBDT);
+
+  // Merge with every configured payment gateway so unused ones still appear
+  // with a zero received amount. This guarantees the report lists all
+  // available payment gateways, not just those that received money this month.
+  const settings = await getSettings();
+  const configuredGateways = settings.paymentMethods || [];
+  const allChannelMap = new Map();
+  for (const gateway of configuredGateways) {
+    const key = String(gateway || "").trim();
+    if (key) allChannelMap.set(key, { channel: key, count: 0, receivedBDT: 0 });
+  }
+  for (const entry of channelMap.values()) {
+    const key = String(entry.channel || "").trim();
+    if (!allChannelMap.has(key)) allChannelMap.set(key, { channel: key, count: 0, receivedBDT: 0 });
+    const target = allChannelMap.get(key);
+    target.count = entry.count;
+    target.receivedBDT = entry.receivedBDT;
+  }
+  const channelWise = Array.from(allChannelMap.values()).sort(
+    (a, b) => b.receivedBDT - a.receivedBDT || String(a.channel).localeCompare(String(b.channel))
+  );
 
   // ===== 6) Day-Wise Sales Report =====
   const dailyMap = new Map();
@@ -188,6 +209,10 @@ export async function getMonthlyReport(month) {
       total: count,
       approved: approvalApprovedCount,
       declined: approvalDeclinedCount,
+      unapproved: approvalUnapprovedCount,
+    },
+    totals: {
+      totalDueBDT: round2(monthInvoices.reduce((s, inv) => s + toNumber(inv.dueAmountBDT), 0)),
     },
     payment: {
       total: count,
@@ -227,6 +252,72 @@ export async function getExportRows(month) {
   const settings = await getSettings();
   const companyName = settings.companyName || "AdsBuzz Ltd";
   return { ...report, companyName };
+}
+
+/**
+ * Builds an ad-account statement for a specific Group ID + Ad Account, derived
+ * entirely from the Sales Entry (invoice) history. This intentionally ignores
+ * the ad account's *current* assignment status: an ad account qualifies for a
+ * statement as long as it has at least one sales entry recorded against the
+ * given group — even if it was later unassigned (or is currently unassigned).
+ */
+export async function getAdAccountStatement(groupId, adAccountName) {
+  const invoices = await listInvoices();
+  const gid = String(groupId || "").trim();
+  const name = String(adAccountName || "").trim();
+
+  const entries = invoices.filter(
+    (inv) =>
+      String(inv.groupId || "").trim() === gid &&
+      String(inv.adAccountName || "").trim() === name
+  );
+
+  const totalUSD = round2(entries.reduce((s, inv) => s + toNumber(inv.topupAmountUSD), 0));
+  const totalBDT = round2(entries.reduce((s, inv) => s + toNumber(inv.totalAmountBDT || inv.paidAmountBDT), 0));
+  const paidBDT = round2(entries.reduce((s, inv) => s + toNumber(inv.paidAmountBDT), 0));
+  const dueBDT = round2(entries.reduce((s, inv) => s + toNumber(inv.dueAmountBDT), 0));
+  const serviceFeeBDT = round2(entries.reduce((s, inv) => s + toNumber(inv.serviceFee), 0));
+
+  const dates = entries
+    .map((e) => String(e.date || e.createdAtRaw || "").slice(0, 10))
+    .filter(Boolean)
+    .sort();
+  const periodFrom = dates[0] || "";
+  const periodTo = dates[dates.length - 1] || "";
+
+  const rows = entries
+    .map((inv) => ({
+      invoiceNo: inv.invoiceNo,
+      date: inv.date,
+      platform: inv.platform,
+      adAccountName: inv.adAccountName,
+      topupAmountUSD: Number(inv.topupAmountUSD || 0),
+      totalAmountBDT: Number(inv.totalAmountBDT || inv.paidAmountBDT || 0),
+      paidAmountBDT: Number(inv.paidAmountBDT || 0),
+      dueAmountBDT: Number(inv.dueAmountBDT || 0),
+      paymentMethod: inv.paymentMethod,
+      paymentStatus: inv.paymentStatus,
+      approvalStatus: inv.approvalStatus || "Approved",
+    }))
+    .sort(
+      (a, b) =>
+        String(a.date || "").localeCompare(String(b.date || "")) ||
+        String(a.invoiceNo).localeCompare(String(b.invoiceNo))
+    );
+
+  return {
+    groupId: gid,
+    adAccountName: name,
+    count: entries.length,
+    totalUSD,
+    totalBDT,
+    paidBDT,
+    dueBDT,
+    serviceFeeBDT,
+    periodFrom,
+    periodTo,
+    entries: rows,
+  };
 }
 
 const CSV_COLUMNS = [

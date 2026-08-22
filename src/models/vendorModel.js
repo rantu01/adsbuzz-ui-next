@@ -1,4 +1,4 @@
-import { getCollection } from "@/lib/db";
+import { getCollection, hasSeeded, markSeeded } from "@/lib/db";
 import logger from "@/utils/logger";
 import { INITIAL_VENDORS } from "@/data/seedData";
 import { VENDOR_TYPES } from "@/constants/vendorTypes";
@@ -53,33 +53,38 @@ const SEED_VENDOR_IDS = INITIAL_VENDORS.map(v => v.id);
 const SEED_PAYMENT_TX_IDS = ["TXN-FB-90234", "TXN-FB-90884", "TXN-TT-44321", "TXN-GG-1122"];
 
 export async function seedVendors() {
+  if (await hasSeeded("vendors")) return { seeded: 0 };
+
   const collection = await getCollection("vendors");
   await collection.createIndex({ id: 1 }, { unique: true });
 
   let seeded = 0;
-  for (const v of INITIAL_VENDORS) {
-    const doc = {
-      ...sanitize(v),
-      updatedAt: new Date(),
-    };
-    const result = await collection.updateOne(
-      { id: doc.id },
-      { $setOnInsert: doc },
-      { upsert: true }
-    );
-    if (result.upsertedCount > 0) seeded += 1;
+  if ((await collection.countDocuments()) === 0) {
+    for (const v of INITIAL_VENDORS) {
+      const doc = {
+        ...sanitize(v),
+        updatedAt: new Date(),
+      };
+      const result = await collection.updateOne(
+        { id: doc.id },
+        { $setOnInsert: doc },
+        { upsert: true }
+      );
+      if (result.upsertedCount > 0) seeded += 1;
+    }
+
+    // Migration: strip any pre-seeded payment entries from existing vendor documents.
+    // This removes only the original seed transaction IDs, preserving any real
+    // payments that were recorded through the UI.
+    if (SEED_PAYMENT_TX_IDS.length > 0) {
+      await collection.updateMany(
+        { id: { $in: SEED_VENDOR_IDS } },
+        { $pull: { paymentHistory: { transactionId: { $in: SEED_PAYMENT_TX_IDS } } } },
+      );
+    }
   }
 
-  // Migration: strip any pre-seeded payment entries from existing vendor documents.
-  // This removes only the original seed transaction IDs, preserving any real
-  // payments that were recorded through the UI.
-  if (SEED_PAYMENT_TX_IDS.length > 0) {
-    await collection.updateMany(
-      { id: { $in: SEED_VENDOR_IDS } },
-      { $pull: { paymentHistory: { transactionId: { $in: SEED_PAYMENT_TX_IDS } } } },
-    );
-  }
-
+  await markSeeded("vendors");
   logger.info(`seedVendors: seeded ${seeded} vendors.`);
   return { seeded };
 }

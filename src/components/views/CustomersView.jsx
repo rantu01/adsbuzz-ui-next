@@ -887,8 +887,8 @@ function CustomersView({
                           </div>
                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
                             acc.accountStatus === 'Active'
-                              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300'
+                              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-100 dark:text-emerald-100'
+                              : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-100 dark:text-emerald-100'
                           }`}>
                             {acc.platform}
                           </span>
@@ -936,7 +936,7 @@ function CustomersView({
               type="button"
               onClick={handleConfirmAssign}
               disabled={!assignTargetAccountId || assigning || assignableAdAccounts.length === 0}
-              leftIcon={<Layers size={12} />}
+              // leftIcon={<Layers size={12} />}
             >
               {assigning ? 'Assigning...' : 'Assign Account'}
             </Button>
