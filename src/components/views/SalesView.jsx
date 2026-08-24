@@ -193,6 +193,9 @@ function SalesView({
 
   const [validationError, setValidationError] = useState('');
 
+  // Sale Entry Date — manually selected by the user and saved with the Sales Entry
+  const [saleDate, setSaleDate] = useState('');
+
   // Calculations State
   const [dollarRate, setDollarRate] = useState(132);
   const [topupAmountUSD, setTopupAmountUSD] = useState('');
@@ -504,6 +507,7 @@ function SalesView({
 
     onSubmitSale({
       platform,
+      date: saleDate || undefined,
       customerId: selectedCustomerId,
       groupId: groupIdCode,
       serviceType,
@@ -525,6 +529,7 @@ function SalesView({
 
     // Reset checkout state
     setCurrentStep(1);
+    setSaleDate('');
     setTopupAmountUSD('');
     setPaidBDT('');
     setNoteText('');
@@ -864,6 +869,18 @@ function SalesView({
                   {!serviceType && (
                     <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Please select a service type to continue.</p>
                   )}
+                </div>
+
+                {/* Sale Entry Date */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Date</label>
+                  <input
+                    id="checkout-sale-date"
+                    type="date"
+                    value={saleDate}
+                    onChange={(e) => setSaleDate(e.target.value)}
+                    className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                  />
                 </div>
 
                 {/* 2. Group ID Search */}
