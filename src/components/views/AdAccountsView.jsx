@@ -115,10 +115,11 @@ function AdAccountsView({
     return acc.assignedCustomer || acc.accountStatus === 'Active' ? 'Sold' : acc.accountStatus;
   };
 
-  // Combine existing ad accounts (untouched source collection) with the
-  // separately-managed social ad accounts so both data sources render in the
-  // same table without altering the existing collection.
-  const combinedAccounts = [...(socialAdAccounts || []), ...(adAccounts || [])];
+  // This page shows only the Ad Accounts added through the
+  // "+ Load Social Ad Account" flow, which live in the socialAdAccounts
+  // collection. The other (non-social) collection is intentionally excluded
+  // from the table and its statistics.
+  const combinedAccounts = [...(socialAdAccounts || [])];
 
   const filteredAccounts = combinedAccounts.filter(acc => {
     const effectiveStatus = getEffectiveAccountStatus(acc);
@@ -212,23 +213,12 @@ function AdAccountsView({
     }
     setAddFormErrors({});
 
-    // Duplicate AD ACCOUNT ID check against both the existing ad accounts
-    // collection and the separate social ad accounts collection. Block
-    // creation and prompt the user to edit the existing record instead.
+    // Duplicate AD ACCOUNT ID check scoped strictly to the social ad accounts
+    // collection (the only source this page manages). Block creation and prompt
+    // the user to edit the existing record instead.
     const enteredId = (newAccountId || '').trim();
 
-    // Check the existing/current ad accounts collection first.
-    const duplicateExisting = adAccounts.find((a) => (a.adAccountId || '').trim() === enteredId);
-    if (duplicateExisting) {
-      setAddDuplicateError(duplicateExisting.adAccountId);
-      setAddDuplicateSource('existing');
-      const idField = document.getElementById('add-acc-id');
-      idField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      idField?.focus();
-      return;
-    }
-
-    // Then check the separate social ad accounts collection.
+    // Check the social ad accounts collection.
     const duplicateSocial = socialAdAccounts.find((a) => (a.adAccountId || '').trim() === enteredId);
     if (duplicateSocial) {
       setAddDuplicateError(duplicateSocial.adAccountId);
@@ -387,7 +377,8 @@ function AdAccountsView({
     ? getAssignedCustomer(assignCustomerId)
     : null;
 
-  const allAccounts = [...(socialAdAccounts || []), ...(adAccounts || [])];
+  // Statistics are scoped to the social ad account collection shown on this page.
+  const allAccounts = [...(socialAdAccounts || [])];
 
   const totalAdAccounts = allAccounts.length;
   const soldAccounts = allAccounts.filter(acc => getEffectiveAccountStatus(acc) === 'Sold').length;

@@ -15,6 +15,7 @@ import {
   CheckCircle,
   AlertCircle,
   UserRound,
+  Search,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Pagination from '@/components/common/Pagination';
@@ -45,6 +46,10 @@ function CustomerDetailsPane({
   const [invoicePage, setInvoicePage] = useState(1);
   const [accountPage, setAccountPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
+
+  // Search filter for the "Assigned Ad Accounts" tab — matches by Ad Account
+  // Name or ID so the user can quickly narrow down a customer's accounts.
+  const [accountSearch, setAccountSearch] = useState('');
 
   // Unassign Ad Account reason popup state
   const [unassignTarget, setUnassignTarget] = useState(null);
@@ -146,6 +151,17 @@ function CustomerDetailsPane({
   const accounts = stats?.accounts || [];
   const invoices = stats?.invoices || [];
 
+  // Assigned Ad Accounts filtered by the search box (by name or ID).
+  const filteredAccounts = useMemo(() => {
+    const q = accountSearch.trim().toLowerCase();
+    if (!q) return accounts;
+    return accounts.filter(
+      (acc) =>
+        String(acc.adAccountName || '').toLowerCase().includes(q) ||
+        String(acc.adAccountId || '').toLowerCase().includes(q),
+    );
+  }, [accounts, accountSearch]);
+
   // Per-ad-account Current Month / Last Month topup totals (USD) derived from
   // this customer's invoices so the assigned-account cards can display them.
   const accountTopupTotals = useMemo(() => {
@@ -166,8 +182,8 @@ function CustomerDetailsPane({
     return totals;
   }, [invoices]);
 
-  const accountTotalPages = Math.max(1, Math.ceil(accounts.length / ACCOUNT_PAGE_SIZE));
-  const pagedAccounts = accounts.slice(
+  const accountTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / ACCOUNT_PAGE_SIZE));
+  const pagedAccounts = filteredAccounts.slice(
     (accountPage - 1) * ACCOUNT_PAGE_SIZE,
     accountPage * ACCOUNT_PAGE_SIZE,
   );
@@ -388,8 +404,30 @@ function CustomerDetailsPane({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {pagedAccounts.map((acc) => {
+                {/* Search assigned ad accounts by name or ID */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={accountSearch}
+                    onChange={(e) => {
+                      setAccountSearch(e.target.value);
+                      setAccountPage(1);
+                    }}
+                    placeholder="Search by Ad Account Name / ID..."
+                    className="w-full text-xs pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+                  />
+                  <Search className="absolute left-3 top-3 text-slate-400" size={14} />
+                </div>
+
+                {filteredAccounts.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-100 dark:border-slate-800 rounded-xl">
+                    <Layers className="mx-auto mb-2 opacity-40" size={32} />
+                    <p className="text-xs">No ad accounts match your search.</p>
+                  </div>
+                ) : (
+                  <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {pagedAccounts.map((acc) => {
                     const topups = accountTopupTotals[acc.adAccountId] || { current: 0, last: 0 };
                     const setup = getConfiguredSetup(acc);
                     return (
@@ -455,6 +493,9 @@ function CustomerDetailsPane({
                 })}
               </div>
               <Pagination page={accountPage} totalPages={accountTotalPages} onPageChange={setAccountPage} />
+            </>
+            )}
+
             </div>
             )}
           </div>
