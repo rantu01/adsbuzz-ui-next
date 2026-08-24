@@ -562,6 +562,29 @@ export function AppProvider({ children }) {
         }
       }
 
+      // Persist any additional payment screenshots (up to 3 total) the same way
+      // so they are stored as file URLs rather than embedded data URLs.
+      if (Array.isArray(payload.screenshots) && payload.screenshots.length > 0) {
+        const uploadedScreenshots = await Promise.all(
+          payload.screenshots.map(async (shot) => {
+            const data = shot?.url;
+            if (typeof data === 'string' && data.startsWith('data:')) {
+              try {
+                const url = await uploadScreenshot({
+                  name: shot.name || 'payment-screenshot.png',
+                  data,
+                });
+                if (url) return { ...shot, url };
+              } catch {
+                // Keep the embedded data URL so the proof is not lost.
+              }
+            }
+            return shot;
+          })
+        );
+        payload.screenshots = uploadedScreenshots;
+      }
+
       newInvoice = await addInvoice(payload);
     } catch (err) {
       triggerToast('error', 'Sale Failed', getErrorMessage(err));

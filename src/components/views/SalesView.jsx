@@ -209,14 +209,18 @@ function SalesView({
   const [approvalStatus, setApprovalStatus] = useState('Pending');
   const [noteText, setNoteText] = useState('');
 
-  // Payment Screenshot (data URL)
-  const [paymentScreenshot, setPaymentScreenshot] = useState(undefined);
-  const [screenshotName, setScreenshotName] = useState('');
+  // Payment Screenshots — up to 3 (at least 1 required).
+  // Each entry: { slot: number, data: string (data URL), name: string }
+  const [paymentScreenshots, setPaymentScreenshots] = useState([]);
   const [screenshotError, setScreenshotError] = useState('');
+
+  // Backward-compatible aliases (first screenshot) consumed by the review step.
+  const paymentScreenshot = paymentScreenshots[0]?.data;
+  const screenshotName = paymentScreenshots[0]?.name || '';
 
   const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024; // 5 MB
 
-  const handleScreenshotUpload = (e) => {
+  const handleScreenshotUpload = (slot) => (e) => {
     setScreenshotError('');
     const file = e.target.files?.[0];
     if (!file) return;
@@ -230,8 +234,13 @@ function SalesView({
     }
     const reader = new FileReader();
     reader.onloadend = () => {
-      setPaymentScreenshot(typeof reader.result === 'string' ? reader.result : undefined);
-      setScreenshotName(file.name);
+      const data = typeof reader.result === 'string' ? reader.result : undefined;
+      if (e.target) e.target.value = '';
+      setPaymentScreenshots((prev) => {
+        const next = prev.filter((s) => s.slot !== slot);
+        next.push({ slot, data, name: file.name });
+        return next.sort((a, b) => a.slot - b.slot);
+      });
     };
     reader.onerror = () => {
       setScreenshotError('Failed to read the uploaded file. Please try again.');
@@ -239,9 +248,8 @@ function SalesView({
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveScreenshot = () => {
-    setPaymentScreenshot(undefined);
-    setScreenshotName('');
+  const handleRemoveScreenshot = (slot) => () => {
+    setPaymentScreenshots((prev) => prev.filter((s) => s.slot !== slot));
     setScreenshotError('');
   };
 
@@ -424,8 +432,9 @@ function SalesView({
           setValidationError('An Author Note is required when no amount is paid (Paid Amount is empty or 0).');
           return;
         }
-      } else if (!paymentScreenshot) {
-        setValidationError('Please upload a payment screenshot before continuing.');
+      }
+      if (paymentScreenshots.length === 0) {
+        setValidationError('Please upload at least one payment screenshot before continuing.');
         return;
       }
       setValidationError('');
@@ -483,8 +492,9 @@ function SalesView({
             setValidationError('An Author Note is required when no amount is paid (Paid Amount is empty or 0).');
             return;
           }
-        } else if (!paymentScreenshot) {
-          setValidationError('Please upload a payment screenshot before continuing.');
+        }
+        if (paymentScreenshots.length === 0) {
+          setValidationError('Please upload at least one payment screenshot before continuing.');
           return;
         }
       }
@@ -524,6 +534,11 @@ function SalesView({
       approvalStatus,
       paymentScreenshot,
       screenshotName: screenshotName || undefined,
+      screenshots: paymentScreenshots.map((s) => ({
+        url: s.data,
+        name: s.name,
+        source: 'payment',
+      })),
       note: noteText || undefined
     });
 
@@ -533,8 +548,7 @@ function SalesView({
     setTopupAmountUSD('');
     setPaidBDT('');
     setNoteText('');
-    setPaymentScreenshot(undefined);
-    setScreenshotName('');
+    setPaymentScreenshots([]);
     setScreenshotError('');
   };
 
@@ -1184,65 +1198,80 @@ function SalesView({
                         value={topupStatus}
                         onChange={(e) => setTopupStatus(e.target.value)}
                       >
-                        <option value="Successfull">Successful</option>
-                        <option value="NotYet">NOT YET</option>
+                          <option value="Successfull">Successful</option>
+                          <option value="NotYet">NOT YET</option>
+                          <option value="Due">Due</option>
                       </select>
                     </div>
                   </div>
 
-                  {/* Payment Screenshot — full width below the main grid */}
+                  {/* Payment Screenshots — up to 3 (at least 1 required) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                      Payment Screenshot {hasPaidAmount ? <span className="text-rose-500">*</span> : <span className="normal-case font-semibold text-[10px] text-slate-400">(optional when no amount is paid)</span>}
+                      Payment Screenshots <span className="text-rose-500">*</span>
+                      <span className="ml-2 normal-case font-semibold text-[10px] text-slate-400">(at least 1 required, up to 3)</span>
                     </label>
-                    {paymentScreenshot ? (
-                      <div className="relative w-full border border-emerald-200 dark:border-emerald-800/60 rounded-xl overflow-hidden bg-emerald-50/40 dark:bg-emerald-950/20 p-2">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-14 w-14 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0 bg-white">
-                            <img
-                              src={paymentScreenshot}
-                              alt="Payment Screenshot"
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                              <CheckCircle size={12} /> Screenshot Attached
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[0, 1, 2].map((slot) => {
+                        const shot = paymentScreenshots.find((s) => s.slot === slot);
+                        const isRequired = slot === 0;
+                        return (
+                          <div key={slot}>
+                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1.5 uppercase tracking-wide">
+                              Screenshot {slot + 1} {isRequired ? '' : <span className="normal-case font-semibold text-slate-400">(optional)</span>}
                             </p>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5" title={screenshotName}>
-                              {screenshotName}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={handleRemoveScreenshot}
-                              className="mt-1 text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
-                            >
-                              <XIcon size={10} /> Remove
-                            </button>
+                            {shot ? (
+                              <div className="relative w-full border border-emerald-200 dark:border-emerald-800/60 rounded-xl overflow-hidden bg-emerald-50/40 dark:bg-emerald-950/20 p-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="h-14 w-14 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0 bg-white">
+                                    <img
+                                      src={shot.data}
+                                      alt={`Payment Screenshot ${slot + 1}`}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                      <CheckCircle size={12} /> Attached
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5" title={shot.name}>
+                                      {shot.name}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={handleRemoveScreenshot(slot)}
+                                      className="mt-1 text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <XIcon size={10} /> Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <label
+                                htmlFor={`checkout-payment-screenshot-${slot}`}
+                                className="w-full flex flex-col items-center justify-center gap-1.5 px-3 py-4 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-brand-blue hover:bg-blue-50/40 dark:hover:bg-slate-800/40 rounded-xl cursor-pointer transition-colors text-center"
+                              >
+                                <Upload size={18} className="text-slate-400" />
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                  Upload
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  PNG, JPG, GIF (max 5 MB)
+                                </span>
+                                <input
+                                  id={`checkout-payment-screenshot-${slot}`}
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleScreenshotUpload(slot)}
+                                  className="hidden"
+                                />
+                              </label>
+                            )}
                           </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <label
-                        htmlFor="checkout-payment-screenshot"
-                        className="w-full flex flex-col items-center justify-center gap-1.5 px-3 py-4 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-brand-blue hover:bg-blue-50/40 dark:hover:bg-slate-800/40 rounded-xl cursor-pointer transition-colors text-center"
-                      >
-                        <Upload size={18} className="text-slate-400" />
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                          Click to upload screenshot
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          PNG, JPG, JPEG, WebP, GIF (max 5 MB)
-                        </span>
-                        <input
-                          id="checkout-payment-screenshot"
-                          type="file"
-                          accept="image/*"
-                          onChange={handleScreenshotUpload}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
+                        );
+                      })}
+                    </div>
                     {screenshotError && (
                       <p className="text-[10px] text-rose-500 font-semibold mt-1.5 flex items-center gap-1">
                         <XIcon size={10} /> {screenshotError}
@@ -1387,21 +1416,27 @@ function SalesView({
                     </div>
                   </div>
 
-                  {paymentScreenshot && (
+                  {paymentScreenshots.length > 0 && (
                     <div className="pt-4 border-t border-border-blue dark:border-border-blue">
-                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold text-xs mb-2">Payment Screenshot</p>
-                      <div className="bg-surface dark:bg-surface p-2.5 rounded-xl border border-border-blue-light dark:border-border-blue-light inline-flex items-center gap-3 shadow-xs">
-                        <div className="h-16 w-16 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0">
-                          <img
-                            src={paymentScreenshot}
-                            alt="Payment Screenshot"
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <div className="text-xs">
-                          <p className="font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">{screenshotName || 'Attached'}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Proof of payment on file</p>
-                        </div>
+                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold text-xs mb-2">
+                        Payment Screenshots ({paymentScreenshots.length})
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        {paymentScreenshots.map((shot, idx) => (
+                          <div key={shot.slot} className="bg-surface dark:bg-surface p-2.5 rounded-xl border border-border-blue-light dark:border-border-blue-light inline-flex items-center gap-3 shadow-xs">
+                            <div className="h-16 w-16 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0">
+                              <img
+                                src={shot.data}
+                                alt={`Payment Screenshot ${idx + 1}`}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                            <div className="text-xs">
+                              <p className="font-extrabold text-brand-blue-deep dark:text-brand-blue-deep">{shot.name || 'Attached'}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">Proof of payment on file</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
