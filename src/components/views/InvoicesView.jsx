@@ -15,6 +15,7 @@ import {
   FileEdit,
   FileText,
   History,
+  Loader2,
   MessageSquare,
   RefreshCw,
   ShieldCheck,
@@ -634,7 +635,17 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={11} className="text-center py-10">
+                    <div className="flex items-center justify-center gap-2 text-slate-400">
+                      <Loader2 size={16} className="animate-spin" />
+                      <span className="text-xs font-semibold">Loading invoices…</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={11} className="text-center py-8 text-slate-400 italic">
                     No invoices match search or selected filter.

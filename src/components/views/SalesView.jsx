@@ -25,7 +25,8 @@ import {
   CopyCheck,
   Search,
   History,
-FileClock,
+  Loader2,
+ FileClock,
   CalendarDays,
   ThumbsUp,
   ThumbsDown,
@@ -81,6 +82,7 @@ function SalesView({
   onUpdateInvoice,
   onDeleteInvoice,
   onNavigateToCustomers,
+  loading = false,
   initialCheckoutStep,
   initialCustomerId,
   defaultDollarRate,
@@ -1735,6 +1737,16 @@ function SalesView({
                   </tr>
                 );
               })}
+              {loading && (
+                <tr>
+                  <td colSpan={9} className="text-center py-10">
+                    <div className="flex items-center justify-center gap-2 text-slate-400">
+                      <Loader2 size={16} className="animate-spin" />
+                      <span className="text-xs font-semibold">Loading sales entries…</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

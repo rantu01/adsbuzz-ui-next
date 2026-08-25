@@ -27,6 +27,7 @@ function SalesPageInner() {
       onDeleteInvoice={app.handleDeleteInvoice}
       onAddCustomer={app.handleAddCustomer}
       onNavigateToCustomers={app.handleNavigateToCustomers}
+      loading={app.invoicesLoading}
       defaultDollarRate={app.settings.defaultDollarRate}
       initialCheckoutStep={initialStep ? Number(initialStep) : undefined}
       initialCustomerId={initialCustomerId || undefined}
