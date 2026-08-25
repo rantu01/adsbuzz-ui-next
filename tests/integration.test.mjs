@@ -29,6 +29,13 @@ import * as unassignRoute from '@/app/api/ad-accounts/[id]/unassign/route';
 import * as socialAdAccountsRoute from '@/app/api/social-ad-accounts/route';
 import * as saleSetupsRoute from '@/app/api/sale-setups/route';
 import * as saleSetupDetailRoute from '@/app/api/sale-setups/[id]/route';
+import * as officeExpenseRoute from '@/app/api/office-expenses/route';
+import * as officeExpenseDetailRoute from '@/app/api/office-expenses/[id]/route';
+import * as officeExpenseEntryRoute from '@/app/api/office-expense-entries/route';
+import * as officeExpenseEntryDetailRoute from '@/app/api/office-expense-entries/[id]/route';
+import * as officeExpenseMonthRoute from '@/app/api/office-expense-months/route';
+import * as officeExpenseMonthDetailRoute from '@/app/api/office-expense-months/[month]/route';
+import * as officeExpenseDashboardRoute from '@/app/api/office-expense-dashboard/route';
 
 const BASE = 'http://localhost';
 
@@ -892,3 +899,172 @@ test('E2E: unassigning an ad account auto-terminates its Sale Setup but keeps hi
   const { setup: oldSetup } = await oldSetupRes.json();
   assert.equal(oldSetup.status, 'Terminated', 'old terminated setup must remain for history');
 });
+
+test('office-expenses: seeds from CSV settings and lists categories', async () => {
+  const res = await officeExpenseRoute.GET(makeRequest('/api/office-expenses'));
+  assert.equal(res.status, 200);
+  const { officeExpenses, total } = await res.json();
+  assert.ok(total >= 8, 'should seed at least the 8 main categories from the CSV');
+  assert.ok(officeExpenses.some((c) => c.mainCategory === 'Utility'));
+  assert.ok(
+    officeExpenses.find((c) => c.mainCategory === 'Utility').subCategories.includes('Internet'),
+    'Utility should include the Internet sub-category',
+  );
+});
+
+test('office-expenses: creates a category and rejects duplicates', async () => {
+  const res = await officeExpenseRoute.POST(
+    makeRequest('/api/office-expenses', {
+      method: 'POST',
+      body: { mainCategory: 'Test Expense Cat', subCategories: 'Sub One\nSub Two' },
+    }),
+  );
+  assert.equal(res.status, 201);
+  const { officeExpense } = await res.json();
+  assert.equal(officeExpense.mainCategory, 'Test Expense Cat');
+  assert.deepEqual(officeExpense.subCategories, ['Sub One', 'Sub Two']);
+
+  const dupRes = await officeExpenseRoute.POST(
+    makeRequest('/api/office-expenses', { method: 'POST', body: { mainCategory: 'Test Expense Cat' } }),
+  );
+  assert.equal(dupRes.status, 409);
+
+  const listRes = await officeExpenseRoute.GET(makeRequest('/api/office-expenses'));
+  const { officeExpenses } = await listRes.json();
+  assert.ok(officeExpenses.some((c) => c.id === officeExpense.id));
+});
+
+test('office-expenses: updates a category via PATCH', async () => {
+  const createRes = await officeExpenseRoute.POST(
+    makeRequest('/api/office-expenses', {
+      method: 'POST',
+      body: { mainCategory: 'Patch Me Cat', subCategories: 'A,B,C' },
+    }),
+  );
+  assert.equal(createRes.status, 201);
+  const { officeExpense } = await createRes.json();
+
+  const patchRes = await officeExpenseDetailRoute.PATCH(
+    makeRequest(`/api/office-expenses/${officeExpense.id}`, {
+      method: 'PATCH',
+      body: { mainCategory: 'Patch Me Cat Updated', subCategories: ['X', 'Y'] },
+    }),
+    { params: Promise.resolve({ id: officeExpense.id }) },
+  );
+  assert.equal(patchRes.status, 200);
+  const patched = await patchRes.json();
+  assert.equal(patched.officeExpense.mainCategory, 'Patch Me Cat Updated');
+  assert.deepEqual(patched.officeExpense.subCategories, ['X', 'Y']);
+});
+
+test('office-expenses: deletes a category and returns 404 for unknown id', async () => {
+  const createRes = await officeExpenseRoute.POST(
+    makeRequest('/api/office-expenses', {
+      method: 'POST',
+      body: { mainCategory: 'Delete Me Cat' },
+    }),
+  );
+  assert.equal(createRes.status, 201);
+  const { officeExpense } = await createRes.json();
+
+  const delRes = await officeExpenseDetailRoute.DELETE(
+    makeRequest(`/api/office-expenses/${officeExpense.id}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: officeExpense.id }) },
+  );
+  assert.equal(delRes.status, 200);
+
+  const missingRes = await officeExpenseDetailRoute.GET(
+    makeRequest('/api/office-expenses/000000000000000000000000'),
+    { params: Promise.resolve({ id: '000000000000000000000000' }) },
+  );
+  assert.equal(missingRes.status, 404);
+});
+
+test('office-expense-entries: seeds history and CRUDs a voucher entry', async () => {
+  const listRes = await officeExpenseEntryRoute.GET(makeRequest('/api/office-expense-entries'));
+  assert.equal(listRes.status, 200);
+  const { entries, total } = await listRes.json();
+  assert.ok(total >= 42, 'should seed the 42 historical line items (Sept 2025 + Aug 2026)');
+  assert.ok(entries.some((e) => e.voucherNo === 'DV2025901'));
+
+  const createRes = await officeExpenseEntryRoute.POST(
+    makeRequest('/api/office-expense-entries', {
+      method: 'POST',
+      body: { month: '2026-08', date: '2026-08-30', voucherNo: 'DV-TEST-1', category: 'Utility', subCategory: 'Internet', description: 'Test', amount: 500 },
+    }),
+  );
+  assert.equal(createRes.status, 201);
+  const { entry } = await createRes.json();
+  assert.equal(entry.voucherNo, 'DV-TEST-1');
+
+  const patchRes = await officeExpenseEntryDetailRoute.PATCH(
+    makeRequest(`/api/office-expense-entries/${entry.id}`, { method: 'PATCH', body: { amount: 750 } }),
+    { params: Promise.resolve({ id: entry.id }) },
+  );
+  assert.equal(patchRes.status, 200);
+  assert.equal((await patchRes.json()).entry.amount, 750);
+
+  const delRes = await officeExpenseEntryDetailRoute.DELETE(
+    makeRequest(`/api/office-expense-entries/${entry.id}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: entry.id }) },
+  );
+  assert.equal(delRes.status, 200);
+});
+
+test('office-expense-entries: rejects entry without month/category', async () => {
+  const res = await officeExpenseEntryRoute.POST(
+    makeRequest('/api/office-expense-entries', { method: 'POST', body: { voucherNo: 'X', amount: 10 } }),
+  );
+  assert.equal(res.status, 400);
+});
+
+test('office-expense-months: lists seeded months and updates metadata', async () => {
+  const listRes = await officeExpenseMonthRoute.GET(makeRequest('/api/office-expense-months'));
+  assert.equal(listRes.status, 200);
+  const { months } = await listRes.json();
+  assert.ok(months.some((m) => m.month === '2025-09'));
+  assert.ok(months.some((m) => m.month === '2026-08'));
+
+  const createRes = await officeExpenseMonthRoute.POST(
+    makeRequest('/api/office-expense-months', {
+      method: 'POST',
+      body: { month: '2030-01', preparedBy: 'Test', cashInHand: 100 },
+    }),
+  );
+  assert.equal(createRes.status, 201);
+  const { month } = await createRes.json();
+  assert.equal(month.month, '2030-01');
+
+  const patchRes = await officeExpenseMonthDetailRoute.PATCH(
+    makeRequest(`/api/office-expense-months/${month.month}`, { method: 'PATCH', body: { cashInHand: 15000 } }),
+    { params: Promise.resolve({ month: month.month }) },
+  );
+  assert.equal(patchRes.status, 200);
+  assert.equal((await patchRes.json()).month.cashInHand, 15000);
+});
+
+test('office-expense-dashboard: aggregates totals from stored data', async () => {
+  const res = await officeExpenseDashboardRoute.GET(makeRequest('/api/office-expense-dashboard'));
+  assert.equal(res.status, 200);
+  const { dashboard } = await res.json();
+  assert.ok(dashboard.years.includes('2025'));
+  assert.ok(dashboard.years.includes('2026'));
+  assert.ok(dashboard.yearTotal > 0, 'year total should be computed from entries');
+
+  const res2025 = await officeExpenseDashboardRoute.GET(
+    makeRequest('/api/office-expense-dashboard', { search: 'year=2025' }),
+  );
+  const dash2025 = (await res2025.json()).dashboard;
+  assert.equal(dash2025.year, '2025');
+  assert.equal(dash2025.months.includes('2025-09'), true);
+  assert.equal(dash2025.monthTotals['2025-09'], 15276, 'Sept 2025 total must match CSV');
+
+  const res2026 = await officeExpenseDashboardRoute.GET(
+    makeRequest('/api/office-expense-dashboard', { search: 'year=2026' }),
+  );
+  const dash2026 = (await res2026.json()).dashboard;
+  assert.equal(dash2026.monthTotals['2026-08'], 14485, 'Aug 2026 total must match CSV');
+  assert.equal(dash2026.cashInHand['2026-08'], 14480, 'Aug 2026 cash in hand must match CSV');
+});
+
+

@@ -30,6 +30,116 @@ export const INITIAL_SERIES = [
   { seriesId: "S-GG-CORE", seriesName: "GOOGLE EXAF", platform: "Google", status: "Active" }
 ];
 
+export const INITIAL_OFFICE_EXPENSES = [
+  {
+    mainCategory: "Utility",
+    subCategories: [
+      "Home Rent",
+      "Internet",
+      "Electricity",
+      "Garbage Bill",
+      "Safty Security BIll",
+      "Mobile & Phone",
+    ],
+  },
+  {
+    mainCategory: "Salary",
+    subCategories: ["Monthly Salary", "Festival Bonus", "Bonus"],
+  },
+  {
+    mainCategory: "Assets Purchase Expenses",
+    subCategories: ["Assets Purchase Expenses"],
+  },
+  {
+    mainCategory: "Refreshment & Entertainment",
+    subCategories: ["Refreshment & Entertainment"],
+  },
+  {
+    mainCategory: "Stationaries Expenses",
+    subCategories: ["Stationaries Expenses"],
+  },
+  {
+    mainCategory: "Travel",
+    subCategories: [
+      "Fuel,oil,Lunricants And Other",
+      "Vehicle Maintenance",
+      "Traveling And Tour Expenses",
+    ],
+  },
+  {
+    mainCategory: "Marketing",
+    subCategories: [
+      "Online Marketing",
+      "Facebook Marketing",
+      "Google Marketing",
+      "Others Marketing Cost",
+    ],
+  },
+  {
+    mainCategory: "Others Bill Expenses",
+    subCategories: [
+      "Medical Bill Expenses",
+      "Delivery Expenses",
+      "Loading & Unloading Expenses",
+      "Conference & Meeting Expenses",
+      "Othes Expenses",
+    ],
+  },
+];
+
+export const INITIAL_OFFICE_EXPENSE_MONTHS = [
+  { month: "2025-09", preparedBy: "Rifat Hasan Rafi", cashInHand: 0 },
+  { month: "2026-08", preparedBy: "Rifat Hasan Rafi", cashInHand: 14480 },
+];
+
+export const INITIAL_OFFICE_EXPENSE_ENTRIES = [
+  // September 2025 (month = 2025-09)
+  { month: "2025-09", date: "2025-09-10", voucherNo: "DV2025901", category: "Travel", subCategory: "Traveling And Tour Expenses", description: "Pranto vai ar Furniture Nia Asha Babod 4psc", amount: 300 },
+  { month: "2025-09", date: "2025-09-14", voucherNo: "DV2025902", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Abid Ar Khabar Bill Date 9/9/2025-13/9/2025", amount: 720 },
+  { month: "2025-09", date: "2025-09-18", voucherNo: "DV2025903", category: "Utility", subCategory: "Electricity", description: "Electricity Bill+pencil Bettery 9psc", amount: 1180 },
+  { month: "2025-09", date: "2025-09-18", voucherNo: "DV2025904", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 100 },
+  { month: "2025-09", date: "2025-09-20", voucherNo: "DV2025905", category: "Assets Purchase Expenses", subCategory: "Assets Purchase Expenses", description: "A4TECH Mouse 2pcs + Gari vara", amount: 960 },
+  { month: "2025-09", date: "2025-09-20", voucherNo: "DV2025906", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 100 },
+  { month: "2025-09", date: "2025-09-21", voucherNo: "DV2025907", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 100 },
+  { month: "2025-09", date: "2025-09-22", voucherNo: "DV2025908", category: "Stationaries Expenses", subCategory: "Stationaries Expenses", description: "Polithin 0.5+ Bikale Nasta Purpose Bill", amount: 260 },
+  { month: "2025-09", date: "2025-09-13", voucherNo: "DV2025909", category: "Stationaries Expenses", subCategory: "Stationaries Expenses", description: "Tea Box ,alac, darchini,long,chini,biscuit,Cliner Jhau polithin 0.5", amount: 1126 },
+  { month: "2025-09", date: "2025-09-23", voucherNo: "DV2025910", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 100 },
+  { month: "2025-09", date: "2025-09-25", voucherNo: "DV2025911", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 100 },
+  { month: "2025-09", date: "2025-09-24", voucherNo: "DV2025912", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 130 },
+  { month: "2025-09", date: "2025-09-29", voucherNo: "DV2025913", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod 3 Person", amount: 100 },
+  { month: "2025-09", date: "2025-09-28", voucherNo: "DV2025914", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Malta Bikale Nasta Babod 3 Person", amount: 120 },
+  { month: "2025-09", date: "2025-09-28", voucherNo: "DV2025915", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Chanachur Biscuit", amount: 100 },
+  { month: "2025-09", date: "2025-09-29", voucherNo: "DV2025916", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Abir khabar Bil Bobod 9/9/2025 - 25/9/2025", amount: 3580 },
+  { month: "2025-09", date: "2025-09-08", voucherNo: "DV2025917", category: "Utility", subCategory: "Home Rent", description: "Office Rent Bill Purpose", amount: 5000 },
+  { month: "2025-09", date: "2025-09-07", voucherNo: "DV2025918", category: "Utility", subCategory: "Internet", description: "Internet Bill Purpose", amount: 1200 },
+
+  // August 2026 (month = 2026-08)
+  { month: "2026-08", date: "2026-08-01", voucherNo: "DV2026080101", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta babod 4 person", amount: 130 },
+  { month: "2026-08", date: "2026-08-01", voucherNo: "DV2026080102", category: "Utility", subCategory: "Safty Security BIll", description: "Admin pay to Lebar Bill", amount: 1000 },
+  { month: "2026-08", date: "2026-08-03", voucherNo: "DV2026080103", category: "Utility", subCategory: "Electricity", description: "August Month Electricty Bill", amount: 500 },
+  { month: "2026-08", date: "2026-08-03", voucherNo: "DV2026080104", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta babod 4 person", amount: 120 },
+  { month: "2026-08", date: "2026-08-04", voucherNo: "DV2026080105", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta babod 6 person", amount: 400 },
+  { month: "2026-08", date: "2026-08-06", voucherNo: "DV2026080106", category: "Utility", subCategory: "Internet", description: "August Month Net Bill", amount: 1260 },
+  { month: "2026-08", date: "2026-08-06", voucherNo: "DV2026080107", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta babod", amount: 100 },
+  { month: "2026-08", date: "2026-08-08", voucherNo: "DV2026080108", category: "Utility", subCategory: "Electricity", description: "August Month Electricty Bill", amount: 740 },
+  { month: "2026-08", date: "2026-08-09", voucherNo: "DV2026080109", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Babod", amount: 130 },
+  { month: "2026-08", date: "2026-08-10", voucherNo: "DV2026080110", category: "Stationaries Expenses", subCategory: "Stationaries Expenses", description: "চিনি , টি ব্যাগ , বিট লবণ , ছোলা , টিস্যু", amount: 490 },
+  { month: "2026-08", date: "2026-08-12", voucherNo: "DV2026080111", category: "Assets Purchase Expenses", subCategory: "Assets Purchase Expenses", description: "Genata 8 port , golden field", amount: 2300 },
+  { month: "2026-08", date: "2026-08-12", voucherNo: "DV2026080112", category: "Travel", subCategory: "Traveling And Tour Expenses", description: "Mukto Vai Ar Dukane Jawa and Asha babod", amount: 60 },
+  { month: "2026-08", date: "2026-07-13", voucherNo: "DV2026080113", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta Bill 4 person", amount: 200 },
+  { month: "2026-08", date: "2026-08-15", voucherNo: "DV2026080114", category: "Utility", subCategory: "Home Rent", description: "August Monthly Home Rent", amount: 5000 },
+  { month: "2026-08", date: "2026-08-15", voucherNo: "DV2026080115", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta babod Bill 3 Person", amount: 90 },
+  { month: "2026-08", date: "2026-05-15", voucherNo: "DV2026080116", category: "Utility", subCategory: "Electricity", description: "August Month Electricty Bill", amount: 1000 },
+  { month: "2026-08", date: "2026-08-16", voucherNo: "DV2026080117", category: "Stationaries Expenses", subCategory: "Stationaries Expenses", description: "Office Tishu Box ana bobod", amount: 90 },
+  { month: "2026-08", date: "2026-08-16", voucherNo: "DV2026080118", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale Nasta 4 person", amount: 120 },
+  { month: "2026-08", date: "2026-08-17", voucherNo: "DV2026080119", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta Babod 4person", amount: 130 },
+  { month: "2026-08", date: "2026-08-18", voucherNo: "DV2026080120", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta Babod 4person", amount: 130 },
+  { month: "2026-08", date: "2026-08-19", voucherNo: "DV2026080121", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta Babod 4person", amount: 205 },
+  { month: "2026-08", date: "2026-08-22", voucherNo: "DV2026080122", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta Babod 3person", amount: 90 },
+  { month: "2026-08", date: "2026-08-23", voucherNo: "DV2026080123", category: "Refreshment & Entertainment", subCategory: "Refreshment & Entertainment", description: "Bikale nasta Babod 4person", amount: 120 },
+  { month: "2026-08", date: null, voucherNo: "DV2026080124", category: "Stationaries Expenses", subCategory: "Stationaries Expenses", description: "", amount: 80 },
+];
+
 export const INITIAL_CARDS = [
   { id: "CARD-EBL-1342", cardName: "ADSBUZZ EBL - 1342", cardType: "Visa", cardPlatform: "Rizon", cardInitial: "EB", status: "Active", linkedAccountsCount: 24, usageCount: 520, totalLoadedUSD: 45000 },
   { id: "CARD-EBL-2802", cardName: "MD EBL - 2802", cardType: "Mastercard", cardPlatform: "Payoneer", cardInitial: "ME", status: "Active", linkedAccountsCount: 15, usageCount: 310, totalLoadedUSD: 28000 },

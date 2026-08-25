@@ -128,6 +128,38 @@
 | POST | `/api/settings/payment-methods` | Add payment method | 🟩 |
 | DELETE | `/api/settings/payment-methods/[name]` | Delete payment method | 🟩 |
 
+### Office Expenses (Settings / Categories)
+| Method | Endpoint | Description | Status |
+|---|---|---|---|
+| GET | `/api/office-expenses` | List office expense categories (seeded from AdsBuzz LLC accounts CSV; search) | 🟩 |
+| POST | `/api/office-expenses` | Create main category (+ sub-categories) | 🟩 |
+| GET | `/api/office-expenses/[id]` | Get category by id | 🟩 |
+| PATCH | `/api/office-expenses/[id]` | Update main category / sub-categories | 🟩 |
+| DELETE | `/api/office-expenses/[id]` | Delete category | 🟩 |
+
+### Office Expense Entries (Monthly Data Entry)
+| Method | Endpoint | Description | Status |
+|---|---|---|---|
+| GET | `/api/office-expense-entries` | List entries (filter by `month`/`category`/`search`) | 🟩 |
+| POST | `/api/office-expense-entries` | Create expense entry (voucher) | 🟩 |
+| GET | `/api/office-expense-entries/[id]` | Get entry | 🟩 |
+| PATCH | `/api/office-expense-entries/[id]` | Update entry | 🟩 |
+| DELETE | `/api/office-expense-entries/[id]` | Delete entry | 🟩 |
+
+### Office Expense Months (metadata)
+| Method | Endpoint | Description | Status |
+|---|---|---|---|
+| GET | `/api/office-expense-months` | List months (preparedBy, cashInHand) | 🟩 |
+| POST | `/api/office-expense-months` | Create month | 🟩 |
+| GET | `/api/office-expense-months/[month]` | Get month | 🟩 |
+| PATCH | `/api/office-expense-months/[month]` | Update preparedBy / cashInHand | 🟩 |
+| DELETE | `/api/office-expense-months/[month]` | Delete month | 🟩 |
+
+### Office Expense Dashboard
+| Method | Endpoint | Description | Status |
+|---|---|---|---|
+| GET | `/api/office-expense-dashboard?year=` | Aggregated category × month matrix, totals, cash in hand (computed from DB) | 🟩 |
+
 ### Topups (Financial Audit)
 | Method | Endpoint | Description | Status |
 |---|---|---|---|

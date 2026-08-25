@@ -24,6 +24,9 @@ import { useActivities } from '@/hooks/useActivities';
 import { usePlatforms } from '@/hooks/usePlatforms';
 import { useWallets } from '@/hooks/useWallets';
 import { useSocialAdAccounts } from '@/hooks/useSocialAdAccounts';
+import { useOfficeExpenses } from '@/hooks/useOfficeExpenses';
+import { useOfficeExpenseEntries } from '@/hooks/useOfficeExpenseEntries';
+import { useOfficeExpenseMonths } from '@/hooks/useOfficeExpenseMonths';
 import { uploadScreenshot, getErrorMessage } from '@/utils/api';
 
 const AppContext = createContext(null);
@@ -177,6 +180,29 @@ export function AppProvider({ children }) {
     deleteWallet: rawDeleteWallet,
     refetch: refetchWallets,
   } = useWallets(triggerToast);
+  const {
+    officeExpenses,
+    error: officeExpensesError,
+    addOfficeExpense: rawAddOfficeExpense,
+    updateOfficeExpense: rawUpdateOfficeExpense,
+    deleteOfficeExpense: rawDeleteOfficeExpense,
+    refetch: refetchOfficeExpenses,
+  } = useOfficeExpenses(triggerToast);
+  const {
+    entries: officeExpenseEntries,
+    error: officeExpenseEntriesError,
+    addEntry: rawAddOfficeExpenseEntry,
+    updateEntry: rawUpdateOfficeExpenseEntry,
+    deleteEntry: rawDeleteOfficeExpenseEntry,
+    refetch: refetchOfficeExpenseEntries,
+  } = useOfficeExpenseEntries(triggerToast);
+  const {
+    months: officeExpenseMonths,
+    error: officeExpenseMonthsError,
+    addMonth: rawAddOfficeExpenseMonth,
+    updateMonth: rawUpdateOfficeExpenseMonth,
+    refetch: refetchOfficeExpenseMonths,
+  } = useOfficeExpenseMonths(triggerToast);
 
   const logActivityFx = (user, action, details, type, customerId) => {
     addActivity({ time: "Just now", user, action, details, type, ...(customerId && { customerId }) });
@@ -411,6 +437,54 @@ export function AppProvider({ children }) {
   const handleDeleteWallet = async (id) => {
     const result = await rawDeleteWallet(id);
     if (result) logActivityFx("Rakibul R.", "Deleted Wallet", `Wallet ${result.ownerName} removed.`, "system");
+    return result;
+  };
+
+  const handleAddOfficeExpense = async (officeExpenseData) => {
+    const result = await rawAddOfficeExpense(officeExpenseData);
+    if (result) logActivityFx("Rakibul R.", "Added Office Expense Category", `Category ${result.mainCategory} created.`, "system");
+    return result;
+  };
+
+  const handleUpdateOfficeExpense = async (officeExpense) => {
+    const result = await rawUpdateOfficeExpense(officeExpense);
+    if (result) logActivityFx("Rakibul R.", "Updated Office Expense Category", `Category ${result.mainCategory} updated.`, "system");
+    return result;
+  };
+
+  const handleDeleteOfficeExpense = async (id) => {
+    const result = await rawDeleteOfficeExpense(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Office Expense Category", `${result.mainCategory} removed from settings.`, "system");
+    return result;
+  };
+
+  const handleAddOfficeExpenseEntry = async (entryData) => {
+    const result = await rawAddOfficeExpenseEntry(entryData);
+    if (result) logActivityFx("Rakibul R.", "Added Office Expense Entry", `Voucher ${result.voucherNo || ''} (${result.category}) recorded.`, "payment");
+    return result;
+  };
+
+  const handleUpdateOfficeExpenseEntry = async (entry) => {
+    const result = await rawUpdateOfficeExpenseEntry(entry);
+    if (result) logActivityFx("Rakibul R.", "Updated Office Expense Entry", `Voucher ${result.voucherNo || ''} updated.`, "payment");
+    return result;
+  };
+
+  const handleDeleteOfficeExpenseEntry = async (id) => {
+    const result = await rawDeleteOfficeExpenseEntry(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Office Expense Entry", `Voucher ${result.voucherNo || ''} removed.`, "payment");
+    return result;
+  };
+
+  const handleAddOfficeExpenseMonth = async (monthData) => {
+    const result = await rawAddOfficeExpenseMonth(monthData);
+    if (result) logActivityFx("Rakibul R.", "Added Expense Month", `${result.month} created.`, "system");
+    return result;
+  };
+
+  const handleUpdateOfficeExpenseMonth = async (monthCode, updates) => {
+    const result = await rawUpdateOfficeExpenseMonth(monthCode, updates);
+    if (result) logActivityFx("Rakibul R.", "Updated Expense Month", `${monthCode} updated.`, "system");
     return result;
   };
 
@@ -846,6 +920,12 @@ export function AppProvider({ children }) {
     platformsError,
     wallets,
     walletsError,
+    officeExpenses,
+    officeExpensesError,
+    officeExpenseEntries,
+    officeExpenseEntriesError,
+    officeExpenseMonths,
+    officeExpenseMonthsError,
     stats,
 
     refetchCustomers,
@@ -860,6 +940,9 @@ export function AppProvider({ children }) {
     refetchActivities,
     refetchPlatforms,
     refetchWallets,
+    refetchOfficeExpenses,
+    refetchOfficeExpenseEntries,
+    refetchOfficeExpenseMonths,
 
     toggleTheme,
     triggerToast,
@@ -908,6 +991,14 @@ export function AppProvider({ children }) {
     handleUpdateWallet,
     handleDeleteWallet,
     addWallet: rawAddWallet,
+    handleAddOfficeExpense,
+    handleUpdateOfficeExpense,
+    handleDeleteOfficeExpense,
+    handleAddOfficeExpenseEntry,
+    handleUpdateOfficeExpenseEntry,
+    handleDeleteOfficeExpenseEntry,
+    handleAddOfficeExpenseMonth,
+    handleUpdateOfficeExpenseMonth,
     handleUpdateSaleSetup,
     addSetup,
     handleUpdateBaseRate,

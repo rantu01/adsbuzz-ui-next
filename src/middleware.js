@@ -47,6 +47,7 @@ export const config = {
     "/sale-setup/:path*",
     "/sales/:path*",
     "/series/:path*",
+    "/office-expense/:path*",
     "/settings/:path*",
     "/topups/:path*",
     "/vendors/:path*",
