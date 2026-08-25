@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { INITIAL_INVOICES } from '@/data/seedData';
 import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useInvoices(triggerToast) {
-  const [invoices, setInvoices] = useState(INITIAL_INVOICES);
+  const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -11,19 +10,20 @@ export function useInvoices(triggerToast) {
     try {
       const all = [];
       let page = 1;
+      const limit = 200;
       for (;;) {
-        const data = await apiFetch(`/api/invoices?page=${page}&limit=200`);
+        const data = await apiFetch(`/api/invoices?page=${page}&limit=${limit}`);
         const items = Array.isArray(data.invoices) ? data.invoices : [];
+        if (items.length === 0) break;
         all.push(...items);
-        if (items.length === 0 || page >= Number(data.totalPages || 1)) break;
+        if (items.length < limit) break;
         page += 1;
       }
-      if (all.length > 0) {
-        setInvoices(all);
-      }
+      setInvoices(all);
       setError(null);
     } catch (err) {
       setError(err);
+      setInvoices([]);
     } finally {
       setLoading(false);
     }

@@ -25,7 +25,7 @@ import StatCard from '@/components/common/StatCard';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import Modal from '@/components/ui/Modal';
 import Pagination from '@/components/common/Pagination';
-import { uploadScreenshot } from '@/utils/api';
+import { uploadScreenshot, apiFetch } from '@/utils/api';
 
 const ACTIVE_AUDIT_STATES = ['Pending', 'Waiting For Feedback', 'Final Approval Review'];
 const PAGE_SIZE = 20;
@@ -103,6 +103,23 @@ function TopupsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [busyKey, setBusyKey] = useState(null);
   const [feedbackScreenshotError, setFeedbackScreenshotError] = useState('');
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
+
+  // The invoices list no longer carries the heavy `screenshots` blobs (they made
+  // the list response huge and timed out). Load the full invoice — including its
+  // screenshots — on demand when the user explicitly wants to view them.
+  const openScreenshot = async (inv) => {
+    setScreenshotTarget(inv);
+    setScreenshotLoading(true);
+    try {
+      const data = await apiFetch(`/api/invoices/${encodeURIComponent(inv.invoiceNo)}`);
+      if (data?.invoice) setScreenshotTarget(data.invoice);
+    } catch {
+      // Keep the list record (it still has paymentScreenshot, if any) as fallback.
+    } finally {
+      setScreenshotLoading(false);
+    }
+  };
 
   const activeAudits = invoices.filter(inv => ACTIVE_AUDIT_STATES.includes(inv.approvalStatus));
 
@@ -328,7 +345,7 @@ function TopupsView({
                         {collectScreenshots(inv).length > 0 ? (
                           <button
                             id={`btn-screenshot-${inv.invoiceNo}`}
-                            onClick={() => setScreenshotTarget(inv)}
+                            onClick={() => openScreenshot(inv)}
                             className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors"
                           >
                             <Eye size={12} /> View {collectScreenshots(inv).length > 1 && `(${collectScreenshots(inv).length})`}
@@ -655,7 +672,9 @@ function TopupsView({
         size="xl"
         scrollable
       >
-        {screenshotTarget && collectScreenshots(screenshotTarget).length > 0 ? (
+        {screenshotLoading ? (
+          <p className="text-xs text-slate-500">Loading screenshot…</p>
+        ) : screenshotTarget && collectScreenshots(screenshotTarget).length > 0 ? (
           <div className="space-y-5">
             {collectScreenshots(screenshotTarget).map((shot, idx) => (
               <div key={idx} className="space-y-1.5">

@@ -9,6 +9,7 @@ export default function InvoicesPage() {
   return (
     <InvoicesView
       invoices={app.invoices}
+      loading={app.invoicesLoading}
       error={app.invoicesError}
       onRetry={app.refetchInvoices}
       customers={app.customers}

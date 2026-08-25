@@ -60,7 +60,7 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, error, onRetry, paymentMethods }) {
+function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, loading, error, onRetry, paymentMethods }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -335,6 +335,14 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, e
   return (
     <div className="space-y-6 animate-fade-in">
       <ErrorBanner error={error} onRetry={onRetry} />
+
+      {loading && invoices.length === 0 && !error && (
+        <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-center">
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+            Loading invoices from the database…
+          </p>
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Transaction Ledger</h1>
         <p className="text-sm text-slate-500">Historical database of all top-up invoice settlements.</p>

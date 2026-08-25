@@ -106,6 +106,7 @@ export function AppProvider({ children }) {
 
   const {
     invoices,
+    loading: invoicesLoading,
     error: invoicesError,
     addInvoice,
     addHistoricalInvoice,
@@ -903,6 +904,7 @@ export function AppProvider({ children }) {
     socialAdAccountsLoading,
     socialAdAccountsError,
     invoices,
+    invoicesLoading,
     invoicesError,
     cards,
     cardsError,

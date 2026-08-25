@@ -66,6 +66,20 @@ export async function ensureInvoicesIndexes() {
   return { ok: true };
 }
 
+// Read-path index creation. This is idempotent and never modifies invoice
+// documents — it only ensures query/sort indexes exist so list reads stay
+// fast. Memoized per process so the (cheap) index build runs at most once.
+let indexesPromise = null;
+export function ensureInvoicesIndexesOnce() {
+  if (!indexesPromise) {
+    indexesPromise = ensureInvoicesIndexes().catch((error) => {
+      logger.error("ensureInvoicesIndexes failed.", error);
+      indexesPromise = null;
+    });
+  }
+  return indexesPromise;
+}
+
 /**
  * Historically, some invoices embedded full base64 image data URLs in
  * `paymentScreenshot` (2-3 MB each) when the upload fallback fired during a
@@ -283,14 +297,22 @@ export async function syncLegacyInvoices() {
 }
 
 export async function listInvoices({ search = "", paymentStatus = "", customerId = "" } = {}) {
-  await ensureLegacyInvoicesSynced();
+  await ensureInvoicesIndexesOnce();
   const invoicesCollection = await getCollection("invoices");
 
   const filter = {};
   if (paymentStatus && paymentStatus !== "All") filter.paymentStatus = paymentStatus;
   if (customerId) filter.customerId = customerId;
 
-  const cursor = invoicesCollection.find(filter).sort({ createdAtRaw: -1, date: -1 });
+  const cursor = invoicesCollection
+    .find(filter)
+    // Exclude the heavy `screenshots` array (base64 data URLs) from list
+    // reads. Those blobs can be multiple MB each and were making the list
+    // response so large it timed out. A single invoice's screenshots are still
+    // available on demand via GET /api/invoices/[invoiceNo]. This is a
+    // read-only projection — it never modifies stored documents.
+    .project({ screenshots: 0 })
+    .sort({ createdAtRaw: -1, date: -1 });
   const invoices = await cursor.toArray();
 
   let items = invoices;
@@ -542,7 +564,7 @@ export async function createHistoricalInvoice(data = {}) {
  * Sales page are always visible on the Topups page.
  */
 export async function listTopups({ search = "", onlyPending = false } = {}) {
-  await ensureLegacyInvoicesSynced();
+  await ensureInvoicesIndexesOnce();
   const invoicesCollection = await getCollection("invoices");
 
   const filter = onlyPending
@@ -553,7 +575,15 @@ export async function listTopups({ search = "", onlyPending = false } = {}) {
         ],
       }
     : {};
-  const cursor = invoicesCollection.find(filter).sort({ createdAtRaw: -1, date: -1 });
+  const cursor = invoicesCollection
+    .find(filter)
+    // Exclude the heavy `screenshots` array (base64 data URLs) from list
+    // reads. Those blobs can be multiple MB each and were making the list
+    // response so large it timed out. A single invoice's screenshots are still
+    // available on demand via GET /api/invoices/[invoiceNo]. This is a
+    // read-only projection — it never modifies stored documents.
+    .project({ screenshots: 0 })
+    .sort({ createdAtRaw: -1, date: -1 });
   const invoices = await cursor.toArray();
 
   let items = invoices;

@@ -1,7 +1,6 @@
 import { getDb, getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
 import { normalizeCustomerId, formatCustomerId } from "@/utils/customerIds";
-import { ensureLegacyInvoicesSynced } from "@/models/invoiceModel";
 import { terminateSaleSetupsForGroup } from "@/models/saleSetupModel";
 
 export const CUSTOMER_STATUS = ["Active", "Inactive", "Lost"];
@@ -21,7 +20,6 @@ function ensureInitialSync() {
       await ensureCustomerIdUniqueIndex();
       await alignCustomerIdCounter();
       await syncCustomersFromUsers();
-      await ensureLegacyInvoicesSynced();
     })().catch((error) => {
       logger.error("Initial customer data sync failed.", error);
       initialSyncPromise = null;

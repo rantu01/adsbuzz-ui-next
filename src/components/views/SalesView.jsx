@@ -158,6 +158,23 @@ function SalesView({
 
   const totalPages = Math.max(1, Math.ceil(invoices.length / RECORDS_PER_PAGE));
   const clampedPage = Math.min(currentPage, totalPages);
+
+  // Windowed pagination (same pattern as the invoices page): show the first page,
+  // a few pages around the current one, the last page, and collapse the rest with
+  // an ellipsis instead of rendering every page number side by side.
+  const pageWindow = (() => {
+    const pages = [];
+    const max = totalPages;
+    const current = clampedPage;
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    for (let p = Math.max(2, current - 1); p <= Math.min(max - 1, current + 1); p++) {
+      pages.push(p);
+    }
+    if (current < max - 2) pages.push('...');
+    if (max > 1) pages.push(max);
+    return pages;
+  })();
   const paginatedInvoices = invoices.slice(
     (clampedPage - 1) * RECORDS_PER_PAGE,
     clampedPage * RECORDS_PER_PAGE
@@ -1738,20 +1755,24 @@ function SalesView({
                 Prev
               </button>
 
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  type="button"
-                  onClick={() => setCurrentPage(page)}
-                  className={`h-7 w-7 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                    page === clampedPage
-                      ? 'bg-brand-blue text-white'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+              {pageWindow.map((p, idx) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      p === clampedPage
+                        ? 'bg-brand-blue text-white shadow-xs'
+                        : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
 
               <button
                 type="button"

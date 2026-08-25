@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import { INITIAL_SETUPS } from '@/data/seedData';
 import { apiFetch, getErrorMessage } from '@/utils/api';
 
 export function useSaleSetups(triggerToast) {
-  const [setups, setSetups] = useState(INITIAL_SETUPS);
+  const [setups, setSetups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchSetups = useCallback(async () => {
     try {
       const data = await apiFetch('/api/sale-setups');
-      if (Array.isArray(data.setups) && data.setups.length > 0) {
-        setSetups(data.setups);
-      }
+      setSetups(Array.isArray(data.setups) ? data.setups : []);
       setError(null);
     } catch (err) {
       setError(err);
+      setSetups([]);
     } finally {
       setLoading(false);
     }
