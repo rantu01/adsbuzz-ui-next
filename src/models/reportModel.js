@@ -1,5 +1,5 @@
 import { getCollection } from "@/lib/db";
-import { listInvoices } from "@/models/invoiceModel";
+import { listInvoices, getInvoicesByMonth } from "@/models/invoiceModel";
 import { getSettings } from "@/models/settingsModel";
 import logger from "@/utils/logger";
 
@@ -65,8 +65,11 @@ function collectChannelPayments(invoice) {
  */
 export async function getMonthlyReport(month) {
   const targetMonth = normalizeMonth(month);
-  const invoices = await listInvoices();
-  const monthInvoices = invoices.filter((inv) => String(inv.date || "").startsWith(targetMonth));
+  // Fetch only this month's invoices with a minimal projection. Doing a
+  // full-collection fetch (listInvoices) and filtering in JS was pathologically
+  // slow on the shared MongoDB (minutes for a few hundred records), which made
+  // /api/reports time out and the whole Reports page render 0 values.
+  const monthInvoices = await getInvoicesByMonth(targetMonth);
 
   // ===== 1) Statement metrics (Total Sell / Average / Ads Topup / Avg per USD) =====
   const totalSellUSD = round2(monthInvoices.reduce((s, inv) => s + toNumber(inv.topupAmountUSD), 0));

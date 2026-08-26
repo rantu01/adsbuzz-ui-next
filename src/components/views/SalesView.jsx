@@ -37,6 +37,7 @@ import {
   AlertCircle,
   ShieldCheck,
   Trash2,
+  BarChart3,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Modal from '@/components/ui/Modal';
@@ -166,6 +167,85 @@ function SalesView({
   const paginatedInvoices = salesInvoicePages.rows;
   const salesLoading = salesInvoicePages.loading;
   const salesInvoiceError = salesInvoicePages.error;
+
+  // Ad Account Search — verification panel: searches the real Sales Entry data
+  // by Ad Account ID or Ad Account Name and lists every date on which a sales
+  // entry was recorded for that account so missing/incorrect entries are easy
+  // to spot. Read-only; it never touches existing Sales Entry logic.
+  const [adAccountSearch, setAdAccountSearch] = useState('');
+  const [adAccountSearchResults, setAdAccountSearchResults] = useState(null);
+  const [adAccountSearchLoading, setAdAccountSearchLoading] = useState(false);
+  const [adAccountSearchError, setAdAccountSearchError] = useState('');
+  const [adAccountSearchRan, setAdAccountSearchRan] = useState(false);
+
+  const runAdAccountSearch = useCallback(async (rawQuery) => {
+    const q = (rawQuery ?? adAccountSearch).trim();
+    if (!q) {
+      setAdAccountSearchError('Please enter an Ad Account ID or Ad Account Name to search.');
+      setAdAccountSearchResults(null);
+      setAdAccountSearchRan(false);
+      return;
+    }
+    let cancelled = false;
+    setAdAccountSearchLoading(true);
+    setAdAccountSearchError('');
+    try {
+      const params = new URLSearchParams({ q });
+      const data = await apiFetch(`/api/sales/search?${params.toString()}`);
+      if (!cancelled) {
+        setAdAccountSearchResults(data || null);
+        setAdAccountSearchRan(true);
+      }
+    } catch (err) {
+      if (!cancelled) {
+        setAdAccountSearchError(err?.message || 'Search failed. Please try again.');
+        setAdAccountSearchResults(null);
+        setAdAccountSearchRan(true);
+      }
+    } finally {
+      if (!cancelled) setAdAccountSearchLoading(false);
+    }
+    return () => { cancelled = true; };
+  }, [adAccountSearch]);
+
+  const clearAdAccountSearch = () => {
+    setAdAccountSearch('');
+    setAdAccountSearchResults(null);
+    setAdAccountSearchError('');
+    setAdAccountSearchRan(false);
+  };
+
+  // Sales Entry Report — aggregated, read-only reports (day-wise / month-wise
+  // entry counts + sales amounts) built from the real Sales Entry data.
+  const [showReport, setShowReport] = useState(false);
+  const [reportType, setReportType] = useState('dayWiseEntries');
+  const [reportData, setReportData] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+
+  const REPORT_TABS = [
+    { id: 'dayWiseEntries', label: 'Day-Wise Sales Entry/Amount Report', groupBy: 'day', mode: 'entries' },
+    { id: 'monthWiseEntries', label: 'Monthly Sales Entry/Amount Report', groupBy: 'month', mode: 'entries' },
+    // { id: 'dayWiseAmount', label: 'Day-Wise Sales Amount', groupBy: 'day', mode: 'amount' },
+    // { id: 'monthWiseAmount', label: 'Monthly Sales Amount', groupBy: 'month', mode: 'amount' },
+  ];
+
+  const toggleReport = async () => {
+    const next = !showReport;
+    setShowReport(next);
+    if (!next || reportData) return;
+    let cancelled = false;
+    setReportLoading(true);
+    setReportError('');
+    try {
+      const data = await apiFetch('/api/sales/report');
+      if (!cancelled) setReportData(data || null);
+    } catch (err) {
+      if (!cancelled) setReportError(err?.message || 'Failed to load the sales entry report.');
+    } finally {
+      if (!cancelled) setReportLoading(false);
+    }
+  };
 
   // Windowed pagination (same pattern as the invoices page): show the first page,
   // a few pages around the current one, the last page, and collapse the rest with
@@ -1644,6 +1724,118 @@ function SalesView({
 
       </div>
 
+      {/* Ad Account Sales Search — verify recorded sales entries by date */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm mt-8">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Search Sales by Ad Account</h3>
+            <p className="text-xs text-slate-500">Find every date a sales entry was recorded for an Ad Account ID or Name. Use it to verify entries are correct and none are missing.</p>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              runAdAccountSearch();
+            }}
+            className="flex flex-col sm:flex-row gap-2"
+          >
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+              <input
+                id="ad-account-search-input"
+                type="text"
+                value={adAccountSearch}
+                onChange={(e) => setAdAccountSearch(e.target.value)}
+                placeholder="Enter Ad Account ID (e.g. 206893199112660) or Ad Account Name..."
+                className="w-full text-xs pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+              />
+            </div>
+            <Button type="submit" id="ad-account-search-btn" leftIcon={<Search size={14} />} disabled={adAccountSearchLoading}>
+              {adAccountSearchLoading ? 'Searching…' : 'Search'}
+            </Button>
+            {(adAccountSearchResults || adAccountSearchRan) && (
+              <Button type="button" variant="ghost" onClick={clearAdAccountSearch}>
+                Clear
+              </Button>
+            )}
+          </form>
+
+          {adAccountSearchError && (
+            <div className="text-xs font-semibold text-rose-500 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-950/50 p-3 rounded-xl">
+              {adAccountSearchError}
+            </div>
+          )}
+
+          {adAccountSearchLoading && (
+            <div className="flex items-center justify-center gap-2 text-slate-400 py-6">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-xs font-semibold">Searching sales entries…</span>
+            </div>
+          )}
+
+          {!adAccountSearchLoading && adAccountSearchRan && adAccountSearchResults && (
+            <div className="space-y-4">
+              {/* Summary header */}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs px-3 py-1.5 rounded-full font-bold inline-flex items-center gap-1.5 shadow-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-brand-blue text-white text-[10px] font-black">
+                    {adAccountSearchResults.total}
+                  </span>
+                  Matching Entries
+                </span>
+                <span className="text-xs px-3 py-1.5 rounded-full font-bold inline-flex items-center gap-1.5 shadow-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                  <CalendarDays size={13} className="text-brand-blue" />
+                  {adAccountSearchResults.dates.length} {adAccountSearchResults.dates.length === 1 ? 'Date' : 'Dates'} with Entries
+                </span>
+                {(adAccountSearchResults.entries[0]?.adAccountName || adAccountSearchResults.entries[0]?.adAccountId) && (
+                  <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 truncate max-w-full">
+                    {adAccountSearchResults.entries[0].adAccountName}
+                    {adAccountSearchResults.entries[0].adAccountId ? ` (ID: ${adAccountSearchResults.entries[0].adAccountId})` : ''}
+                  </span>
+                )}
+              </div>
+
+              {adAccountSearchResults.total === 0 ? (
+                <div className="text-center py-8">
+                  <XCircle className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={28} />
+                  <p className="text-xs text-slate-500">No sales entries found for &ldquo;{adAccountSearchResults.query}&rdquo;.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Check the Ad Account ID or Name and try again. This helps confirm whether entries are missing.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-950/20 font-bold border-b border-slate-100 dark:border-slate-800 text-slate-500">
+                      <tr>
+                        <th className="py-3 pl-4 text-left">Sales Date</th>
+                        <th className="py-3 text-right">Entries</th>
+                        <th className="py-3 text-right">Total USD</th>
+                        <th className="py-3 text-right">Total BDT</th>
+                        <th className="py-3 pr-4 text-left">Invoice No(s)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {adAccountSearchResults.dates.map((d) => (
+                        <tr key={d.date} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                          <td className="py-3 pl-4 font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{d.date}</td>
+                          <td className="py-3 text-right font-bold text-slate-900 dark:text-white">{d.count}</td>
+                          <td className="py-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${d.totalUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                          <td className="py-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">৳{d.totalBDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                          <td className="py-3 pr-4 font-mono text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px] truncate" title={d.invoiceNos.join(', ')}>
+                            {d.invoiceNos.join(', ')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Sales Entry Records Section */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm mt-8">
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
@@ -1770,54 +1962,158 @@ function SalesView({
           </table>
         </div>
 
-        {totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Showing {paginatedInvoices.length} of {salesInvoicePages.total} entries
-            </p>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => salesInvoicePages.setPage(Math.max(1, clampedPage - 1))}
-                disabled={clampedPage === 1}
-                className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-              >
-                <ChevronRight size={12} className="rotate-180" />
-                Prev
-              </button>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Showing {paginatedInvoices.length} of {salesInvoicePages.total} entries
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              id="btn-sales-entry-report"
+              variant={showReport ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={toggleReport}
+              leftIcon={<BarChart3 size={13} />}
+              className="shrink-0"
+            >
+              {showReport ? 'Hide Sales Entry Report' : 'Sales Entry Report'}
+            </Button>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => salesInvoicePages.setPage(Math.max(1, clampedPage - 1))}
+                  disabled={clampedPage === 1}
+                  className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                >
+                  <ChevronRight size={12} className="rotate-180" />
+                  Prev
+                </button>
 
-              {pageWindow.map((p, idx) =>
-                p === '...' ? (
-                  <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400">…</span>
-                ) : (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => salesInvoicePages.setPage(p)}
-                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                      p === clampedPage
-                        ? 'bg-brand-blue text-white shadow-xs'
-                        : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ),
-              )}
+                {pageWindow.map((p, idx) =>
+                  p === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => salesInvoicePages.setPage(p)}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        p === clampedPage
+                          ? 'bg-brand-blue text-white shadow-xs'
+                          : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ),
+                )}
 
-              <button
-                type="button"
-                onClick={() => salesInvoicePages.setPage(Math.min(totalPages, clampedPage + 1))}
-                disabled={clampedPage === totalPages}
-                className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-              >
-                Next
-                <ChevronRight size={12} />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => salesInvoicePages.setPage(Math.min(totalPages, clampedPage + 1))}
+                  disabled={clampedPage === totalPages}
+                  className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                >
+                  Next
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Sales Entry Report — rendered inline below the Sales Entry Records table */}
+      {showReport && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm mt-4">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="text-brand-blue" size={16} />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Sales Entry Report</h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Aggregated from the actual Sales Entry data. Each row shows the entry count and total sales amount for that day or month.</p>
+          </div>
+          <div className="p-4 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {REPORT_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setReportType(tab.id)}
+                  className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+                    reportType === tab.id
+                      ? 'bg-brand-blue text-white border-brand-blue'
+                      : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {reportLoading && (
+              <div className="flex items-center justify-center gap-2 text-slate-400 py-10">
+                <Loader2 size={16} className="animate-spin" />
+                <span className="text-xs font-semibold">Loading sales entry report…</span>
+              </div>
+            )}
+
+            {reportError && (
+              <div className="text-xs font-semibold text-rose-500 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-950/50 p-3 rounded-xl">
+                {reportError}
+              </div>
+            )}
+
+            {!reportLoading && !reportError && reportData && (() => {
+              const activeTab = REPORT_TABS.find((t) => t.id === reportType);
+              const rows = activeTab.groupBy === 'day' ? reportData.dayWise : reportData.monthWise;
+              const periodLabel = activeTab.groupBy === 'day' ? 'Date' : 'Month';
+              const totalCount = rows.reduce((s, r) => s + r.count, 0);
+              const totalUSD = rows.reduce((s, r) => s + r.totalUSD, 0);
+              const totalBDT = rows.reduce((s, r) => s + r.totalBDT, 0);
+              return (
+                <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-xl">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-950/20 font-bold border-b border-slate-100 dark:border-slate-800 text-slate-500">
+                      <tr>
+                        <th className="py-3 pl-4 text-left">{periodLabel}</th>
+                        <th className="py-3 text-right">Entry Count</th>
+                        <th className="py-3 text-right">Total USD</th>
+                        <th className="py-3 pr-4 text-right">Total BDT</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {rows.map((r) => (
+                        <tr key={r.date || r.month} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                          <td className="py-2.5 pl-4 font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{r.date || r.month}</td>
+                          <td className="py-2.5 text-right font-bold text-slate-900 dark:text-white">{r.count}</td>
+                          <td className="py-2.5 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">${r.totalUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                          <td className="py-2.5 pr-4 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">৳{r.totalBDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                      {rows.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="text-center py-8 text-xs text-slate-400">No sales entries found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {rows.length > 0 && (
+                      <tfoot>
+                        <tr className="border-t border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-950/30 font-bold">
+                          <td className="py-2.5 pl-4 text-slate-700 dark:text-slate-200">Total</td>
+                          <td className="py-2.5 text-right text-slate-900 dark:text-white">{totalCount}</td>
+                          <td className="py-2.5 text-right text-slate-900 dark:text-white whitespace-nowrap">${totalUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                          <td className="py-2.5 pr-4 text-right text-slate-900 dark:text-white whitespace-nowrap">৳{totalBDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* View Log modal */}
       <Modal

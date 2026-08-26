@@ -578,6 +578,128 @@ function mapInvoice({ _id, ...rest }) {
   return { ...rest, customerId: customerId || rest.customerId };
 }
 
+/**
+ * Aggregated, read-only Sales Entry reports computed from the real invoice
+ * collection. Returns day-wise and month-wise entry counts and sales amounts
+ * (USD + BDT) so the Sales page can verify how many entries and how much was
+ * sold on each day / in each month. Does not mutate any documents.
+ */
+export async function getSalesEntryReport() {
+  await ensureInvoicesIndexesOnce();
+  const invoicesCollection = await getCollection("invoices");
+
+  const docs = await invoicesCollection
+    .find({})
+    .project({ date: 1, topupAmountUSD: 1, totalAmountBDT: 1, paidAmountBDT: 1 })
+    .toArray();
+
+  const dayMap = new Map();
+  const monthMap = new Map();
+
+  const dayKeyOf = (d) => String(d || "").slice(0, 10);
+  const monthKeyOf = (d) => String(d || "").slice(0, 7);
+
+  for (const inv of docs) {
+    const dayKey = dayKeyOf(inv.date);
+    const monthKey = monthKeyOf(inv.date);
+    if (!dayKey && !monthKey) continue;
+
+    const usd = Number(inv.topupAmountUSD || 0);
+    const bdt = Number(inv.totalAmountBDT || inv.paidAmountBDT || 0);
+
+    if (dayKey) {
+      if (!dayMap.has(dayKey)) dayMap.set(dayKey, { date: dayKey, count: 0, totalUSD: 0, totalBDT: 0 });
+      const e = dayMap.get(dayKey);
+      e.count += 1;
+      e.totalUSD += usd;
+      e.totalBDT += bdt;
+    }
+    if (monthKey) {
+      if (!monthMap.has(monthKey)) monthMap.set(monthKey, { month: monthKey, count: 0, totalUSD: 0, totalBDT: 0 });
+      const m = monthMap.get(monthKey);
+      m.count += 1;
+      m.totalUSD += usd;
+      m.totalBDT += bdt;
+    }
+  }
+
+  const dayWise = Array.from(dayMap.values())
+    .map((d) => ({ ...d, totalUSD: round2(d.totalUSD), totalBDT: round2(d.totalBDT) }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const monthWise = Array.from(monthMap.values())
+    .map((m) => ({ ...m, totalUSD: round2(m.totalUSD), totalBDT: round2(m.totalBDT) }))
+    .sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
+
+  return { dayWise, monthWise, total: docs.length };
+}
+
+/**
+ * Date-range (day-wise) Sales Entry report. Aggregates the real invoice
+ * (Sales Entry) collection into one row per calendar date within the inclusive
+ * [from, to] range. Used by the Reporting Desk "Date-Wise Sales Report" so a
+ * user can view the full month (or any custom range) day by day directly on
+ * the page. Read-only — it never mutates invoice documents.
+ */
+export async function getDailySalesReport({ from = "", to = "" } = {}) {
+  await ensureInvoicesIndexesOnce();
+  const invoicesCollection = await getCollection("invoices");
+
+  const filter = {};
+  if (from || to) {
+    const dateFilter = {};
+    if (from) dateFilter.$gte = String(from).slice(0, 10);
+    if (to) dateFilter.$lte = String(to).slice(0, 10);
+    filter.date = dateFilter;
+  }
+
+  const docs = await invoicesCollection
+    .find(filter)
+    .project({ date: 1, topupAmountUSD: 1, totalAmountBDT: 1, paidAmountBDT: 1, dueAmountBDT: 1 })
+    .sort({ date: 1 })
+    .toArray();
+
+  const dayMap = new Map();
+  for (const inv of docs) {
+    const dayKey = String(inv.date || "").slice(0, 10);
+    if (!dayKey) continue;
+    if (!dayMap.has(dayKey)) {
+      dayMap.set(dayKey, { date: dayKey, count: 0, totalUSD: 0, totalBDT: 0, paidBDT: 0, dueBDT: 0 });
+    }
+    const d = dayMap.get(dayKey);
+    d.count += 1;
+    d.totalUSD += Number(inv.topupAmountUSD || 0);
+    d.totalBDT += Number(inv.totalAmountBDT || inv.paidAmountBDT || 0);
+    d.paidBDT += Number(inv.paidAmountBDT || 0);
+    d.dueBDT += Number(inv.dueAmountBDT || 0);
+  }
+
+  const dailyWise = Array.from(dayMap.values())
+    .map((d) => ({
+      date: d.date,
+      count: d.count,
+      totalUSD: round2(d.totalUSD),
+      totalBDT: round2(d.totalBDT),
+      paidBDT: round2(d.paidBDT),
+      dueBDT: round2(d.dueBDT),
+    }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const totals = dailyWise.reduce(
+    (acc, d) => {
+      acc.count += d.count;
+      acc.totalUSD += d.totalUSD;
+      acc.totalBDT += d.totalBDT;
+      acc.paidBDT += d.paidBDT;
+      acc.dueBDT += d.dueBDT;
+      return acc;
+    },
+    { count: 0, totalUSD: 0, totalBDT: 0, paidBDT: 0, dueBDT: 0 },
+  );
+
+  return { from: from || "", to: to || "", dailyWise, totals };
+}
+
 export async function createInvoice(data = {}) {
   const invoicesCollection = await getCollection("invoices");
   const settings = await getSettings();
@@ -768,6 +890,121 @@ export async function listTopups({ search = "", onlyPending = false } = {}) {
 
 export async function listPendingTopups({ search = "" } = {}) {
   return listTopups({ search, onlyPending: true });
+}
+
+/**
+ * Searches the real Sales Entry data (invoice collection) by Ad Account ID or
+ * Ad Account Name and returns every matching sales record together with a
+ * derived list of all distinct dates on which entries were made for the matched
+ * account(s). Used by the Sales page "Search by Ad Account" verification panel
+ * so a user can confirm which dates already have sales entries and spot any
+ * missing or incorrect ones. Read-only — it never mutates invoice documents.
+ */
+export async function searchSalesByAdAccount({ query = "", limit = 0 } = {}) {
+  await ensureInvoicesIndexesOnce();
+  const invoicesCollection = await getCollection("invoices");
+
+  const q = String(query || "").trim();
+  if (!q) {
+    return { query: q, entries: [], dates: [], total: 0 };
+  }
+
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const filter = {
+    $or: [
+      { adAccountId: { $regex: escaped, $options: "i" } },
+      { adAccountName: { $regex: escaped, $options: "i" } },
+    ],
+  };
+
+  const docs = await invoicesCollection
+    .find(filter)
+    .project({ screenshots: 0 })
+    .sort({ date: 1, createdAtRaw: 1 })
+    .toArray();
+
+  const entries = docs.map(({ _id, ...rest }) => mapInvoice(rest));
+
+  // Group entries by date so each calendar date with a sales entry is surfaced
+  // exactly once, with how many entries and which invoice numbers belong to it.
+  const byDate = new Map();
+  for (const entry of entries) {
+    const date = String(entry.date || "").slice(0, 10);
+    if (!date) continue;
+    if (!byDate.has(date)) {
+      byDate.set(date, { date, entries: [], totalUSD: 0, totalBDT: 0 });
+    }
+    const bucket = byDate.get(date);
+    bucket.entries.push(entry);
+    bucket.totalUSD += Number(entry.topupAmountUSD || 0);
+    bucket.totalBDT += Number(entry.totalAmountBDT || entry.paidAmountBDT || 0);
+  }
+
+  const dates = Array.from(byDate.values())
+    .map((d) => ({
+      date: d.date,
+      count: d.entries.length,
+      totalUSD: round2(d.totalUSD),
+      totalBDT: round2(d.totalBDT),
+      invoiceNos: d.entries.map((e) => e.invoiceNo),
+    }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  return {
+    query: q,
+    entries,
+    dates,
+    total: entries.length,
+  };
+}
+
+/**
+ * Fetches only the invoices for a given YYYY-MM month using a server-side date
+ * range and a minimal projection (just the fields reports/aggregations need).
+ * This avoids pulling the entire collection's full documents (which include
+ * heavy `auditLog`/`payments`/`screenshots` blobs) — on the shared,
+ * latency-prone MongoDB that full fetch is pathologically slow (minutes for a
+ * few hundred records). Returns only what the monthly report math requires.
+ */
+export async function getInvoicesByMonth(month) {
+  await ensureInvoicesIndexesOnce();
+  const invoicesCollection = await getCollection("invoices");
+
+  const str = String(month || "").trim();
+  const [y, m] = str.split("-");
+  const year = Number(y);
+  const mon = Number(m);
+  if (!year || !mon) return [];
+
+  const lastDay = new Date(year, mon, 0).getDate();
+  const start = `${str}-01`;
+  const end = `${str}-${String(lastDay).padStart(2, "0")}`;
+
+  const docs = await invoicesCollection
+    .find({ date: { $gte: start, $lte: end } })
+    .project({
+      date: 1,
+      topupAmountUSD: 1,
+      totalAmountBDT: 1,
+      paidAmountBDT: 1,
+      dueAmountBDT: 1,
+      paymentStatus: 1,
+      approvalStatus: 1,
+      paymentVerificationStatus: 1,
+      platform: 1,
+      serviceType: 1,
+      paymentMethod: 1,
+      groupId: 1,
+      adAccountName: 1,
+      customerId: 1,
+      invoiceNo: 1,
+      payments: 1,
+      serviceFee: 1,
+      source: 1,
+    })
+    .toArray();
+
+  return docs.map(({ _id, ...rest }) => mapInvoice(rest));
 }
 
 export async function getInvoiceByNo(invoiceNo) {

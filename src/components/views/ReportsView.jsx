@@ -93,6 +93,46 @@ function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState(null);
 
+  // ====== Date-Wise Sales Report (custom range, shown directly on page) ======
+  const [dateWiseFrom, setDateWiseFrom] = useState('');
+  const [dateWiseTo, setDateWiseTo] = useState('');
+  const [dateWise, setDateWise] = useState(null);
+  const [dateWiseLoading, setDateWiseLoading] = useState(false);
+  const [dateWiseError, setDateWiseError] = useState(null);
+
+  const monthRangeBounds = useMemo(() => {
+    const [y, m] = reportMonth.split('-');
+    const year = Number(y);
+    const mon = Number(m);
+    if (!year || !mon) return { from: '', to: '' };
+    const lastDay = new Date(year, mon, 0).getDate();
+    return { from: `${reportMonth}-01`, to: `${reportMonth}-${String(lastDay).padStart(2, '0')}` };
+  }, [reportMonth]);
+
+  useEffect(() => {
+    setDateWiseFrom(monthRangeBounds.from);
+    setDateWiseTo(monthRangeBounds.to);
+  }, [monthRangeBounds]);
+
+  const loadDateWise = useCallback(async () => {
+    if (!dateWiseFrom || !dateWiseTo) return;
+    setDateWiseLoading(true);
+    setDateWiseError(null);
+    try {
+      const params = new URLSearchParams({ from: dateWiseFrom, to: dateWiseTo });
+      const data = await apiFetch(`/api/reports/daily?${params.toString()}`);
+      setDateWise(data);
+    } catch (err) {
+      setDateWiseError(err);
+    } finally {
+      setDateWiseLoading(false);
+    }
+  }, [dateWiseFrom, dateWiseTo]);
+
+  useEffect(() => {
+    if (dateWiseFrom && dateWiseTo) loadDateWise();
+  }, [dateWiseFrom, dateWiseTo, loadDateWise]);
+
   const loadReport = useCallback(async (month) => {
     setReportLoading(true);
     setReportError(null);
@@ -535,6 +575,85 @@ function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }
               <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
                 <ReportTable columns={channelColumns} rows={channelRows} footer={channelFooter} />
               </div>
+            </ReportCard>
+
+            {/* Date-Wise Sales Report — selectable range, shown directly on page */}
+            <ReportCard icon={CalendarDays} title="Date-Wise Sales Report" subtitle="View the full month's sales day by day on screen — pick any date range">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">From Date</label>
+                  <input
+                    type="date"
+                    value={dateWiseFrom}
+                    max={dateWiseTo || undefined}
+                    onChange={(e) => setDateWiseFrom(e.target.value)}
+                    className="w-full text-xs py-2 px-3 bg-white dark:bg-slate-900 border border-border-blue-light rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">To Date</label>
+                  <input
+                    type="date"
+                    value={dateWiseTo}
+                    min={dateWiseFrom || undefined}
+                    onChange={(e) => setDateWiseTo(e.target.value)}
+                    className="w-full text-xs py-2 px-3 bg-white dark:bg-slate-900 border border-border-blue-light rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={loadDateWise}
+                  disabled={dateWiseLoading || !dateWiseFrom || !dateWiseTo}
+                  className="py-2.5 px-4 rounded-xl bg-brand-blue hover:bg-[#154673] transition-all flex items-center justify-center gap-2 text-white font-semibold text-xs shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {dateWiseLoading ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />}
+                  {dateWiseLoading ? 'Loading…' : 'View Report'}
+                </button>
+              </div>
+
+              {dateWiseError && (
+                <div className="mb-4">
+                  <ErrorBanner error={dateWiseError} onRetry={loadDateWise} title="Could not load date-wise report" />
+                </div>
+              )}
+
+              {!dateWiseError && dateWise && (
+                <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+                  <ReportTable
+                    columns={[
+                      { label: 'Date', align: 'left' },
+                      { label: 'Invoices', align: 'right' },
+                      { label: 'Total (USD)', align: 'right' },
+                      { label: 'Total (BDT)', align: 'right' },
+                      { label: 'Paid (BDT)', align: 'right' },
+                      { label: 'Due (BDT)', align: 'right' },
+                    ]}
+                    rows={dateWise.dailyWise.map(d => [
+                      { text: d.date, className: 'font-mono font-bold text-slate-900' },
+                      { text: d.count.toLocaleString(), className: 'font-semibold text-slate-700' },
+                      { text: formatUSD(d.totalUSD), className: 'font-semibold text-slate-900' },
+                      { text: formatBDT(d.totalBDT), className: 'font-semibold text-slate-900' },
+                      { text: formatBDT(d.paidBDT), className: 'font-semibold text-emerald-600' },
+                      { text: formatBDT(d.dueBDT), className: 'font-semibold text-rose-500' },
+                    ])}
+                    footer={[
+                      { text: 'Range Total', className: '' },
+                      { text: dateWise.totals.count.toLocaleString(), className: '' },
+                      { text: formatUSD(dateWise.totals.totalUSD), className: '' },
+                      { text: formatBDT(dateWise.totals.totalBDT), className: '' },
+                      { text: formatBDT(dateWise.totals.paidBDT), className: '' },
+                      { text: formatBDT(dateWise.totals.dueBDT), className: '' },
+                    ]}
+                  />
+                </div>
+              )}
+
+              {!dateWiseError && !dateWise && dateWiseLoading && (
+                <div className="flex items-center justify-center gap-2 text-slate-400 py-8 text-sm font-semibold">
+                  <Loader2 size={16} className="animate-spin text-brand-orange" />
+                  Loading date-wise report…
+                </div>
+              )}
             </ReportCard>
 
             {/* 4) Day-Wise Sales Report */}
