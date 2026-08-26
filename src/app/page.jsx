@@ -20,7 +20,7 @@ export default function DashboardPage() {
       onRetry={refetchDashboard}
       invoices={app.invoices}
       customers={app.customers}
-      adAccounts={app.adAccounts}
+      adAccounts={app.socialAdAccounts}
       series={app.series}
       activities={activities}
       onNavigate={app.handleNavigate}
