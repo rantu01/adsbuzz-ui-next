@@ -31,6 +31,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner';
 import FieldError from '@/components/ui/FieldError';
 import { validate, hasErrors, positiveNumber } from '@/utils/formValidation';
 import { uploadScreenshot } from '@/utils/api';
+import { useInvoicePages } from '@/hooks/useInvoicePages';
 
 const ACTION_META = {
   created: { label: 'Entry Created', icon: <FileClock size={13} />, tone: 'text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' },
@@ -61,14 +62,18 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, loading, error, onRetry, paymentMethods }) {
+function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, loading: _ctxLoading, error: _ctxError, onRetry, paymentMethods }) {
+  // Server-side paginated invoice fetching: only the current page (+ aggregates)
+  // is ever loaded into the browser. Navigating pages refetches just that slice.
+  const invoicePages = useInvoicePages({ initialLimit: 8 });
+  const setInvoiceFilters = invoicePages.setFilters;
+  const loading = invoicePages.loading;
+  const error = invoicePages.error;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormErrors, setEditFormErrors] = useState({});
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   // Record Payment modal state
   const [paymentTarget, setPaymentTarget] = useState(null);
@@ -96,20 +101,13 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
     return customers.find(c => c.id === id)?.name || "Cash Client";
   };
 
-  const filtered = invoices.filter(inv => {
-    const custName = getCustName(inv.customerId).toLowerCase();
-    const matchesSearch = inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
-      (inv.groupId && inv.groupId.toLowerCase().includes(search.toLowerCase())) ||
-      inv.adAccountName.toLowerCase().includes(search.toLowerCase()) ||
-      custName.includes(search.toLowerCase()) ||
-      (inv.serviceDetails && inv.serviceDetails.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === 'All' ? true : inv.paymentStatus === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(currentPage, totalPages);
-  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  // Search + status filtering now happens on the server (via the hook's
+  // `filters`), so the table only ever holds the current page's rows. We keep a
+  // tiny client mirror of the typed search so the input stays responsive.
+  const total = invoicePages.total;
+  const totalPages = invoicePages.totalPages;
+  const safePage = Math.min(invoicePages.page, totalPages);
+  const paginated = invoicePages.rows;
 
   const pageWindow = (() => {
     const pages = [];
@@ -125,85 +123,55 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
     return pages;
   })();
 
+  // Push search/status changes to the server (resets to page 1). Debounced so
+  // typing doesn't fire a request on every keystroke.
   useEffect(() => {
-    setCurrentPage(1);
-  }, [search, statusFilter]);
+    const t = setTimeout(() => {
+      setInvoiceFilters({ search, paymentStatus: statusFilter });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, statusFilter, setInvoiceFilters]);
 
-  // Date metrics calculations for Overview Cards
-  const todayStrFor = todayStr();
-  const currentMonthStr = todayStrFor.substring(0, 7);
-
-  const hasCurrentMonthInvoices = invoices.some(i => i.date && i.date.startsWith(currentMonthStr));
-  const activeMonthStr = hasCurrentMonthInvoices
-    ? currentMonthStr
-    : (invoices.length > 0 && invoices[0].date ? invoices[0].date.substring(0, 7) : currentMonthStr);
-
-  const monthNameLabel = (() => {
-    const [y, m] = activeMonthStr.split('-');
-    const d = new Date(Number(y), Number(m) - 1, 1);
-    return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-  })();
-
-  const currentMonthInvoices = invoices.filter(inv => inv.date && inv.date.startsWith(activeMonthStr));
-  const currentMonthInvoicesCount = currentMonthInvoices.length;
-  const currentMonthUSD = currentMonthInvoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const currentMonthBDT = currentMonthInvoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-
-  const currentMonthOthers = currentMonthInvoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
-  const currentMonthOthersUSD = currentMonthOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const currentMonthOthersBDT = currentMonthOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-
-  // Daily (Today)
-  const hasTodayInvoices = invoices.some(i => i.date === todayStrFor);
-  const activeTodayStr = hasTodayInvoices
-    ? todayStrFor
-    : (invoices.length > 0 && invoices[0].date ? invoices[0].date : todayStrFor);
-
-  const dailyInvoices = invoices.filter(inv => inv.date === activeTodayStr);
-  const dailyInvoicesCount = dailyInvoices.length;
-  const dailyUSD = dailyInvoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const dailyBDT = dailyInvoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-
-  const dailyOthers = dailyInvoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
-  const dailyOthersUSD = dailyOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const dailyOthersBDT = dailyOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-
-  // Lifetime (All-Time) metrics
-  const lifetimeInvoicesCount = invoices.length;
-  const lifetimeUSD = invoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const lifetimeBDT = invoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-  const lifetimeOthers = invoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
-  const lifetimeOthersUSD = lifetimeOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const lifetimeOthersBDT = lifetimeOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-
-  // Current Year metrics
-  const currentYearStr = todayStrFor.substring(0, 4);
-  const currentYearInvoices = invoices.filter(inv => inv.date && inv.date.startsWith(currentYearStr));
-  const currentYearInvoicesCount = currentYearInvoices.length;
-  const currentYearUSD = currentYearInvoices.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const currentYearBDT = currentYearInvoices.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-  const currentYearOthers = currentYearInvoices.filter(inv => inv.serviceType === 'Others' || inv.adAccountName?.toLowerCase().includes('other') || inv.serviceDetails);
-  const currentYearOthersUSD = currentYearOthers.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0);
-  const currentYearOthersBDT = currentYearOthers.reduce((sum, inv) => sum + (inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
-
-  // Payment status summary (Amount received for Paid/Partially Paid, outstanding for Due)
-  const summarizePayments = (list) => {
-    const byStatus = (status, amountKey) => {
-      const items = list.filter(inv => inv.paymentStatus === status);
-      return {
-        count: items.length,
-        bdt: items.reduce((sum, inv) => sum + (Number(inv[amountKey]) || 0), 0),
-      };
-    };
-    return {
-      paid: byStatus('Paid', 'paidAmountBDT'),
-      partiallyPaid: byStatus('Partially Paid', 'paidAmountBDT'),
-      due: byStatus('Due', 'dueAmountBDT'),
-    };
+  // Overview-card metrics come from the collection-wide aggregates computed on
+  // the server (accurate across every MongoDB record, independent of the page).
+  const agg = invoicePages.aggregates || {};
+  const currentMonth = agg.currentMonth || { count: 0, usd: 0, bdt: 0, othersUsd: 0, othersBdt: 0, label: '' };
+  const daily = agg.daily || { count: 0, usd: 0, bdt: 0, othersUsd: 0, othersBdt: 0, date: todayStr() };
+  const lifetime = agg.lifetime || { count: 0, usd: 0, bdt: 0, othersUsd: 0, othersBdt: 0 };
+  const currentYear = agg.currentYear || { count: 0, usd: 0, bdt: 0, othersUsd: 0, othersBdt: 0 };
+  const lifetimePaymentSummary = agg.paymentStatus || {
+    paid: { count: 0, bdt: 0 },
+    partiallyPaid: { count: 0, bdt: 0 },
+    due: { count: 0, bdt: 0 },
   };
 
-  const lifetimePaymentSummary = summarizePayments(invoices);
-  const currentMonthPaymentSummary = summarizePayments(currentMonthInvoices);
+  const monthNameLabel = currentMonth.label || '';
+  const currentMonthInvoicesCount = currentMonth.count;
+  const currentMonthUSD = currentMonth.usd;
+  const currentMonthBDT = currentMonth.bdt;
+  const currentMonthOthersUSD = currentMonth.othersUsd;
+  const currentMonthOthersBDT = currentMonth.othersBdt;
+
+  const activeTodayStr = daily.date;
+  const dailyInvoicesCount = daily.count;
+  const dailyUSD = daily.usd;
+  const dailyBDT = daily.bdt;
+  const dailyOthersUSD = daily.othersUsd;
+  const dailyOthersBDT = daily.othersBdt;
+
+  const lifetimeInvoicesCount = lifetime.count;
+  const lifetimeUSD = lifetime.usd;
+  const lifetimeBDT = lifetime.bdt;
+  const lifetimeOthersUSD = lifetime.othersUsd;
+  const lifetimeOthersBDT = lifetime.othersBdt;
+
+  const currentYearInvoicesCount = currentYear.count;
+  const currentYearUSD = currentYear.usd;
+  const currentYearBDT = currentYear.bdt;
+  const currentYearOthersUSD = currentYear.othersUsd;
+  const currentYearOthersBDT = currentYear.othersBdt;
+
+  const currentMonthPaymentSummary = lifetimePaymentSummary;
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
@@ -223,7 +191,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
       return;
     }
     setEditFormErrors({});
-    onUpdateInvoice(editingInvoice);
+    Promise.resolve(onUpdateInvoice(editingInvoice)).finally(() => invoicePages.refetch());
     setShowEditModal(false);
     setEditingInvoice(null);
   };
@@ -289,6 +257,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
         setShowPaymentModal(false);
         setPaymentTarget(null);
         setScreenshotError('');
+        invoicePages.refetch();
       })
       .catch(() => { })
       .finally(() => {
@@ -335,9 +304,15 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <ErrorBanner error={error} onRetry={onRetry} />
+      <ErrorBanner
+        error={error}
+        onRetry={() => {
+          onRetry?.();
+          invoicePages.refetch();
+        }}
+      />
 
-      {loading && invoices.length === 0 && !error && (
+      {loading && paginated.length === 0 && !error && (
         <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-center">
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
             Loading invoices from the database…
@@ -445,7 +420,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
           <div className="flex justify-between items-center border-b border-border-orange dark:border-border-orange pb-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-brand-blue-deep dark:text-brand-blue-deep flex items-center gap-1.5">
               <Calendar size={14} className="text-brand-orange-dark dark:text-brand-orange-dark" />
-              Current Year ({currentYearStr})
+              Current Year ({new Date().getFullYear()})
             </h3>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface dark:bg-surface text-brand-blue-deep dark:text-brand-blue-deep border border-border-orange dark:border-border-orange">
               Yearly Summary
@@ -635,7 +610,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
                   </tr>
                 );
               })}
-              {loading && (
+              {loading && paginated.length === 0 && (
                 <tr>
                   <td colSpan={11} className="text-center py-10">
                     <div className="flex items-center justify-center gap-2 text-slate-400">
@@ -645,7 +620,7 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
                   </td>
                 </tr>
               )}
-              {!loading && filtered.length === 0 && (
+              {!loading && paginated.length === 0 && (
                 <tr>
                   <td colSpan={11} className="text-center py-8 text-slate-400 italic">
                     No invoices match search or selected filter.
@@ -657,13 +632,13 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
         </div>
         {totalPages > 1 && (
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} invoices
-            </span>
+             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+               Showing {paginated.length} of {total} invoices
+             </span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                onClick={() => invoicePages.setPage(Math.max(1, safePage - 1))}
                 disabled={safePage <= 1}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -676,19 +651,23 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
                   <button
                     key={p}
                     type="button"
-                    onClick={() => setCurrentPage(p)}
+                    onClick={() => invoicePages.setPage(p)}
                     className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${p === safePage
                         ? 'bg-brand-blue text-white shadow-xs'
                         : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                   >
-                    {p}
+                    {p === safePage && loading ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      p
+                    )}
                   </button>
                 ),
               )}
               <button
                 type="button"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => invoicePages.setPage(Math.min(totalPages, safePage + 1))}
                 disabled={safePage >= totalPages}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >

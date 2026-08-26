@@ -108,6 +108,7 @@ export function AppProvider({ children }) {
     invoices,
     loading: invoicesLoading,
     error: invoicesError,
+    aggregates: invoicesAggregates,
     addInvoice,
     addHistoricalInvoice,
     updateInvoice: rawUpdateInvoice,
@@ -863,11 +864,15 @@ export function AppProvider({ children }) {
     const assignedAccounts = adAccounts.filter(acc => !!acc.assignedCustomer).length;
     const vendorDue = vendors.reduce((sum, v) => sum + v.outstandingBalanceUSD, 0);
 
+    // When the invoices collection has been paginated (the dashboard's primary
+    // numbers come from the server `/api/dashboard` stats), fall back to the
+    // collection-wide aggregates so the fallback stats stay accurate.
+    const agg = invoicesAggregates;
     return {
-      todaySales,
-      monthlySales,
-      pendingTopups,
-      pendingApprovals,
+      todaySales: agg ? agg.paidTodayUsd : todaySales,
+      monthlySales: agg ? agg.paidCurrentMonthUsd : monthlySales,
+      pendingTopups: agg ? agg.pendingTopups : pendingTopups,
+      pendingApprovals: agg ? agg.pendingApprovals : pendingApprovals,
       activeCustomers,
       activeAccounts,
       assignedAccounts,
@@ -875,7 +880,7 @@ export function AppProvider({ children }) {
     };
   };
 
-  const stats = useMemo(computeDashboardStats, [invoices, adAccounts, customers, vendors]);
+  const stats = useMemo(computeDashboardStats, [invoices, invoicesAggregates, adAccounts, customers, vendors]);
 
   const value = {
     darkMode,
@@ -906,6 +911,7 @@ export function AppProvider({ children }) {
     invoices,
     invoicesLoading,
     invoicesError,
+    invoicesAggregates,
     cards,
     cardsError,
     vendors,

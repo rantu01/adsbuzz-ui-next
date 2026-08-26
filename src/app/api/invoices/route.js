@@ -1,11 +1,16 @@
 import { asyncHandler, ok, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody, requirePositiveNumber, optionalString } from "@/utils/validate";
-import { listInvoices, createInvoice } from "@/models/invoiceModel";
-import { getPagination, paginate } from "@/utils/pagination";
+import { createInvoice, queryInvoices, computeInvoiceAggregates } from "@/models/invoiceModel";
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/cache";
 import { getRequestActor } from "@/utils/auditActor";
 
 const CACHE_PREFIX = "GET:/api/invoices";
+
+// Hard upper bound so a bad/abusive `limit` can never pull the whole collection
+// in one shot. `limit=0` is the explicit "give me everything" sentinel used only
+// by the analytics pages (Reports/Insights/Customers/Topups/Dashboard) that
+// still need the full ledger for cross-record math.
+const MAX_PAGE_LIMIT = 200;
 
 export const GET = asyncHandler(async (request) => {
   const key = `${CACHE_PREFIX}:${request.url}`;
@@ -15,13 +20,49 @@ export const GET = asyncHandler(async (request) => {
   }
 
   const { searchParams } = new URL(request.url);
-  const invoices = await listInvoices({
-    search: searchParams.get("search") || "",
-    paymentStatus: searchParams.get("paymentStatus") || "",
-    customerId: searchParams.get("customerId") || "",
-  });
-  const p = paginate(invoices, getPagination(searchParams, { page: 1, limit: 50 }));
-  const payload = { invoices: p.data, total: p.total, page: p.page, limit: p.limit, totalPages: p.totalPages };
+
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") || "1", 10) || 1);
+  const rawLimit = Number.parseInt(searchParams.get("limit") || "20", 10);
+  const limit = rawLimit === 0 ? 0 : Math.min(MAX_PAGE_LIMIT, Math.max(1, rawLimit || 20));
+
+  const search = (searchParams.get("search") || "").trim();
+  const paymentStatus = searchParams.get("paymentStatus") || "";
+  const customerId = searchParams.get("customerId") || "";
+  const adAccountId = searchParams.get("adAccountId") || "";
+
+  // Build the Mongo filter once and let the database do the filtering,
+  // counting, and slicing. This keeps the API payload tiny (one page) and the
+  // DB load minimal (index-backed count + a bounded find).
+  const filter = {};
+  if (paymentStatus && paymentStatus !== "All") filter.paymentStatus = paymentStatus;
+  if (customerId) filter.customerId = customerId;
+  if (adAccountId) filter.adAccountId = adAccountId;
+  if (search) {
+    const q = search.toLowerCase();
+    filter.$or = [
+      { invoiceNo: { $regex: q, $options: "i" } },
+      { adAccountName: { $regex: q, $options: "i" } },
+      { groupId: { $regex: q, $options: "i" } },
+      { customerId: { $regex: q, $options: "i" } },
+      { note: { $regex: q, $options: "i" } },
+    ];
+  }
+
+  // The page slice (filtered + paginated) and the collection-wide aggregates
+  // (unfiltered, for the summary cards) are fetched in parallel.
+  const [pageResult, aggregates] = await Promise.all([
+    queryInvoices({ filter, page, limit }),
+    computeInvoiceAggregates(),
+  ]);
+
+  const payload = {
+    invoices: pageResult.items,
+    total: pageResult.total,
+    page: pageResult.page,
+    limit: pageResult.limit,
+    totalPages: pageResult.totalPages,
+    aggregates,
+  };
   cacheSet(key, payload);
   return ok(payload);
 });

@@ -332,6 +332,171 @@ export async function listInvoices({ search = "", paymentStatus = "", customerId
 }
 
 /**
+ * DB-level paginated invoice query. Unlike `listInvoices` (which pulls the
+ * whole collection into memory), this pushes the filter + skip/limit down to
+ * MongoDB so each request only transfers the slice the caller actually needs.
+ * `limit === 0` is a sentinel meaning "return everything" (used by the
+ * analytics pages that still need the full ledger for cross-record math).
+ */
+export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) {
+  await ensureInvoicesIndexesOnce();
+  const invoicesCollection = await getCollection("invoices");
+
+  const total = await invoicesCollection.countDocuments(filter);
+
+  let data;
+  if (limit === 0) {
+    data = await invoicesCollection
+      .find(filter)
+      .project({ screenshots: 0 })
+      .sort({ createdAtRaw: -1, date: -1 })
+      .toArray();
+  } else {
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 20;
+    data = await invoicesCollection
+      .find(filter)
+      .project({ screenshots: 0 })
+      .sort({ createdAtRaw: -1, date: -1 })
+      .skip((safePage - 1) * safeLimit)
+      .limit(safeLimit)
+      .toArray();
+  }
+
+  const effectiveLimit = limit === 0 ? Math.max(total, 1) : limit;
+  const totalPages = limit === 0 ? 1 : Math.max(1, Math.ceil(total / limit));
+
+  return {
+    items: data,
+    total,
+    page: limit === 0 ? 1 : page,
+    limit: effectiveLimit,
+    totalPages,
+  };
+}
+
+function formatMonthLabel(monthStr) {
+  const [y, m] = String(monthStr || "").split("-");
+  if (!y || !m) return "";
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleString("en-US", { month: "long", year: "numeric" });
+}
+
+function isOtherService(inv) {
+  return (
+    inv.serviceType === "Others" ||
+    (inv.adAccountName || "").toLowerCase().includes("other") ||
+    !!inv.serviceDetails
+  );
+}
+
+function bdtOf(inv) {
+  return Number(inv.totalAmountBDT || inv.paidAmountBDT || 0);
+}
+
+/**
+ * Collection-wide aggregates for the Invoices overview cards and the dashboard
+ * fallback. Computed over the FULL invoice collection (independent of the
+ * list's search/status/page filter) so the summary numbers stay accurate even
+ * though the table only shows one page. Mirrors the exact math the Invoices
+ * view used to do client-side over the entire array.
+ */
+export async function computeInvoiceAggregates() {
+  const invoicesCollection = await getCollection("invoices");
+  const docs = await invoicesCollection
+    .find({})
+    .project({
+      date: 1,
+      topupAmountUSD: 1,
+      totalAmountBDT: 1,
+      paidAmountBDT: 1,
+      dueAmountBDT: 1,
+      paymentStatus: 1,
+      approvalStatus: 1,
+      topupStatus: 1,
+      serviceType: 1,
+      adAccountName: 1,
+      serviceDetails: 1,
+    })
+    .sort({ createdAtRaw: -1, date: -1 })
+    .toArray();
+
+  const today = new Date().toISOString().split("T")[0];
+  const monthPrefix = today.slice(0, 7);
+  const yearPrefix = today.slice(0, 4);
+
+  const hasCurrentMonth = docs.some((i) => i.date && i.date.startsWith(monthPrefix));
+  const hasToday = docs.some((i) => i.date === today);
+  const firstDate = docs[0]?.date || "";
+  const activeMonthStr = hasCurrentMonth ? monthPrefix : firstDate ? firstDate.slice(0, 7) : monthPrefix;
+  const activeTodayStr = hasToday ? today : firstDate || today;
+
+  const sumBucket = (pred) => {
+    let count = 0;
+    let usd = 0;
+    let bdtSum = 0;
+    let othersUsd = 0;
+    let othersBdt = 0;
+    for (const inv of docs) {
+      if (!pred(inv)) continue;
+      count += 1;
+      const u = Number(inv.topupAmountUSD || 0);
+      usd += u;
+      const b = bdtOf(inv);
+      bdtSum += b;
+      if (isOtherService(inv)) {
+        othersUsd += u;
+        othersBdt += b;
+      }
+    }
+    return {
+      count,
+      usd: round2(usd),
+      bdt: round2(bdtSum),
+      othersUsd: round2(othersUsd),
+      othersBdt: round2(othersBdt),
+    };
+  };
+
+  const lifetime = sumBucket(() => true);
+  const currentMonth = sumBucket((i) => i.date && i.date.startsWith(activeMonthStr));
+  const daily = sumBucket((i) => i.date === activeTodayStr);
+  const currentYear = sumBucket((i) => i.date && i.date.startsWith(yearPrefix));
+
+  const paymentBucket = (status, amountKey) => {
+    const items = docs.filter((i) => i.paymentStatus === status);
+    return {
+      count: items.length,
+      bdt: round2(items.reduce((s, i) => s + Number(i[amountKey] || 0), 0)),
+    };
+  };
+
+  return {
+    lifetime,
+    currentMonth: { ...currentMonth, label: formatMonthLabel(activeMonthStr), monthStr: activeMonthStr },
+    daily: { ...daily, date: activeTodayStr },
+    currentYear,
+    paymentStatus: {
+      paid: paymentBucket("Paid", "paidAmountBDT"),
+      partiallyPaid: paymentBucket("Partially Paid", "paidAmountBDT"),
+      due: paymentBucket("Due", "dueAmountBDT"),
+    },
+    pendingApprovals: docs.filter((i) => i.approvalStatus === "Pending").length,
+    pendingTopups: docs.filter((i) => i.topupStatus === "Pending").length,
+    paidTodayUsd: round2(
+      docs
+        .filter((i) => i.date === today && i.paymentStatus === "Paid")
+        .reduce((s, i) => s + Number(i.topupAmountUSD || 0), 0),
+    ),
+    paidCurrentMonthUsd: round2(
+      docs
+        .filter((i) => String(i.date || "").startsWith(monthPrefix) && i.paymentStatus === "Paid")
+        .reduce((s, i) => s + Number(i.topupAmountUSD || 0), 0),
+    ),
+  };
+}
+
+/**
  * Real lifetime + current-month topup totals for a customer, computed from the
  * actual invoice collection (legacy-synced + manual sales). Never hardcoded.
  */

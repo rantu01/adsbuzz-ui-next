@@ -43,6 +43,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { apiFetch } from '@/utils/api';
+import { useInvoicePages } from '@/hooks/useInvoicePages';
 
 const STEP_HEADERS = [
   { id: 1, name: 'Select Customer & Account' },
@@ -96,13 +97,13 @@ function SalesView({
   // must manually pick a Group ID (see "Please select a Group ID" prompt).
   const [groupIdSearch, setGroupIdSearch] = useState('');
 
-  // Build deduplicated list of available Group IDs (from existing customers + sale setups)
+  // Build deduplicated list of available Group IDs (the canonical source is the
+  // customer records — a sale's groupId is always copied from its customer).
   const groupIdOptions = React.useMemo(() => {
     const ids = new Set();
     customers.forEach(c => { if (c.groupId) ids.add(c.groupId); });
-    invoices.forEach(inv => { if (inv.groupId) ids.add(inv.groupId); });
     return Array.from(ids).sort();
-  }, [customers, invoices]);
+  }, [customers]);
 
   // Customers belonging to the selected group
   const customersInGroup = React.useMemo(
@@ -154,12 +155,17 @@ function SalesView({
   // Per-record Copy Invoice feedback
   const [copiedRecord, setCopiedRecord] = useState('');
 
-  // Sales records pagination state
+  // Sales records: server-side paginated via `useInvoicePages` — only the
+  // current page (+ the collection-wide aggregates) is ever loaded into the
+  // browser, so the Sales Entry table no longer pulls the entire invoice
+  // collection down just to render 8 rows.
   const RECORDS_PER_PAGE = 8;
-  const [currentPage, setCurrentPage] = useState(1);
-
-  const totalPages = Math.max(1, Math.ceil(invoices.length / RECORDS_PER_PAGE));
-  const clampedPage = Math.min(currentPage, totalPages);
+  const salesInvoicePages = useInvoicePages({ initialLimit: RECORDS_PER_PAGE });
+  const totalPages = salesInvoicePages.totalPages;
+  const clampedPage = salesInvoicePages.page;
+  const paginatedInvoices = salesInvoicePages.rows;
+  const salesLoading = salesInvoicePages.loading;
+  const salesInvoiceError = salesInvoicePages.error;
 
   // Windowed pagination (same pattern as the invoices page): show the first page,
   // a few pages around the current one, the last page, and collapse the rest with
@@ -177,16 +183,6 @@ function SalesView({
     if (max > 1) pages.push(max);
     return pages;
   })();
-  const paginatedInvoices = invoices.slice(
-    (clampedPage - 1) * RECORDS_PER_PAGE,
-    clampedPage * RECORDS_PER_PAGE
-  );
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   // Checkout State
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId || '');
@@ -361,18 +357,40 @@ function SalesView({
 
   const activeAccountSetup = getConfiguredSetupFor(activeAccount);
 
+  // On-demand fetch of the active account's invoices for the "Topups Since
+  // Assignment" panel. We scope it on the server by customer + adAccount (capped
+  // at 200, which is far beyond any realistic per-account count) instead of
+  // filtering the whole collection in the browser.
+  const [accountInvoices, setAccountInvoices] = useState([]);
+  const [accountInvoicesLoading, setAccountInvoicesLoading] = useState(false);
+  useEffect(() => {
+    if (!activeAccount || !selectedCustomerId) {
+      setAccountInvoices([]);
+      return;
+    }
+    let cancelled = false;
+    setAccountInvoicesLoading(true);
+    const params = new URLSearchParams({
+      customerId: selectedCustomerId,
+      adAccountId: activeAccount.adAccountId,
+      limit: '200',
+    });
+    apiFetch(`/api/invoices?${params.toString()}`)
+      .then((data) => {
+        if (!cancelled) setAccountInvoices(Array.isArray(data.invoices) ? data.invoices : []);
+      })
+      .catch(() => { if (!cancelled) setAccountInvoices([]); })
+      .finally(() => { if (!cancelled) setAccountInvoicesLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeAccount, selectedCustomerId]);
+
   // Topups taken by the selected account AFTER it was assigned to this customer
   const matchingAccountInvoices = React.useMemo(() => {
     if (!activeAccount || !selectedCustomerId) return [];
     const assignedAt = activeAccount.assignedAt ? new Date(activeAccount.assignedAt).getTime() : null;
-    return invoices.filter(inv => {
-      const sameAccount =
-        (inv.adAccountId && inv.adAccountId === activeAccount.adAccountId) ||
-        (inv.adAccountName && inv.adAccountName.toLowerCase() === activeAccount.adAccountName.toLowerCase());
-      if (!sameAccount) return false;
-      // Only topups belonging to this customer
-      if (inv.customerId && inv.customerId !== selectedCustomerId) return false;
-      // Only topups taken after the account was assigned to this customer
+    return accountInvoices.filter(inv => {
+      // accountInvoices is already scoped to this adAccount + customer server-side,
+      // so we only need to enforce the assignment-date boundary locally.
       if (assignedAt) {
         const invTime = inv.createdAtRaw
           ? new Date(inv.createdAtRaw).getTime()
@@ -383,7 +401,7 @@ function SalesView({
       }
       return true;
     });
-  }, [activeAccount, selectedCustomerId, invoices]);
+  }, [activeAccount, selectedCustomerId, accountInvoices]);
 
   useEffect(() => {
     if (activeAccount) {
@@ -794,6 +812,7 @@ function SalesView({
     if (!deleteTarget || !onDeleteInvoice) return;
     try {
       await onDeleteInvoice(deleteTarget.invoiceNo);
+      salesInvoicePages.refetch();
     } catch (err) {
       // The hook/context already surfaced a toast with the error.
     } finally {
@@ -1638,7 +1657,7 @@ function SalesView({
             style={{ backgroundColor: '#F68B2D', color: '#ffffff' }}
           >
             <span style={{ backgroundColor: '#ffffff', color: '#F68B2D' }} className="inline-flex items-center justify-center h-4 w-4 rounded-full text-[10px] font-black">
-              {invoices.length}
+              {salesInvoicePages.total}
             </span>
             Total Entries
           </span>
@@ -1737,7 +1756,7 @@ function SalesView({
                   </tr>
                 );
               })}
-              {loading && (
+              {salesLoading && (
                 <tr>
                   <td colSpan={9} className="text-center py-10">
                     <div className="flex items-center justify-center gap-2 text-slate-400">
@@ -1754,12 +1773,12 @@ function SalesView({
         {totalPages > 1 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Showing {paginatedInvoices.length} of {invoices.length} entries
+              Showing {paginatedInvoices.length} of {salesInvoicePages.total} entries
             </p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => salesInvoicePages.setPage(Math.max(1, clampedPage - 1))}
                 disabled={clampedPage === 1}
                 className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
               >
@@ -1774,7 +1793,7 @@ function SalesView({
                   <button
                     key={p}
                     type="button"
-                    onClick={() => setCurrentPage(p)}
+                    onClick={() => salesInvoicePages.setPage(p)}
                     className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                       p === clampedPage
                         ? 'bg-brand-blue text-white shadow-xs'
@@ -1788,7 +1807,7 @@ function SalesView({
 
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => salesInvoicePages.setPage(Math.min(totalPages, clampedPage + 1))}
                 disabled={clampedPage === totalPages}
                 className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
               >
@@ -1895,6 +1914,7 @@ function SalesView({
 
             try {
               await onUpdateInvoice(payload);
+              salesInvoicePages.refetch();
             } catch (err) {
               // The hook already surfaced a toast with the error.
             } finally {

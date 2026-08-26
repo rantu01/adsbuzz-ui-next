@@ -5,21 +5,19 @@ export function useInvoices(triggerToast) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Collection-wide aggregates (totals/counts) for the dashboard fallback. The
+  // paged views fetch their own aggregates alongside each page.
+  const [aggregates, setAggregates] = useState(null);
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const all = [];
-      let page = 1;
-      const limit = 200;
-      for (;;) {
-        const data = await apiFetch(`/api/invoices?page=${page}&limit=${limit}`);
-        const items = Array.isArray(data.invoices) ? data.invoices : [];
-        if (items.length === 0) break;
-        all.push(...items);
-        if (items.length < limit) break;
-        page += 1;
-      }
-      setInvoices(all);
+      // `limit=0` asks the API for the full ledger in a SINGLE request (no more
+      // page-by-page loop that pulled the entire collection repeatedly). The
+      // analytics pages (Reports/Insights/Customers/Topups/Dashboard) still need
+      // every record for their cross-record math, so this stays a full load.
+      const data = await apiFetch("/api/invoices?limit=0");
+      setInvoices(Array.isArray(data.invoices) ? data.invoices : []);
+      setAggregates(data.aggregates || null);
       setError(null);
     } catch (err) {
       setError(err);
@@ -198,6 +196,7 @@ export function useInvoices(triggerToast) {
     invoices,
     loading,
     error,
+    aggregates,
     addInvoice,
     addHistoricalInvoice,
     updateInvoice,
