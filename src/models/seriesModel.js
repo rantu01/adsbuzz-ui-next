@@ -110,7 +110,7 @@ export async function deleteSeries(seriesId) {
   const existing = await collection.findOne({ seriesId });
   if (!existing) return null;
 
-  const adAccountsCollection = await getCollection("adAccounts");
+  const adAccountsCollection = await getCollection("socialAdAccounts");
   const assignedAdAccount = await adAccountsCollection.findOne({ seriesId });
   if (assignedAdAccount) {
     throw new Error("SERIES_IN_USE");

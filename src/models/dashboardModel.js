@@ -38,7 +38,7 @@ export async function getDashboardStats() {
 
   const [customersCollection, adAccountsCollection, vendorsCollection] = await Promise.all([
     getCollection("customers"),
-    getCollection("adAccounts"),
+    getCollection("socialAdAccounts"),
     getCollection("vendors"),
   ]);
 

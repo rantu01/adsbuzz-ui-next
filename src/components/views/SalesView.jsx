@@ -74,7 +74,6 @@ function auditLogOf(inv) {
 
 function SalesView({
   customers,
-  adAccounts,
   socialAdAccounts = [],
   invoices = [],
   setups = [],
@@ -367,7 +366,7 @@ function SalesView({
 
   // Merge social accounts (loaded from the Ad Account Inventory page) with the main
   // inventory so accounts from BOTH collections can be used in the checkout flow.
-  const allAccounts = useMemo(() => [...(socialAdAccounts || []), ...(adAccounts || [])], [adAccounts, socialAdAccounts]);
+  const allAccounts = useMemo(() => [...(socialAdAccounts || [])], [socialAdAccounts]);
 
   // Accounts assigned to the selected customer (any platform). The platform is
   // determined automatically from the chosen ad account, not selected manually.

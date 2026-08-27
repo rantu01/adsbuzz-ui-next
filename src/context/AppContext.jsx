@@ -13,7 +13,6 @@ import {
   INITIAL_ACTIVITIES,
 } from '@/data/seedData';
 import { useCustomers } from '@/hooks/useCustomers';
-import { useAdAccounts } from '@/hooks/useAdAccounts';
 import { useInvoices } from '@/hooks/useInvoices';
 import { useCards } from '@/hooks/useCards';
 import { useVendors } from '@/hooks/useVendors';
@@ -78,21 +77,6 @@ export function AppProvider({ children }) {
   } = useCustomers(triggerToast);
 
   const {
-    adAccounts,
-    loading: adAccountsLoading,
-    error: adAccountsError,
-    addAdAccount,
-    updateAdAccount: rawUpdateAdAccount,
-    deleteAdAccount: rawDeleteAdAccount,
-    updateAccountStatus: rawUpdateAccountStatus,
-    bulkUpdateStatus: rawBulkUpdateStatus,
-    markAccountSold,
-    assignAdAccount: rawAssignAdAccount,
-    unassignAdAccount: rawUnassignAdAccount,
-    refetch: refetchAdAccounts,
-  } = useAdAccounts(triggerToast);
-
-  const {
     socialAdAccounts,
     loading: socialAdAccountsLoading,
     error: socialAdAccountsError,
@@ -101,8 +85,18 @@ export function AppProvider({ children }) {
     deleteSocialAdAccount: rawDeleteSocialAdAccount,
     assignSocialAdAccount: rawAssignSocialAdAccount,
     unassignSocialAdAccount: rawUnassignSocialAdAccount,
+    updateAccountStatus: rawUpdateSocialAccountStatus,
+    bulkUpdateStatus: rawBulkUpdateSocialStatus,
     refetch: refetchSocialAdAccounts,
   } = useSocialAdAccounts(triggerToast);
+
+  // The entire app reads/writes Ad Account data from the single
+  // `socialAdAccounts` collection. `adAccounts` is kept as a public alias of the
+  // social accounts so existing consumers keep working without duplication.
+  const adAccounts = socialAdAccounts;
+  const adAccountsLoading = socialAdAccountsLoading;
+  const adAccountsError = socialAdAccountsError;
+  const refetchAdAccounts = refetchSocialAdAccounts;
 
   const {
     invoices,
@@ -287,25 +281,25 @@ export function AppProvider({ children }) {
   };
 
   const handleUpdateAdAccount = async (acc) => {
-    const result = await rawUpdateAdAccount(acc);
+    const result = await rawUpdateSocialAdAccount(acc);
     if (result) logActivityFx("Rakibul R.", "Updated Ad Account", `Ad account ${result.adAccountName} updated.`, "account");
     return result;
   };
 
   const handleDeleteAdAccount = async (id) => {
-    const result = await rawDeleteAdAccount(id);
+    const result = await rawDeleteSocialAdAccount(id);
     if (result) logActivityFx("Rakibul R.", "Deleted Ad Account", `Ad account ${result.adAccountName} removed from inventory.`, "account");
     return result;
   };
 
   const handleAssignAdAccount = async (adAccountId, customerId) => {
-    const result = await rawAssignAdAccount(adAccountId, customerId);
+    const result = await rawAssignSocialAdAccount(adAccountId, customerId);
     if (result) logActivityFx("Rakibul R.", "Assigned Ad Account", `${result.adAccountName} assigned to customer ${customerId}.`, "account", customerId);
     return result;
   };
 
   const handleUnassignAdAccount = async (adAccountId, reason) => {
-    const result = await rawUnassignAdAccount(adAccountId, reason);
+    const result = await rawUnassignSocialAdAccount(adAccountId, reason);
     if (result) {
       const reasonText = reason ? ` Reason: ${reason}.` : "";
       logActivityFx(
@@ -341,13 +335,13 @@ export function AppProvider({ children }) {
   };
 
   const handleUpdateAccountStatus = async (id, status) => {
-    const result = await rawUpdateAccountStatus(id, status);
+    const result = await rawUpdateSocialAccountStatus(id, status);
     if (result) logActivityFx("Rakibul R.", "Updated Account Status", `Ad account ${result.adAccountId} set to ${status}.`, "account");
     return result;
   };
 
   const handleBulkUpdateStatus = async (ids, status) => {
-    const result = await rawBulkUpdateStatus(ids, status);
+    const result = await rawBulkUpdateSocialStatus(ids, status);
     if (result) logActivityFx("Rakibul R.", "Bulk Status Update", `${ids?.length || 0} accounts set to ${status}.`, "account");
     return result;
   };
@@ -580,7 +574,7 @@ export function AppProvider({ children }) {
   };
 
   const handleAddAdAccount = (accountData) => {
-    addAdAccount(accountData);
+    addSocialAdAccount(accountData);
     addActivity({
       id: `act-${Date.now()}`,
       time: "Just now",
@@ -1017,7 +1011,6 @@ export function AppProvider({ children }) {
     handleSelectCustomerFromHeader,
     handleSelectAdAccountFromHeader,
     applyCardLoad,
-    markAccountSold,
     applySaleCredit,
     handleNavigate,
     handleQuickAction,

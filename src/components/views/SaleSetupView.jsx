@@ -122,7 +122,6 @@ function SearchableSelect({
 function SaleSetupView({
   setups,
   customers,
-  adAccounts,
   socialAdAccounts = [],
   onAddSetup,
   onUpdateSetup,
@@ -163,7 +162,7 @@ function SaleSetupView({
     .map(c => ({ value: c.groupId, label: c.groupId, sub: c.name }));
 
   // ---- Add-form derived values ----
-  const allAccounts = useMemo(() => [...(socialAdAccounts || []), ...(adAccounts || [])], [socialAdAccounts, adAccounts]);
+  const allAccounts = useMemo(() => [...(socialAdAccounts || [])], [socialAdAccounts]);
 
   const addCustomer = customers.find(c => c.groupId === form.groupId);
   const addCustomerAccounts = addCustomer
@@ -229,7 +228,7 @@ function SaleSetupView({
   }));
   // Always keep the currently saved ad account selectable so it renders correctly.
   if (editSetupData?.adAccountId && !editAccountOptions.some(o => o.value === editSetupData.adAccountId)) {
-    const current = adAccounts.find(a => a.adAccountId === editSetupData.adAccountId);
+    const current = socialAdAccounts.find(a => a.adAccountId === editSetupData.adAccountId);
     editAccountOptions = [
       ...editAccountOptions,
       current

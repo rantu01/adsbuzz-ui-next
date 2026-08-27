@@ -90,7 +90,7 @@ export async function getAdAccountUiByIdentifier(identifier) {
 }
 
 async function getAdAccountByIdentifier(identifier) {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const striped = stripActPrefix(identifier);
   const prefixed = `act_${striped}`;
   let doc = null;
@@ -113,7 +113,7 @@ async function getAdAccountByIdentifier(identifier) {
 }
 
 export async function listAdAccounts() {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const docs = await collection.find({}).sort({ updatedAt: -1 }).toArray();
   const accounts = docs.map(toUiAccount).filter(Boolean);
   logger.info(`listAdAccounts: ${accounts.length} accounts returned.`);
@@ -121,7 +121,7 @@ export async function listAdAccounts() {
 }
 
 export async function createAdAccount(ui) {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const rawId = String(ui.adAccountId || "").trim();
   const legacyId = rawId ? `act_${stripActPrefix(rawId)}` : "";
   const name = String(ui.adAccountName || "").trim() || `Ad Account ${Date.now()}`;
@@ -176,7 +176,7 @@ export async function createAdAccount(ui) {
 }
 
 export async function updateAdAccountById(id, ui) {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const doc = await getAdAccountByIdentifier(id);
   if (!doc) return null;
 
@@ -219,7 +219,7 @@ export async function updateAdAccountById(id, ui) {
 }
 
 export async function updateAdAccountStatus(id, uiStatus) {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const doc = await getAdAccountByIdentifier(id);
   if (!doc) return null;
 
@@ -235,7 +235,7 @@ export async function updateAdAccountStatus(id, uiStatus) {
 
 export async function deleteAdAccount(identifier) {
   if (!identifier) return null;
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const doc = await getAdAccountByIdentifier(identifier);
   if (!doc) return null;
 
@@ -245,7 +245,7 @@ export async function deleteAdAccount(identifier) {
 }
 
 export async function bulkUpdateStatus(ids, uiStatus) {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const resolved = [];
   for (const id of ids) {
     const doc = await getAdAccountByIdentifier(id);
@@ -259,7 +259,7 @@ export async function bulkUpdateStatus(ids, uiStatus) {
 }
 
 export async function markAccountSold(identifier, customerId) {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const doc = await getAdAccountByIdentifier(identifier);
   if (!doc) return null;
 
@@ -288,7 +288,7 @@ export async function markAccountSold(identifier, customerId) {
 }
 
 export async function unassignAccount(identifier, reason = "") {
-  const collection = await getCollection("adAccounts");
+  const collection = await getCollection("socialAdAccounts");
   const doc = await getAdAccountByIdentifier(identifier);
   if (!doc) return null;
 

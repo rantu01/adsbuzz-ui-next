@@ -174,6 +174,85 @@ export function useSocialAdAccounts(triggerToast) {
     [socialAdAccounts, triggerToast],
   );
 
+  const updateAccountStatus = useCallback(
+    async (accountId, status) => {
+      const match = (a) => a._id === accountId || a.adAccountId === accountId;
+      const prevSnapshot = socialAdAccounts
+        .filter(match)
+        .map((a) => ({ id: a._id || a.adAccountId, accountStatus: a.accountStatus }));
+
+      // Optimistic update — reflect the new status immediately, roll back on failure.
+      setSocialAdAccounts((prev) => prev.map((a) => (match(a) ? { ...a, accountStatus: status } : a)));
+
+      try {
+        const data = await apiFetch(`/api/social-ad-accounts/${encodeURIComponent(accountId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ accountStatus: status, statusOnly: true }),
+        });
+        const saved = data.adAccount;
+        setSocialAdAccounts((prev) =>
+          prev.map((a) => (a._id === saved._id || a.adAccountId === saved.adAccountId ? saved : a)),
+        );
+        triggerToast("success", "Account Status Sync", `Account ID ...${String(accountId).slice(-6)} set to ${status}.`);
+        return saved;
+      } catch (err) {
+        setSocialAdAccounts((prev) =>
+          prev.map((a) =>
+            match(a)
+              ? { ...a, accountStatus: prevSnapshot.find((p) => p.id === (a._id || a.adAccountId))?.accountStatus || a.accountStatus }
+              : a,
+          ),
+        );
+        triggerToast("error", "Status Update Failed", getErrorMessage(err));
+        throw err;
+      }
+    },
+    [socialAdAccounts, triggerToast],
+  );
+
+  const bulkUpdateStatus = useCallback(
+    async (accountIds, status) => {
+      const idSet = new Set(accountIds);
+      const prevSnapshot = new Map(
+        socialAdAccounts
+          .filter((a) => idSet.has(a._id) || idSet.has(a.adAccountId))
+          .map((a) => [a._id || a.adAccountId, a.accountStatus]),
+      );
+
+      // Optimistic update for all affected accounts.
+      setSocialAdAccounts((prev) =>
+        prev.map((a) =>
+          idSet.has(a._id) || idSet.has(a.adAccountId) ? { ...a, accountStatus: status } : a,
+        ),
+      );
+
+      try {
+        const data = await apiFetch("/api/social-ad-accounts/bulk-status", {
+          method: "PATCH",
+          body: JSON.stringify({ ids: accountIds, status }),
+        });
+        setSocialAdAccounts((prev) =>
+          prev.map((a) =>
+            idSet.has(a._id) || idSet.has(a.adAccountId) ? { ...a, accountStatus: status } : a,
+          ),
+        );
+        triggerToast("success", "Bulk Action Complete", `Successfully set ${accountIds.length} accounts to ${status}.`);
+        return data;
+      } catch (err) {
+        setSocialAdAccounts((prev) =>
+          prev.map((a) =>
+            idSet.has(a._id) || idSet.has(a.adAccountId)
+              ? { ...a, accountStatus: prevSnapshot.get(a._id || a.adAccountId) || a.accountStatus }
+              : a,
+          ),
+        );
+        triggerToast("error", "Bulk Action Failed", getErrorMessage(err));
+        throw err;
+      }
+    },
+    [socialAdAccounts, triggerToast],
+  );
+
   const refetch = useCallback(() => {
     setLoading(true);
     return fetchSocialAdAccounts();
@@ -188,6 +267,8 @@ export function useSocialAdAccounts(triggerToast) {
     deleteSocialAdAccount,
     assignSocialAdAccount,
     unassignSocialAdAccount,
+    updateAccountStatus,
+    bulkUpdateStatus,
     refetch,
   };
 }

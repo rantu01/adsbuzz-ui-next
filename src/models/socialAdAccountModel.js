@@ -251,3 +251,22 @@ export async function unassignSocialAccount(identifier, reason = "") {
   logger.info(`unassignSocialAccount: ${doc.adAccountName} returned to the available pool.`);
   return toUiAccount(saved);
 }
+
+/**
+ * Bulk-updates the account status for many social ad accounts at once. Mirrors
+ * the bulk status action available on the Ad Account Inventory page.
+ */
+export async function bulkUpdateSocialStatus(ids, uiStatus) {
+  const collection = await getCollection("socialAdAccounts");
+  const resolved = [];
+  for (const id of ids) {
+    const doc = await getSocialAdAccountById(id);
+    if (doc) resolved.push(doc._id);
+  }
+  const nextStatus = String(uiStatus || "").toLowerCase() === "sold" ? "sold" : (uiStatus || "").toLowerCase();
+  const result = await collection.updateMany(
+    { _id: { $in: resolved } },
+    { $set: { accountStatus: uiStatus, status: nextStatus, updatedAt: new Date() } }
+  );
+  return { matched: result.matchedCount, modified: result.modifiedCount };
+}

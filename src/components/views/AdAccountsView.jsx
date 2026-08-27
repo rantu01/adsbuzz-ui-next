@@ -25,7 +25,6 @@ import FieldError from '@/components/ui/FieldError';
 import { validate, hasErrors, required, maxLength } from '@/utils/formValidation';
 
 function AdAccountsView({
-  adAccounts,
   socialAdAccounts = [],
   customers,
   cards,
@@ -842,7 +841,7 @@ function AdAccountsView({
                     const existing =
                       (addDuplicateSource === 'social'
                         ? socialAdAccounts
-                        : adAccounts
+                        : socialAdAccounts
                       ).find(
                         (a) => (a.adAccountId || '').trim() === (addDuplicateError || '').trim(),
                       );

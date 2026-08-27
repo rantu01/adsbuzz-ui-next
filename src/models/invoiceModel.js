@@ -169,7 +169,7 @@ export async function syncLegacyInvoices() {
   const customersCollection = db.collection("customers");
   const balanceLogsCollection = db.collection("balanceLogs");
   const depositsCollection = db.collection("deposits");
-  const adAccountsCollection = db.collection("adAccounts");
+  const adAccountsCollection = db.collection("socialAdAccounts");
   const invoicesCollection = db.collection("invoices");
 
   const customers = await customersCollection.find({ role: "customer" }).toArray();

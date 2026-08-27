@@ -66,7 +66,6 @@ function CustomersView({
   loading = false,
   error,
   onRetry,
-  adAccounts,
   socialAdAccounts = [],
   invoices,
   setups = [],
@@ -130,10 +129,10 @@ function CustomersView({
 
   // Precompute per-customer aggregates once so filtering/rendering avoids repeated
   // O(n) scans of adAccounts/invoices and customers on every render. Social ad
-  // accounts (loaded from the Ad Account Inventory page) are merged in so they
-  // surface in the "Assigned Ad Accounts" tab exactly like main inventory accounts.
+  // accounts (the single source of Ad Account data) are used so they surface in
+  // the "Assigned Ad Accounts" tab exactly like inventory accounts.
   const customerStats = useMemo(() => {
-    const allAccounts = [...(socialAdAccounts || []), ...(adAccounts || [])];
+    const allAccounts = [...(socialAdAccounts || [])];
     const map = {};
     for (const cust of customers) {
       const id = cust.id;
@@ -149,7 +148,7 @@ function CustomersView({
       };
     }
     return map;
-  }, [customers, adAccounts, socialAdAccounts, invoices]);
+  }, [customers, socialAdAccounts, invoices]);
 
   const getCustomerStats = useCallback(
     (custId) => {
@@ -230,11 +229,11 @@ function CustomersView({
   }, []);
 
   const assignableAdAccounts = useMemo(() => {
-    // Unassigned accounts from BOTH the main inventory and the social collection
-    // so accounts loaded on the Ad Account Inventory page are assignable/searchable here.
-    const combined = [...(socialAdAccounts || []), ...(adAccounts || [])];
+    // Unassigned accounts from the social ad accounts collection, so accounts
+    // loaded on the Ad Account Inventory page are assignable/searchable here.
+    const combined = [...(socialAdAccounts || [])];
     return combined.filter(acc => !acc.assignedCustomer);
-  }, [adAccounts, socialAdAccounts]);
+  }, [socialAdAccounts]);
 
   const handleOpenAssignModal = useCallback(() => {
     setAssignTargetAccountId('');

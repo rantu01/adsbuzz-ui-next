@@ -1,7 +1,6 @@
 import { asyncHandler, ok, badRequest, conflict } from "@/utils/http";
 import { readJsonBody, optionalString, requireEnum } from "@/utils/validate";
 import { listSocialAdAccounts, createSocialAdAccount, socialAdAccountExists } from "@/models/socialAdAccountModel";
-import { listAdAccounts } from "@/models/adAccountModel";
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/cache";
 
 const CACHE_PREFIX = "GET:/api/social-ad-accounts";
@@ -37,18 +36,10 @@ export const POST = asyncHandler(async (request) => {
 
   const rawId = (adAccountId || "").trim();
 
-  // Cross-collection duplicate check: the same AD ACCOUNT ID must never exist
-  // in the existing (legacy) ad accounts collection OR in the social ad accounts
-  // collection. If it does, reject and tell the caller to use the existing account.
+  // Duplicate check against the social ad accounts collection: the same AD
+  // ACCOUNT ID must never exist twice. If it does, reject and tell the caller to
+  // edit the existing entry instead of creating a duplicate.
   if (rawId) {
-    const existingMain = await listAdAccounts();
-    const duplicateMain = existingMain.find((a) => (a.adAccountId || "").trim() === rawId);
-    if (duplicateMain) {
-      return conflict(
-        `Ad Account ID ${rawId} already exists in the ad accounts inventory. Please edit the existing account instead of creating a duplicate.`,
-      );
-    }
-
     const duplicateSocial = await socialAdAccountExists(rawId);
     if (duplicateSocial) {
       return conflict(

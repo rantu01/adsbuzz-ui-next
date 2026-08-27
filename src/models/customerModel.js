@@ -42,7 +42,7 @@ export async function migrateLegacyCustomerIds() {
   try {
     const db = await getDb();
     const customersCollection = db.collection("customers");
-    const adAccountsCollection = db.collection("adAccounts");
+    const adAccountsCollection = db.collection("socialAdAccounts");
     const invoicesCollection = db.collection("invoices");
 
     const legacyCustomers = await customersCollection
@@ -653,31 +653,14 @@ export async function applyCustomerCredit(customerId, paidBDT, usd) {
 }
 
 /**
- * Releases every ad account (main inventory + social) still assigned to a
- * deleted customer and auto-terminates the customer's active sale setups, so no
- * dangling references survive the deletion.
+ * Releases every ad account (in the socialAdAccounts collection) still assigned
+ * to a deleted customer and auto-terminates the customer's active sale setups,
+ * so no dangling references survive the deletion.
  */
 export async function freeAdAccountsAssignedTo(customerId, groupId) {
   if (!customerId) return { freed: 0 };
   const db = await getDb();
   const now = new Date();
-
-  const adAccountsCollection = db.collection("adAccounts");
-  const adResult = await adAccountsCollection.updateMany(
-    { assignedCustomer: customerId },
-    {
-      $set: {
-        accountStatus: "Available",
-        status: "paused",
-        assignedCustomer: "",
-        uid: "",
-        assignedBy: null,
-        assignedAt: null,
-        unassignedAt: now,
-        updatedAt: now,
-      },
-    }
-  );
 
   const socialCollection = db.collection("socialAdAccounts");
   const socialResult = await socialCollection.updateMany(
@@ -701,8 +684,8 @@ export async function freeAdAccountsAssignedTo(customerId, groupId) {
   }
 
   return {
-    freed: adResult.modifiedCount + socialResult.modifiedCount,
-    adAccounts: adResult.modifiedCount,
+    freed: socialResult.modifiedCount,
+    adAccounts: socialResult.modifiedCount,
     socialAccounts: socialResult.modifiedCount,
   };
 }
