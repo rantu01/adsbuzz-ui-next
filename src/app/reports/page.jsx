@@ -5,12 +5,14 @@ import ReportsView from '@/components/views/ReportsView';
 
 export default function ReportsPage() {
   const app = useApp();
+  const { invoices, invoicesLoading, handleTriggerExport, handleDownloadAdAccountStatement } = app;
 
   return (
     <ReportsView
-      invoices={app.invoices}
-      onTriggerExport={app.handleTriggerExport}
-      onDownloadAdAccountStatement={app.handleDownloadAdAccountStatement}
+      invoices={invoices}
+      invoicesLoading={invoicesLoading}
+      onTriggerExport={handleTriggerExport}
+      onDownloadAdAccountStatement={handleDownloadAdAccountStatement}
     />
   );
 }

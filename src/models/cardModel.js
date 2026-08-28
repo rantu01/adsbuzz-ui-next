@@ -18,7 +18,7 @@ function sanitize(input = {}) {
   const cardName = String(input.cardName || "").trim();
   const cardType = input.cardType ? String(input.cardType).trim() : "Visa";
   const cardPlatform = input.cardPlatform ? String(input.cardPlatform).trim() : "";
-  const cardInitial = String(input.cardInitial || "").trim().toUpperCase();
+  const cardInitial = String(input.cardInitial || "").trim().toUpperCase().slice(0, 50);
   const status = CARD_STATUS.includes(input.status) ? input.status : "Active";
   const platformId = String(input.platformId || "").trim();
   const walletId = String(input.walletId || "").trim();
@@ -159,7 +159,7 @@ export async function updateCard(id, data) {
     } else if (key === "totalLoadedUSD") {
       patch.totalLoadedUSD = Number(value) > 0 ? Number(value) : 0;
     } else if (key === "cardInitial") {
-      patch.cardInitial = String(value || "").trim().toUpperCase();
+      patch.cardInitial = String(value || "").trim().toUpperCase().slice(0, 50);
     } else if (key === "cardName") {
       patch.cardName = String(value || "").trim();
     } else {

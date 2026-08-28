@@ -79,7 +79,42 @@ function StatusDot({ color }) {
   return <span className="h-2 w-2 rounded-full inline-block" style={{ backgroundColor: color }} />;
 }
 
-function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }) {
+// Shimmering placeholder rows used inside report cards while their data loads.
+function SkeletonRows({ rows = 4 }) {
+  return (
+    <div className="space-y-2" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="h-9 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse"
+          style={{ width: `${100 - (i % 3) * 12}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Standalone skeleton that mimics a ReportCard (same shape) so swapping it for the
+// real content does not cause a layout shift.
+function ReportCardSkeleton({ title, subtitle, rows = 4, icon: Icon = Layers }) {
+  return (
+    <ReportCard icon={Icon} title={title} subtitle={subtitle}>
+      <SkeletonRows rows={rows} />
+    </ReportCard>
+  );
+}
+
+// Inline spinner used next to dropdown labels while option data is loading.
+function DropdownLoadingHint() {
+  return (
+    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-400">
+      <Loader2 size={12} className="animate-spin text-brand-orange" />
+      Loading…
+    </span>
+  );
+}
+
+function ReportsView({ invoices, invoicesLoading = false, onTriggerExport, onDownloadAdAccountStatement }) {
   const [platform, setPlatform] = useState('All');
   const [search, setSearch] = useState('');
   const [statementGroup, setStatementGroup] = useState('');
@@ -451,16 +486,20 @@ function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }
         <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 shadow-xs">
           <Calendar size={14} className="text-brand-orange" />
           <label className="text-[10px] uppercase font-bold text-slate-500">Report Month</label>
-          <select
-            value={reportMonth}
-            onChange={(e) => setReportMonth(e.target.value)}
-            className="text-xs font-bold bg-transparent focus:outline-none cursor-pointer text-slate-800 dark:text-slate-200"
-          >
-            {availableMonths.length === 0 && <option value={reportMonth}>{reportMonth}</option>}
-            {availableMonths.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+          {invoicesLoading ? (
+            <DropdownLoadingHint />
+          ) : (
+            <select
+              value={reportMonth}
+              onChange={(e) => setReportMonth(e.target.value)}
+              className="text-xs font-bold bg-transparent focus:outline-none cursor-pointer text-slate-800 dark:text-slate-200"
+            >
+              {availableMonths.length === 0 && <option value={reportMonth}>{reportMonth}</option>}
+              {availableMonths.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -556,142 +595,149 @@ function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }
           </div>
         </div>
 
-        {!report ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40 p-8 flex items-center justify-center gap-3 text-slate-500 text-sm font-semibold">
-            <Loader2 size={16} className="animate-spin text-brand-orange" />
-            {reportLoading ? 'Preparing report data…' : 'Waiting for report data…'}
-          </div>
+        {/* 1) Platform-Wise Sales Report */}
+        {reportLoading ? (
+          <ReportCardSkeleton title="Platform-Wise Sales Report" subtitle="Sales split across publisher platforms" rows={4} icon={Layers} />
         ) : (
-          <>
-            {/* 1) Platform-Wise Sales Report */}
-            <ReportCard icon={Layers} title="Platform-Wise Sales Report" subtitle="Sales split across publisher platforms">
-              <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
-                <ReportTable columns={platformColumns} rows={platformRows} footer={platformFooter} />
+          <ReportCard icon={Layers} title="Platform-Wise Sales Report" subtitle="Sales split across publisher platforms">
+            <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+              <ReportTable columns={platformColumns} rows={platformRows} footer={platformFooter} />
+            </div>
+          </ReportCard>
+        )}
+
+        {/* 3) Payment Channel-Wise Report */}
+        {reportLoading ? (
+          <ReportCardSkeleton title="Payment Channel-Wise Report" subtitle="Received amounts by bank / mobile wallet channel" rows={3} icon={Landmark} />
+        ) : (
+          <ReportCard icon={Landmark} title="Payment Channel-Wise Report" subtitle="Received amounts by bank / mobile wallet channel">
+            <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+              <ReportTable columns={channelColumns} rows={channelRows} footer={channelFooter} />
+            </div>
+          </ReportCard>
+        )}
+
+        {/* Date-Wise Sales Report — selectable range, shown directly on page (loads independently) */}
+        <ReportCard icon={CalendarDays} title="Date-Wise Sales Report" subtitle="View the full month's sales day by day on screen — pick any date range">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">From Date</label>
+              <input
+                type="date"
+                value={dateWiseFrom}
+                max={dateWiseTo || undefined}
+                onChange={(e) => setDateWiseFrom(e.target.value)}
+                className="w-full text-xs py-2 px-3 bg-white dark:bg-slate-900 border border-border-blue-light rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">To Date</label>
+              <input
+                type="date"
+                value={dateWiseTo}
+                min={dateWiseFrom || undefined}
+                onChange={(e) => setDateWiseTo(e.target.value)}
+                className="w-full text-xs py-2 px-3 bg-white dark:bg-slate-900 border border-border-blue-light rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={loadDateWise}
+              disabled={dateWiseLoading || !dateWiseFrom || !dateWiseTo}
+              className="py-2.5 px-4 rounded-xl bg-brand-blue hover:bg-[#154673] transition-all flex items-center justify-center gap-2 text-white font-semibold text-xs shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {dateWiseLoading ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />}
+              {dateWiseLoading ? 'Loading…' : 'View Report'}
+            </button>
+          </div>
+
+          {dateWiseError && (
+            <div className="mb-4">
+              <ErrorBanner error={dateWiseError} onRetry={loadDateWise} title="Could not load date-wise report" />
+            </div>
+          )}
+
+          {!dateWiseError && dateWise && (
+            <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+              <ReportTable
+                columns={[
+                  { label: 'Date', align: 'left' },
+                  { label: 'Invoices', align: 'right' },
+                  { label: 'Total (USD)', align: 'right' },
+                  { label: 'Total (BDT)', align: 'right' },
+                  { label: 'Paid (BDT)', align: 'right' },
+                  { label: 'Due (BDT)', align: 'right' },
+                ]}
+                rows={dateWise.dailyWise.map(d => [
+                  { text: d.date, className: 'font-mono font-bold text-slate-900' },
+                  { text: d.count.toLocaleString(), className: 'font-semibold text-slate-700' },
+                  { text: formatUSD(d.totalUSD), className: 'font-semibold text-slate-900' },
+                  { text: formatBDT(d.totalBDT), className: 'font-semibold text-slate-900' },
+                  { text: formatBDT(d.paidBDT), className: 'font-semibold text-emerald-600' },
+                  { text: formatBDT(d.dueBDT), className: 'font-semibold text-rose-500' },
+                ])}
+                footer={[
+                  { text: 'Range Total', className: '' },
+                  { text: dateWise.totals.count.toLocaleString(), className: '' },
+                  { text: formatUSD(dateWise.totals.totalUSD), className: '' },
+                  { text: formatBDT(dateWise.totals.totalBDT), className: '' },
+                  { text: formatBDT(dateWise.totals.paidBDT), className: '' },
+                  { text: formatBDT(dateWise.totals.dueBDT), className: '' },
+                ]}
+              />
+            </div>
+          )}
+
+          {!dateWiseError && !dateWise && dateWiseLoading && (
+            <div className="flex items-center justify-center gap-2 text-slate-400 py-8 text-sm font-semibold">
+              <Loader2 size={16} className="animate-spin text-brand-orange" />
+              Loading date-wise report…
+            </div>
+          )}
+        </ReportCard>
+
+        {/* 4) Day-Wise Sales Report */}
+        {reportLoading ? (
+          <ReportCardSkeleton title="Day-Wise Sales Report" subtitle="Daily sales activity for the selected month" rows={6} icon={CalendarDays} />
+        ) : (
+          <ReportCard icon={CalendarDays} title="Day-Wise Sales Report" subtitle="Daily sales activity for the selected month">
+            <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
+              <ReportTable columns={dailyColumns} rows={dailyRows} footer={dailyFooter} />
+            </div>
+          </ReportCard>
+        )}
+
+        {/* 5) Company Expense Summary */}
+        {reportLoading ? (
+          <ReportCardSkeleton title="Company Expense Summary" subtitle="Live expense and vendor ledger in BDT" rows={4} icon={Building2} />
+        ) : (
+          <div className="rounded-2xl border border-border-blue-light bg-surface p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Company Expense Summary</h3>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">Live expense and vendor ledger in BDT</p>
               </div>
-            </ReportCard>
+              <span className="w-fit rounded-full border border-border-orange bg-surface-orange px-3 py-1 text-[11px] font-bold text-[#9a4a05]">
+                Total {formatBDT(company.totalCompanyBDT)}
+              </span>
+            </div>
 
-            {/* 3) Payment Channel-Wise Report */}
-            <ReportCard icon={Landmark} title="Payment Channel-Wise Report" subtitle="Received amounts by bank / mobile wallet channel">
-              <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
-                <ReportTable columns={channelColumns} rows={channelRows} footer={channelFooter} />
-              </div>
-            </ReportCard>
-
-            {/* Date-Wise Sales Report — selectable range, shown directly on page */}
-            <ReportCard icon={CalendarDays} title="Date-Wise Sales Report" subtitle="View the full month's sales day by day on screen — pick any date range">
-              <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">From Date</label>
-                  <input
-                    type="date"
-                    value={dateWiseFrom}
-                    max={dateWiseTo || undefined}
-                    onChange={(e) => setDateWiseFrom(e.target.value)}
-                    className="w-full text-xs py-2 px-3 bg-white dark:bg-slate-900 border border-border-blue-light rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
-                  />
+            <div className="mt-4 overflow-hidden rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60">
+              {companyRows.map(row => (
+                <div key={row.label} className="flex items-center justify-between gap-4 border-b border-border-blue-light px-3 py-3 last:border-b-0">
+                  <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                    <Building2 size={14} className="text-slate-400" />
+                    {row.label}
+                  </span>
+                  <span className="text-right text-xs font-extrabold text-slate-900">{formatBDT(row.value)}</span>
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">To Date</label>
-                  <input
-                    type="date"
-                    value={dateWiseTo}
-                    min={dateWiseFrom || undefined}
-                    onChange={(e) => setDateWiseTo(e.target.value)}
-                    className="w-full text-xs py-2 px-3 bg-white dark:bg-slate-900 border border-border-blue-light rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={loadDateWise}
-                  disabled={dateWiseLoading || !dateWiseFrom || !dateWiseTo}
-                  className="py-2.5 px-4 rounded-xl bg-brand-blue hover:bg-[#154673] transition-all flex items-center justify-center gap-2 text-white font-semibold text-xs shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {dateWiseLoading ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />}
-                  {dateWiseLoading ? 'Loading…' : 'View Report'}
-                </button>
-              </div>
-
-              {dateWiseError && (
-                <div className="mb-4">
-                  <ErrorBanner error={dateWiseError} onRetry={loadDateWise} title="Could not load date-wise report" />
-                </div>
-              )}
-
-              {!dateWiseError && dateWise && (
-                <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
-                  <ReportTable
-                    columns={[
-                      { label: 'Date', align: 'left' },
-                      { label: 'Invoices', align: 'right' },
-                      { label: 'Total (USD)', align: 'right' },
-                      { label: 'Total (BDT)', align: 'right' },
-                      { label: 'Paid (BDT)', align: 'right' },
-                      { label: 'Due (BDT)', align: 'right' },
-                    ]}
-                    rows={dateWise.dailyWise.map(d => [
-                      { text: d.date, className: 'font-mono font-bold text-slate-900' },
-                      { text: d.count.toLocaleString(), className: 'font-semibold text-slate-700' },
-                      { text: formatUSD(d.totalUSD), className: 'font-semibold text-slate-900' },
-                      { text: formatBDT(d.totalBDT), className: 'font-semibold text-slate-900' },
-                      { text: formatBDT(d.paidBDT), className: 'font-semibold text-emerald-600' },
-                      { text: formatBDT(d.dueBDT), className: 'font-semibold text-rose-500' },
-                    ])}
-                    footer={[
-                      { text: 'Range Total', className: '' },
-                      { text: dateWise.totals.count.toLocaleString(), className: '' },
-                      { text: formatUSD(dateWise.totals.totalUSD), className: '' },
-                      { text: formatBDT(dateWise.totals.totalBDT), className: '' },
-                      { text: formatBDT(dateWise.totals.paidBDT), className: '' },
-                      { text: formatBDT(dateWise.totals.dueBDT), className: '' },
-                    ]}
-                  />
-                </div>
-              )}
-
-              {!dateWiseError && !dateWise && dateWiseLoading && (
-                <div className="flex items-center justify-center gap-2 text-slate-400 py-8 text-sm font-semibold">
-                  <Loader2 size={16} className="animate-spin text-brand-orange" />
-                  Loading date-wise report…
-                </div>
-              )}
-            </ReportCard>
-
-            {/* 4) Day-Wise Sales Report */}
-            <ReportCard icon={CalendarDays} title="Day-Wise Sales Report" subtitle="Daily sales activity for the selected month">
-              <div className="rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60 overflow-hidden">
-                <ReportTable columns={dailyColumns} rows={dailyRows} footer={dailyFooter} />
-              </div>
-            </ReportCard>
-
-            {/* 5) Company Expense Summary */}
-            <div className="rounded-2xl border border-border-blue-light bg-surface p-4 shadow-[0_12px_30px_rgba(12,66,117,0.06)]">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Company Expense Summary</h3>
-                  <p className="mt-1 text-[11px] font-semibold text-slate-500">Live expense and vendor ledger in BDT</p>
-                </div>
-                <span className="w-fit rounded-full border border-border-orange bg-surface-orange px-3 py-1 text-[11px] font-bold text-[#9a4a05]">
-                  Total {formatBDT(company.totalCompanyBDT)}
-                </span>
-              </div>
-
-              <div className="mt-4 overflow-hidden rounded-xl border border-border-blue-light bg-white/75 dark:bg-slate-900/60">
-                {companyRows.map(row => (
-                  <div key={row.label} className="flex items-center justify-between gap-4 border-b border-border-blue-light px-3 py-3 last:border-b-0">
-                    <span className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <Building2 size={14} className="text-slate-400" />
-                      {row.label}
-                    </span>
-                    <span className="text-right text-xs font-extrabold text-slate-900">{formatBDT(row.value)}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between gap-4 bg-surface-blue px-3 py-3 border-t border-border-blue-light">
-                  <span className="text-xs font-extrabold text-brand-blue-deep">Total</span>
-                  <span className="text-right text-sm font-black text-brand-blue-deep">{formatBDT(company.totalCompanyBDT)}</span>
-                </div>
+              ))}
+              <div className="flex items-center justify-between gap-4 bg-surface-blue px-3 py-3 border-t border-border-blue-light">
+                <span className="text-xs font-extrabold text-brand-blue-deep">Total</span>
+                <span className="text-right text-sm font-black text-brand-blue-deep">{formatBDT(company.totalCompanyBDT)}</span>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
 
@@ -699,16 +745,26 @@ function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }
         <h3 className="text-sm font-bold text-slate-900 dark:text-white">Monthly Statement Generator</h3>
         <div className="flex flex-col sm:flex-row sm:items-end gap-4">
           <div className="flex-1">
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Select Month</label>
+            <label className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+              Select Month
+              {invoicesLoading && <DropdownLoadingHint />}
+            </label>
             <select
               value={reportMonth}
               onChange={(e) => setReportMonth(e.target.value)}
-              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+              disabled={invoicesLoading}
+              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {availableMonths.length === 0 && <option value={reportMonth}>{reportMonth}</option>}
-              {availableMonths.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
+              {invoicesLoading ? (
+                <option>Loading options…</option>
+              ) : (
+                <>
+                  {availableMonths.length === 0 && <option value={reportMonth}>{reportMonth}</option>}
+                  {availableMonths.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
           <button
@@ -730,28 +786,45 @@ function ReportsView({ invoices, onTriggerExport, onDownloadAdAccountStatement }
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Select Group ID</label>
+            <label className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+              Select Group ID
+              {invoicesLoading && <DropdownLoadingHint />}
+            </label>
             <select
               value={statementGroup}
               onChange={handleStatementGroupChange}
-              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer"
+              disabled={invoicesLoading}
+              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <option value="">All Groups</option>
-              {groupOptions.map(g => (
-                <option key={g} value={g}>{g}</option>
-              ))}
+              {invoicesLoading ? (
+                <option>Loading options…</option>
+              ) : (
+                <>
+                  <option value="">All Groups</option>
+                  {groupOptions.map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">Select Ad Account</label>
+            <label className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+              Select Ad Account
+              {invoicesLoading && <DropdownLoadingHint />}
+            </label>
             <select
               value={statementAdAccount}
               onChange={(e) => setStatementAdAccount(e.target.value)}
-              disabled={!statementGroup}
-              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={invoicesLoading || !statementGroup}
+              className="w-full text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-brand-orange cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <option value="">{statementGroup ? 'Select Ad Account' : 'Select a Group first'}</option>
-              {adAccountOptions.map(opt => (
+              {invoicesLoading ? (
+                <option>Loading options…</option>
+              ) : (
+                <option value="">{statementGroup ? 'Select Ad Account' : 'Select a Group first'}</option>
+              )}
+              {!invoicesLoading && adAccountOptions.map(opt => (
                 <option key={opt.id || opt.name} value={opt.name}>{opt.name}</option>
               ))}
             </select>

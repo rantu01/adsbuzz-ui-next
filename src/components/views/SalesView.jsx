@@ -677,13 +677,25 @@ function SalesView({
   const [histServiceType, setHistServiceType] = useState('Ad Account Topup');
   const [histGroupId, setHistGroupId] = useState('');
   const [histCustomerId, setHistCustomerId] = useState('');
+  // Every payment gateway that is available for selection: the configured
+  // settings payment methods plus any method already recorded against a
+  // sales entry (those recorded via free-text entries).
+  const availablePaymentMethods = React.useMemo(() => {
+    const methods = new Set((paymentMethods || []).map(m => String(m).trim()).filter(Boolean));
+    (invoices || []).forEach(inv => {
+      const method = String(inv.paymentMethod || '').trim();
+      if (method) methods.add(method);
+    });
+    return Array.from(methods);
+  }, [paymentMethods, invoices]);
+
   const [histPlatform, setHistPlatform] = useState('Facebook');
   const [histAdAccountName, setHistAdAccountName] = useState('');
   const [histAdAccountId, setHistAdAccountId] = useState('');
   const [histDollarRate, setHistDollarRate] = useState(Number(defaultDollarRate) > 0 ? Number(defaultDollarRate) : 132);
   const [histTopupUSD, setHistTopupUSD] = useState('');
   const [histPaidBDT, setHistPaidBDT] = useState('');
-  const [histPaymentMethod, setHistPaymentMethod] = useState(paymentMethods[0] ?? '');
+  const [histPaymentMethod, setHistPaymentMethod] = useState(availablePaymentMethods[0] ?? '');
   const [histTopupStatus, setHistTopupStatus] = useState('Successfull');
   const [histNote, setHistNote] = useState('');
 
@@ -705,7 +717,7 @@ function SalesView({
     setHistDollarRate(Number(defaultDollarRate) > 0 ? Number(defaultDollarRate) : 132);
     setHistTopupUSD('');
     setHistPaidBDT('');
-    setHistPaymentMethod(paymentMethods[0] ?? '');
+    setHistPaymentMethod(availablePaymentMethods[0] ?? '');
     setHistTopupStatus('Successfull');
     setHistNote('');
     setHistError('');
@@ -2610,13 +2622,16 @@ function SalesView({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Payment Channel</label>
-              <input
-                type="text"
+              <select
+                required
                 value={histPaymentMethod}
                 onChange={(e) => setHistPaymentMethod(e.target.value)}
-                placeholder="e.g. Wire Transfer"
-                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white"
-              />
+                className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium"
+              >
+                {availablePaymentMethods.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Topup Status</label>

@@ -1,5 +1,5 @@
 'use client';
-import { memo, useState } from 'react';
+import { memo, useState, useMemo } from 'react';
 import { Plus, FileEdit, Trash2 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import StatCard from '@/components/common/StatCard';
@@ -21,6 +21,7 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
   const [newName, setNewName] = useState('');
   const [plat, setPlat] = useState('Facebook');
   const [newStatus, setNewStatus] = useState('Active');
+  const [newSeriesType, setNewSeriesType] = useState('ADS');
 
   const [editSeriesData, setEditSeriesData] = useState(null);
   const [selectedSeriesId, setSelectedSeriesId] = useState(series[0]?.seriesId || '');
@@ -31,6 +32,18 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
   const allAccounts = [...(socialAdAccounts || [])];
   const linkedAccounts = allAccounts ? allAccounts.filter(acc => acc.seriesId === activeSeries?.seriesId && (statusFilter === 'All' || acc.accountStatus === statusFilter)) : [];
 
+  // All distinct Ad Account statuses that actually exist in the system. The
+  // "Associated Ad Accounts" status filter is built dynamically from this list
+  // so any present status (e.g. Available, Sold, Disabled, ...) is selectable.
+  const accountStatusOptions = useMemo(() => {
+    const set = new Set();
+    allAccounts.forEach(acc => {
+      const st = acc.accountStatus;
+      if (st !== undefined && st !== null && st !== '') set.add(String(st));
+    });
+    return Array.from(set).sort();
+  }, [allAccounts]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!newName) return;
@@ -39,13 +52,15 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
       seriesId: sId,
       seriesName: newName,
       platform: plat,
-      status: newStatus
+      status: newStatus,
+      seriesType: newSeriesType
     });
     setSelectedSeriesId(sId);
     setNewName('');
     setNewId('');
     setPlat('Facebook');
     setNewStatus('Active');
+    setNewSeriesType('ADS');
     setShowModal(false);
   };
 
@@ -245,6 +260,7 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-1.5">Platform: <PlatformText platform={activeSeries.platform} className="font-semibold text-xs" /></p>
+                <p className="text-xs text-slate-500 mt-1">Series Type: <span className="font-semibold text-xs">{activeSeries.seriesType === 'NON-ADS' ? 'NON-ADS' : 'ADS'}</span></p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -289,10 +305,9 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
                     className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1"
                   >
                     <option value="All">All</option>
-                    <option value="Active">Active</option>
-                    <option value="Disabled">Disabled</option>
-                    <option value="Sold">Sold</option>
-                    <option value="Terminated">Terminated</option>
+                    {accountStatusOptions.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
                   </select>
                   <span>{linkedAccounts.length}</span>
                 </div>
@@ -359,6 +374,33 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
             </select>
           </div>
           <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Series Type</label>
+            <div className="flex items-center gap-6 mt-1">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="new-series-type"
+                  value="ADS"
+                  checked={newSeriesType === 'ADS'}
+                  onChange={(e) => setNewSeriesType(e.target.value)}
+                  className="accent-brand-blue-deep"
+                />
+                ADS
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="new-series-type"
+                  value="NON-ADS"
+                  checked={newSeriesType === 'NON-ADS'}
+                  onChange={(e) => setNewSeriesType(e.target.value)}
+                  className="accent-brand-blue-deep"
+                />
+                NON-ADS
+              </label>
+            </div>
+          </div>
+          <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Status</label>
             <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 dark:text-white font-medium">
               <option value="Active">Active</option>
@@ -412,6 +454,33 @@ function SeriesView({ series, socialAdAccounts = [], onAddSeries, onUpdateSeries
               <option value="Google">Google</option>
               <option value="Snapchat">Snapchat</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Series Type</label>
+            <div className="flex items-center gap-6 mt-1">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="edit-series-type"
+                  value="ADS"
+                  checked={(editSeriesData?.seriesType ?? 'ADS') === 'ADS'}
+                  onChange={(e) => editSeriesData && setEditSeriesData({ ...editSeriesData, seriesType: e.target.value })}
+                  className="accent-brand-blue-deep"
+                />
+                ADS
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="radio"
+                  name="edit-series-type"
+                  value="NON-ADS"
+                  checked={(editSeriesData?.seriesType ?? 'ADS') === 'NON-ADS'}
+                  onChange={(e) => editSeriesData && setEditSeriesData({ ...editSeriesData, seriesType: e.target.value })}
+                  className="accent-brand-blue-deep"
+                />
+                NON-ADS
+              </label>
+            </div>
           </div>
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Status</label>

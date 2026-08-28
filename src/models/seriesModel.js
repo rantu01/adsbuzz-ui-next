@@ -4,13 +4,15 @@ import { INITIAL_SERIES } from "@/data/seedData";
 
 const SERIES_STATUS = ["Active", "Sold", "Disable", "Need Support", "Available"];
 const SERIES_PLATFORMS = ["Facebook", "TikTok", "Google", "Snapchat"];
+const SERIES_TYPES = ["ADS", "NON-ADS"];
 
 function sanitize(input = {}) {
   const seriesId = String(input.seriesId || "").trim();
   const seriesName = String(input.seriesName || "").trim();
   const platform = SERIES_PLATFORMS.includes(input.platform) ? input.platform : "Facebook";
   const status = SERIES_STATUS.includes(input.status) ? input.status : "Active";
-  return { seriesId, seriesName, platform, status };
+  const seriesType = SERIES_TYPES.includes(input.seriesType) ? input.seriesType : "ADS";
+  return { seriesId, seriesName, platform, status, seriesType };
 }
 
 export async function seedSeries() {
@@ -89,12 +91,13 @@ export async function updateSeries(seriesId, data) {
   if (!existing) return null;
 
   const allowed = Object.keys(data).filter((k) =>
-    ["seriesName", "platform", "status"].includes(k)
+    ["seriesName", "platform", "status", "seriesType"].includes(k)
   );
   const patch = {};
   for (const key of allowed) {
     if (key === "platform") patch.platform = SERIES_PLATFORMS.includes(data[key]) ? data[key] : existing.platform;
     else if (key === "status") patch.status = SERIES_STATUS.includes(data[key]) ? data[key] : existing.status;
+    else if (key === "seriesType") patch.seriesType = SERIES_TYPES.includes(data[key]) ? data[key] : existing.seriesType;
     else patch[key] = String(data[key] || "").trim();
   }
 

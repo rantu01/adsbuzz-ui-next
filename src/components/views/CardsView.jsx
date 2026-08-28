@@ -159,6 +159,11 @@ function CardsView({
   // Get linked ad accounts list
   const linkedAccounts = adAccounts.filter(acc => acc.billingCard === selectedCard?.cardName);
 
+  // Count of ad accounts linked to any given card, derived from the actual
+  // database relationship (billingCard === card.cardName).
+  const getLinkedAccountCount = (card) =>
+    adAccounts.filter(acc => acc.billingCard === card.cardName).length;
+
   const handleCreateCardSubmit = (e) => {
     e.preventDefault();
     const errors = validate(
@@ -310,12 +315,8 @@ function CardsView({
                         <span>Type: <strong className="text-slate-700 dark:text-slate-300">{card.cardType || 'Visa'}</strong></span>
                         <span className="hidden sm:inline">•</span>
                         <span>Platform: <strong className="text-slate-700 dark:text-slate-300">{card.cardPlatform || 'N/A'}</strong></span>
-                        {card.cardWallet && (
-                          <>
-                            <span className="hidden sm:inline">•</span>
-                            <span>Wallet: <strong className="text-slate-700 dark:text-slate-300">{card.cardWallet}</strong></span>
-                          </>
-                        )}
+                        <span className="hidden sm:inline">•</span>
+                        <span>Wallet: <strong className="text-slate-700 dark:text-slate-300">{card.cardWallet || 'N/A'}</strong></span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -354,11 +355,12 @@ Edit
                   {/* Card bottom info */}
                   <div className="mt-8 flex justify-between items-end">
                     <div className="space-y-1">
-                      <p className="text-[10px] uppercase font-bold tracking-wider opacity-50">Total Loaded USD</p>
-                      <p className="text-lg font-bold">${card.totalLoadedUSD.toLocaleString()}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wider opacity-50">Linked Accounts</p>
+                      <p className="text-lg font-bold">{getLinkedAccountCount(card)}</p>
                     </div>
-                    <div className="text-right">
-                      <span className={`text-xs font-bold ${
+                    <div className="text-right ">
+                      
+                      <span className={`inline-block text-xs font-bold ${
                         card.status === 'Active' || card.status === 'Available'
                           ? 'text-emerald-600 dark:text-emerald-400' 
                           : card.status === 'Need Support'
@@ -542,10 +544,11 @@ Edit
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false); setAddFormErrors({}); }}
         title="Register Funding Credit Card"
-        size="sm"
+        size="md"
         variant="animated"
+        scrollable
       >
-        <form onSubmit={handleCreateCardSubmit} className="p-6 space-y-4" id="form-add-card">
+        <form onSubmit={handleCreateCardSubmit} className="p-4 sm:p-6 space-y-4" id="form-add-card">
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Display Name</label>
             <input
@@ -564,8 +567,8 @@ Edit
             <input
               id="add-card-initial"
               type="text"
-              placeholder="e.g. DB"
-              maxLength={2}
+              placeholder="e.g. DB / DBBL Visa"
+              maxLength={50}
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
               value={newCardInitial}
               onChange={(e) => setNewCardInitial(e.target.value)}
@@ -644,10 +647,11 @@ Edit
         isOpen={showEditModal && !!editCardData}
         onClose={() => { setShowEditModal(false); setEditFormErrors({}); }}
         title="Edit Billing Card"
-        size="sm"
+        size="md"
         variant="animated"
+        scrollable
       >
-        <form onSubmit={handleEditCardSubmit} className="p-6 space-y-4" id="form-edit-card">
+        <form onSubmit={handleEditCardSubmit} className="p-4 sm:p-6 space-y-4" id="form-edit-card">
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Display Name</label>
             <input
@@ -665,7 +669,7 @@ Edit
             <input
               id="edit-card-initial"
               type="text"
-              maxLength={2}
+              maxLength={50}
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
               value={editCardData?.cardInitial ?? ''}
               onChange={(e) => editCardData && setEditCardData({ ...editCardData, cardInitial: e.target.value })}
@@ -711,16 +715,6 @@ Edit
             {editCardData?.platformId && wallets.filter(w => w.platformId === editCardData.platformId).length === 0 && (
               <p className="text-[10px] text-amber-500 mt-1">No wallets available for this platform. Add a wallet first.</p>
             )}
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Total Loaded USD ($)</label>
-            <input
-              id="edit-card-loaded"
-              type="number"
-              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-              value={editCardData?.totalLoadedUSD ?? 0}
-              onChange={(e) => editCardData && setEditCardData({ ...editCardData, totalLoadedUSD: parseFloat(e.target.value) || 0 })}
-            />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Status</label>

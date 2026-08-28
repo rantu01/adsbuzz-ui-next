@@ -46,6 +46,7 @@ let legacyInvoiceSyncPromise = null;
 
 const INVOICE_INDEXES = [
   { key: { createdAtRaw: -1, date: -1 }, name: "invoices_createdAt_date" },
+  { key: { date: 1 }, name: "invoices_date_asc" },
   { key: { approvalStatus: 1, createdAtRaw: -1 }, name: "invoices_approval_status" },
   { key: { topupStatus: 1 }, name: "invoices_topup_status" },
   { key: { paymentStatus: 1 }, name: "invoices_payment_status" },
@@ -349,7 +350,7 @@ export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) 
     data = await invoicesCollection
       .find(filter)
       .project({ screenshots: 0 })
-      .sort({ createdAtRaw: -1, date: -1 })
+      .sort({ date: 1 })
       .toArray();
   } else {
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
@@ -357,7 +358,7 @@ export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) 
     data = await invoicesCollection
       .find(filter)
       .project({ screenshots: 0 })
-      .sort({ createdAtRaw: -1, date: -1 })
+      .sort({ date: 1 })
       .skip((safePage - 1) * safeLimit)
       .limit(safeLimit)
       .toArray();
