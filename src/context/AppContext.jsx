@@ -26,6 +26,7 @@ import { useSocialAdAccounts } from '@/hooks/useSocialAdAccounts';
 import { useOfficeExpenses } from '@/hooks/useOfficeExpenses';
 import { useOfficeExpenseEntries } from '@/hooks/useOfficeExpenseEntries';
 import { useOfficeExpenseMonths } from '@/hooks/useOfficeExpenseMonths';
+import { useRefunds } from '@/hooks/useRefunds';
 import { uploadScreenshot, getErrorMessage } from '@/utils/api';
 
 const AppContext = createContext(null);
@@ -199,6 +200,15 @@ export function AppProvider({ children }) {
     updateMonth: rawUpdateOfficeExpenseMonth,
     refetch: refetchOfficeExpenseMonths,
   } = useOfficeExpenseMonths(triggerToast);
+  const {
+    refunds,
+    summary: refundSummary,
+    error: refundsError,
+    addRefund: rawAddRefund,
+    updateRefund: rawUpdateRefund,
+    deleteRefund: rawDeleteRefund,
+    refetch: refetchRefunds,
+  } = useRefunds(triggerToast);
 
   const logActivityFx = (user, action, details, type, customerId) => {
     addActivity({ time: "Just now", user, action, details, type, ...(customerId && { customerId }) });
@@ -484,6 +494,24 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const handleAddRefund = async (refundData) => {
+    const result = await rawAddRefund(refundData);
+    if (result) logActivityFx("Rakibul R.", "Recorded Refund", `৳${Number(result.totalAmountBDT || 0).toLocaleString()} refunded to ${result.groupId}.`, "payment");
+    return result;
+  };
+
+  const handleUpdateRefund = async (refund) => {
+    const result = await rawUpdateRefund(refund);
+    if (result) logActivityFx("Rakibul R.", "Updated Refund", `Refund ${result.id} updated.`, "payment");
+    return result;
+  };
+
+  const handleDeleteRefund = async (id) => {
+    const result = await rawDeleteRefund(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Refund", `Refund ${id} deleted.`, "payment");
+    return result;
+  };
+
   const handleUpdateSaleSetup = async (setup) => {
     const result = await rawUpdateSaleSetup(setup);
     if (result) logActivityFx("Rakibul R.", "Updated Sale Setup", `Setup for ${result.adName} updated.`, "account");
@@ -679,7 +707,6 @@ export function AppProvider({ children }) {
       'Sale Executed Successfully',
       `Invoice ${invoiceNo} generated. ৳${Number(paidAmountBDT).toLocaleString()} settled.`,
     );
-    router.push('/');
   };
 
   const handleAddHistoricalSale = async (saleData) => {
@@ -928,6 +955,9 @@ export function AppProvider({ children }) {
     officeExpenseEntriesError,
     officeExpenseMonths,
     officeExpenseMonthsError,
+    refunds,
+    refundSummary,
+    refundsError,
     stats,
 
     refetchCustomers,
@@ -945,6 +975,7 @@ export function AppProvider({ children }) {
     refetchOfficeExpenses,
     refetchOfficeExpenseEntries,
     refetchOfficeExpenseMonths,
+    refetchRefunds,
 
     toggleTheme,
     triggerToast,
@@ -1001,6 +1032,9 @@ export function AppProvider({ children }) {
     handleDeleteOfficeExpenseEntry,
     handleAddOfficeExpenseMonth,
     handleUpdateOfficeExpenseMonth,
+    handleAddRefund,
+    handleUpdateRefund,
+    handleDeleteRefund,
     handleUpdateSaleSetup,
     addSetup,
     handleUpdateBaseRate,

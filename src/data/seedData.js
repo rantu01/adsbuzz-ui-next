@@ -140,6 +140,16 @@ export const INITIAL_OFFICE_EXPENSE_ENTRIES = [
   { month: "2026-08", date: null, voucherNo: "DV2026080124", category: "Stationaries Expenses", subCategory: "Stationaries Expenses", description: "", amount: 80 },
 ];
 
+export const INITIAL_REFUNDS = [
+  // Current month (2026-08)
+  { date: "2026-08-03", groupId: "GC-BIJOY", adAccountName: "Bijoy FB Primary", adAccountId: "ACT-2201", dollarRate: 132, remainingDollar: 120, paymentMethod: "bKash", note: "Client requested partial refund after campaign pause." },
+  { date: "2026-08-12", groupId: "GC-RUPOSI", adAccountName: "Ruposikonna IG", adAccountId: "ACT-2202", dollarRate: 133, remainingDollar: 80, paymentMethod: "Nagad", note: "Unused balance returned to customer wallet." },
+  { date: "2026-08-20", groupId: "GC-BOOSTPAPA", adAccountName: "BoostPapa TT", adAccountId: "ACT-2203", dollarRate: 132, remainingDollar: 200, paymentMethod: "Bank Transfer", note: "Refund for cancelled top-up." },
+  // Previous month (2026-07)
+  { date: "2026-07-15", groupId: "GC-BIJOY", adAccountName: "Bijoy FB Primary", adAccountId: "ACT-2201", dollarRate: 131, remainingDollar: 150, paymentMethod: "bKash", note: "Monthly reconciliation refund." },
+  { date: "2026-07-28", groupId: "GC-RUPOSI", adAccountName: "Ruposikonna IG", adAccountId: "ACT-2202", dollarRate: 130, remainingDollar: 60, paymentMethod: "Nagad", note: "Refund of unused test budget." },
+];
+
 export const INITIAL_CARDS = [
   { id: "CARD-EBL-1342", cardName: "ADSBUZZ EBL - 1342", cardType: "Visa", cardPlatform: "Rizon", cardInitial: "EB", status: "Active", linkedAccountsCount: 24, usageCount: 520, totalLoadedUSD: 45000 },
   { id: "CARD-EBL-2802", cardName: "MD EBL - 2802", cardType: "Mastercard", cardPlatform: "Payoneer", cardInitial: "ME", status: "Active", linkedAccountsCount: 15, usageCount: 310, totalLoadedUSD: 28000 },
