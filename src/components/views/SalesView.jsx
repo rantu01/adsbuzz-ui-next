@@ -293,6 +293,7 @@ function SalesView({
   // Calculations State
   const [dollarRate, setDollarRate] = useState(132);
   const [topupAmountUSD, setTopupAmountUSD] = useState('');
+  const [othersTotalAmount, setOthersTotalAmount] = useState('');
   const [totalBDT, setTotalBDT] = useState(0);
   const [paidBDT, setPaidBDT] = useState('');
   const [dueBDT, setDueBDT] = useState(0);
@@ -300,6 +301,8 @@ function SalesView({
   // Payment Details State
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [topupStatus, setTopupStatus] = useState('Successfull');
+  const [workingStatus, setWorkingStatus] = useState('Assigned');
+  const [assignEmployee, setAssignEmployee] = useState('');
   const [approvalStatus, setApprovalStatus] = useState('Pending');
   const [noteText, setNoteText] = useState('');
 
@@ -391,6 +394,19 @@ function SalesView({
     return { index, byGroup };
   }, [setups]);
 
+  // Active "Others Sale Setup" records keyed by groupId. When the service
+  // type is "Others", the configured service fee and details from this
+  // lookup are applied to the sale entry.
+  const othersSetupByGroup = useMemo(() => {
+    const map = new Map();
+    (setups || []).forEach((s) => {
+      if (s.serviceType !== 'Others Sale Setup' || s.status !== 'Active') return;
+      const key = s.groupId;
+      if (!map.has(key)) map.set(key, s);
+    });
+    return map;
+  }, [setups]);
+
   // The configured Sales Setup for an account: exact customer-group match wins,
   // otherwise fall back to any active setup for that account.
   const getConfiguredSetupFor = useCallback(
@@ -404,6 +420,16 @@ function SalesView({
       return index.get(acc.adAccountId) || null;
     },
     [saleSetupByAccount, activeCustomer?.groupId],
+  );
+
+  // The configured Others Sale Setup for the selected group, used when
+  // serviceType is "Others" to obtain the service fee and details.
+  const getConfiguredOthersSetupForGroup = useCallback(
+    (gid) => {
+      if (!gid) return null;
+      return othersSetupByGroup.get(gid) || null;
+    },
+    [othersSetupByGroup],
   );
 
   // Effective dollar rate for an account: the Sale Setup configured rate wins
@@ -489,11 +515,39 @@ function SalesView({
     }
   }, [selectedAccountId, activeAccount, activeAccountSetup]);
 
-  // Handle live calculations
+  // Look up the "Others Sale Setup" for the currently selected group so
+  // that the service fee and details from the setup are available in the
+  // sale flow.
+  const othersSetup = useMemo(
+    () => (serviceType === 'Others' ? getConfiguredOthersSetupForGroup(groupIdCode) : null),
+    [serviceType, groupIdCode, getConfiguredOthersSetupForGroup],
+  );
+
+  // When serviceType is "Others", totalBDT is driven by the service fee
+  // from the Others Sale Setup instead of topupAmountUSD × dollarRate.
   useEffect(() => {
-    const total = Math.round(topupAmountUSD * dollarRate * 100) / 100;
-    setTotalBDT(total);
-  }, [topupAmountUSD, dollarRate]);
+    if (serviceType === 'Others') {
+      setTotalBDT(Math.round(Number(othersTotalAmount || 0) * 100) / 100);
+    } else {
+      const total = Math.round(topupAmountUSD * dollarRate * 100) / 100;
+      setTotalBDT(total);
+    }
+  }, [topupAmountUSD, dollarRate, serviceType, othersTotalAmount]);
+
+  useEffect(() => {
+    if (serviceType === 'Others') {
+      const configuredAmount = Number(othersSetup?.serviceFee);
+      setOthersTotalAmount(configuredAmount > 0 ? Math.round(configuredAmount * 100) / 100 : '');
+    }
+  }, [serviceType, othersSetup]);
+
+  // Handle live calculations (skip when serviceType is Others — totalBDT is driven by serviceFee)
+  useEffect(() => {
+    if (serviceType !== 'Others') {
+      const total = Math.round(topupAmountUSD * dollarRate * 100) / 100;
+      setTotalBDT(total);
+    }
+  }, [topupAmountUSD, dollarRate, serviceType]);
 
   useEffect(() => {
     const due = Math.round((totalBDT - paidBDT) * 100) / 100;
@@ -531,7 +585,7 @@ function SalesView({
         setValidationError('Please select a customer before continuing.');
         return;
       }
-      if (!selectedAccountId) {
+      if (serviceType !== 'Others' && !selectedAccountId) {
         setValidationError('Please select a target ad account before continuing.');
         return;
       }
@@ -539,7 +593,11 @@ function SalesView({
     }
 
     if (currentStep === 2) {
-      if (!topupAmountUSD || topupAmountUSD <= 0) {
+      if (serviceType === 'Others' && (!othersTotalAmount || othersTotalAmount <= 0)) {
+        setValidationError('Please enter a valid total amount (greater than 0).');
+        return;
+      }
+      if (serviceType !== 'Others' && (!topupAmountUSD || topupAmountUSD <= 0)) {
         setValidationError('Please enter a valid amount the customer paid (greater than 0).');
         return;
       }
@@ -592,14 +650,18 @@ function SalesView({
           setValidationError('Please select a customer before continuing.');
           return;
         }
-        if (!selectedAccountId) {
+        if (serviceType !== 'Others' && !selectedAccountId) {
           setValidationError('Please select a target ad account before continuing.');
           return;
         }
       }
 
       if (tempStep === 2) {
-        if (!topupAmountUSD || topupAmountUSD <= 0) {
+        if (serviceType === 'Others' && (!othersTotalAmount || othersTotalAmount <= 0)) {
+          setValidationError('Please enter a valid total amount (greater than 0).');
+          return;
+        }
+        if (serviceType !== 'Others' && (!topupAmountUSD || topupAmountUSD <= 0)) {
           setValidationError('Please enter a valid amount the customer paid (greater than 0).');
           return;
         }
@@ -629,24 +691,31 @@ function SalesView({
       return;
     }
     if (!canSubmit) return;
-    if (!selectedCustomerId || !selectedAccountId) return;
+    if (!selectedCustomerId || (serviceType !== 'Others' && !selectedAccountId)) return;
 
     onSubmitSale({
-      platform,
+      platform: serviceType === 'Others' ? undefined : platform,
       date: saleDate || undefined,
       customerId: selectedCustomerId,
       groupId: groupIdCode,
       serviceType,
-      adAccountName: activeAccount?.adAccountName || "Unknown Account",
-      adAccountId: selectedAccountId,
-      dollarRate,
-      topupAmountUSD,
+      adAccountName: serviceType === 'Others' ? undefined : (activeAccount?.adAccountName || "Unknown Account"),
+      adAccountId: serviceType === 'Others' ? undefined : selectedAccountId,
+      ...(serviceType === 'Others'
+        ? {
+            workingStatus,
+            assignEmployee: assignEmployee.trim() || undefined,
+          }
+        : {
+            dollarRate,
+            topupAmountUSD,
+            topupStatus,
+          }),
       totalAmountBDT: totalBDT,
       paidAmountBDT: Number.isFinite(paidBDT) ? paidBDT : 0,
       dueAmountBDT: Number.isFinite(dueBDT) ? dueBDT : 0,
       paymentStatus: dueBDT <= 0 ? 'Paid' : paidBDT > 0 ? 'Partially Paid' : 'Due',
       paymentMethod,
-      topupStatus,
       approvalStatus,
       paymentScreenshot,
       screenshotName: screenshotName || undefined,
@@ -655,6 +724,8 @@ function SalesView({
         name: s.name,
         source: 'payment',
       })),
+      serviceDetails: serviceType === 'Others' ? (othersSetup?.service || '') : undefined,
+      serviceFee: serviceType === 'Others' && othersSetup ? Number(othersSetup.serviceFee) : undefined,
       note: noteText || undefined
     });
 
@@ -662,7 +733,10 @@ function SalesView({
     setCurrentStep(1);
     setSaleDate('');
     setTopupAmountUSD('');
+    setOthersTotalAmount('');
     setPaidBDT('');
+    setWorkingStatus('Assigned');
+    setAssignEmployee('');
     setNoteText('');
     setPaymentScreenshots([]);
     setScreenshotError('');
@@ -815,6 +889,13 @@ function SalesView({
         topupStatus: histTopupStatus,
         approvalStatus: 'Approved',
         note: histNote.trim() || undefined,
+        ...(histServiceType === 'Others' && (() => {
+          const histOthersSetup = othersSetupByGroup.get(histGroupId) || null;
+          return {
+            serviceDetails: histOthersSetup?.service || undefined,
+            serviceFee: histOthersSetup ? Number(histOthersSetup.serviceFee) : undefined,
+          };
+        })()),
       });
       setShowHistModal(false);
       resetHistForm();
@@ -838,8 +919,9 @@ function SalesView({
       `Invoice No: ${invNo}`,
       `Group ID: ${groupIdCode || ''}`,
       `Platform Name: ${activeAccount?.platform || ''}`,
-      `Ad Account Name: ${activeAccount?.adAccountName || ''}`,
-      `Ad Account ID: ${activeAccount?.adAccountId || ''}`,
+      ...(serviceType === 'Others' && othersSetup
+        ? [`Service: ${othersSetup.service || ''}`, `Service Fee (BDT): ৳${(othersSetup.serviceFee || 0).toLocaleString()}`]
+        : [`Ad Account Name: ${activeAccount?.adAccountName || ''}`, `Ad Account ID: ${activeAccount?.adAccountId || ''}`]),
       `USD Dollar Rate: ${dollarRate || 0}`,
       `Amount in USD: ${topupAmountUSD || 0}`,
       `Amount in BDT: ${totalBDT || 0}`,
@@ -864,13 +946,15 @@ function SalesView({
   // "Copy Invoice" action in the Sales Entry Records table can be used from the
   // table without relying on the checkout state.
   const buildRecordInvoiceText = (inv) => {
+    const isOther = inv.serviceType === 'Others' || !!inv.serviceDetails;
     return [
       `Date: ${inv.date || ''}`,
       `Invoice No: ${inv.invoiceNo || ''}`,
       `Group ID: ${inv.groupId || ''}`,
       `Platform Name: ${inv.platform || ''}`,
-      `Ad Account Name: ${inv.adAccountName || ''}`,
-      `Ad Account ID: ${inv.adAccountId || ''}`,
+      ...(isOther
+        ? [`Service: ${inv.serviceDetails || inv.adAccountName || ''}`, `Service Fee (BDT): ৳${Number(inv.serviceFee || inv.totalAmountBDT || 0).toLocaleString()}`]
+        : [`Ad Account Name: ${inv.adAccountName || ''}`, `Ad Account ID: ${inv.adAccountId || ''}`]),
       `USD Dollar Rate: ${inv.dollarRate || 0}`,
       `Amount in USD: ${inv.topupAmountUSD || 0}`,
       `Amount in BDT: ${inv.totalAmountBDT || 0}`,
@@ -1085,7 +1169,7 @@ function SalesView({
                 </div>
 
                 {/* 3. Client Information — resolved automatically from the selected Group ID */}
-                <div className="space-y-4">
+                {serviceType !== 'Others' && <div className="space-y-4">
                   {activeCustomer ? (
                     <div className="p-4 rounded-xl border border-blue-50 dark:border-blue-950/20 bg-blue-50/20 dark:bg-blue-950/10 space-y-3">
                       <div className="flex items-center justify-between">
@@ -1129,10 +1213,10 @@ function SalesView({
                       </p>
                     </div>
                   )}
-                </div>
+                </div>}
 
                 {/* 4. Target Ad Account (assigned to this customer only) */}
-                <div className="space-y-4">
+                {serviceType !== 'Others' && <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Ad Account</label>
                     {customerAccounts.length === 0 ? (
@@ -1203,13 +1287,43 @@ function SalesView({
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })()}
-                </div>
+                    </div>
+                  );
+                })()}
 
-                </motion.div>
-            )}
+                {/* Others Sale Setup Info */}
+                 {serviceType === 'Others' && othersSetup && (
+                   <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 space-y-2 text-[11px] bg-amber-50/40 dark:bg-amber-950/10">
+                     <div className="flex justify-between items-center pb-1.5 border-b border-amber-200/80 dark:border-amber-800/80">
+                       <span className="text-amber-800 dark:text-amber-300 font-medium">Service</span>
+                       <span className="font-bold text-amber-950 dark:text-amber-100">{othersSetup.service}</span>
+                     </div>
+                     <div className="flex justify-between items-center pb-1.5 border-b border-amber-200/80 dark:border-amber-800/80">
+                       <span className="text-amber-800 dark:text-amber-300 font-medium">Service Details</span>
+                       <span className="font-bold text-amber-950 dark:text-amber-100">{othersSetup.serviceDetails || '—'}</span>
+                     </div>
+                     <div className="flex justify-between items-center pb-1.5 border-b border-amber-200/80 dark:border-amber-800/80">
+                       <span className="text-amber-800 dark:text-amber-300 font-medium">Service Fee (BDT ৳)</span>
+                       <span className="font-bold text-amber-700 dark:text-amber-300">৳{(othersSetup.serviceFee || 0).toLocaleString()}</span>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* Others Sale Setup Info (when group selected but no active setup yet) */}
+                 {serviceType === 'Others' && !othersSetup && groupIdCode && (
+                   <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 space-y-2 text-[11px] bg-amber-50/40 dark:bg-amber-950/10">
+                     <div className="flex justify-between items-center pb-1.5 border-b border-amber-200/80 dark:border-amber-800/80">
+                       <span className="text-amber-800 dark:text-amber-300 font-medium">Service Fee</span>
+                       <span className="font-bold text-amber-700 dark:text-amber-300">৳0.00</span>
+                     </div>
+                     <p className="text-[10px] text-amber-600 dark:text-amber-400">No active Others Sale Setup found for this Group ID. Please configure one on the Sale Setup page.</p>
+                   </div>
+                 )}
+
+                 </div>}
+
+                 </motion.div>
+             )}
 
             {/* Step 2: Configure Payment */}
             {currentStep === 2 && (
@@ -1225,24 +1339,26 @@ function SalesView({
 
                 <div className="space-y-4">
 
-                  {/* Top inputs: Customer Paid + Dollar Rate + Customer Will Pay (BDT) + Payment Channel + Paid (BDT) + Topup Status */}
+                  {/* Payment fields vary by service type; account topups retain their existing fields. */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">TOPUP AMOUNT (USD)</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{serviceType === 'Others' ? 'TOTAL AMOUNT (BDT)' : 'TOPUP AMOUNT (USD)'}</label>
                       <div className="relative">
                         <input
-                          id="checkout-amount-usd"
+                          id={serviceType === 'Others' ? 'checkout-total-amount' : 'checkout-amount-usd'}
                           type="number"
                           required
                           min={1}
                           className="w-full text-xs pl-8 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
-                          value={topupAmountUSD || ''}
-                          onChange={(e) => setTopupAmountUSD(Number(e.target.value))}
+                          value={serviceType === 'Others' ? (othersTotalAmount || '') : (topupAmountUSD || '')}
+                          onChange={(e) => serviceType === 'Others'
+                            ? setOthersTotalAmount(Number(e.target.value))
+                            : setTopupAmountUSD(Number(e.target.value))}
                         />
-                        <span className="absolute left-3 top-3 text-slate-400 text-xs font-bold">$</span>
+                        <span className="absolute left-3 top-3 text-slate-400 text-xs font-bold">{serviceType === 'Others' ? '৳' : '$'}</span>
                       </div>
                     </div>
-                    <div>
+                    {serviceType !== 'Others' && <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Dollar Rate (BDT/USD)</label>
                       <input
                         id="checkout-dollar-rate"
@@ -1253,7 +1369,7 @@ function SalesView({
                         className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-xl focus:outline-none font-bold cursor-not-allowed"
                         value={dollarRate}
                       />
-                    </div>
+                    </div>}
                     <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">AMOUNT TO PAY (BDT)</label>
                       <div className="relative">
@@ -1267,7 +1383,7 @@ function SalesView({
                         />
                         <span className="absolute left-3 top-3 text-slate-400 text-xs font-bold">৳</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 mt-1 block">Auto-calculated: USD x Dollar Rate</span>
+                      <span className="text-[10px] text-slate-400 mt-1 block">{serviceType === 'Others' ? 'Total amount for this service' : 'Auto-calculated: USD x Dollar Rate'}</span>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Payment Channel</label>
@@ -1318,20 +1434,42 @@ function SalesView({
                       </div>
                     </div>
 
-                    {/* Topup Status — sits directly under Payment Channel */}
+                    {/* Working Status / Topup Status */}
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Topup Status</label>
-                      <select
-                        id="checkout-topup-status"
-                        className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
-                        value={topupStatus}
-                        onChange={(e) => setTopupStatus(e.target.value)}
-                      >
-                          <option value="Successfull">Successful</option>
-                          <option value="NotYet">NOT YET</option>
-                          <option value="Due">Due</option>
-                      </select>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{serviceType === 'Others' ? 'Working Status' : 'Topup Status'}</label>
+                      {serviceType === 'Others' ? (
+                        <select
+                          id="checkout-working-status"
+                          className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                          value={workingStatus}
+                          onChange={(e) => setWorkingStatus(e.target.value)}
+                        >
+                          <option value="Assigned">Assigned</option>
+                          <option value="In Progress">In Progress</option>
+                        </select>
+                      ) : (
+                        <select
+                          id="checkout-topup-status"
+                          className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                          value={topupStatus}
+                          onChange={(e) => setTopupStatus(e.target.value)}
+                        >
+                            <option value="Successfull">Successful</option>
+                            <option value="NotYet">NOT YET</option>
+                            <option value="Due">Due</option>
+                        </select>
+                      )}
                     </div>
+                    {serviceType === 'Others' && <div>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Assign Employee (Not Required)</label>
+                      <input
+                        id="checkout-assign-employee"
+                        type="text"
+                        className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                        value={assignEmployee}
+                        onChange={(e) => setAssignEmployee(e.target.value)}
+                      />
+                    </div>}
                   </div>
 
                   {/* Payment Screenshots — up to 3 (at least 1 required) */}
@@ -1474,52 +1612,81 @@ function SalesView({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue">
-                    <div>
-                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Target Ad Account</p>
-                      <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">{activeAccount?.adAccountName || 'N/A'}</p>
-                      <p className="text-xs font-mono font-medium text-brand-blue-deep/70 dark:text-brand-blue-deep/70 mt-0.5">ID: {activeAccount?.adAccountId}</p>
-                    </div>
-                    <div>
-                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Billing BM Hub</p>
-                      <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">{activeAccount?.bmName || 'AdsBuzz Partner'}</p>
-                    </div>
+                   <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue">
+                     <div>
+                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">
+                         {serviceType === 'Others' ? 'Service' : 'Target Ad Account'}
+                       </p>
+                       <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">
+                         {serviceType === 'Others' ? (othersSetup?.service || 'N/A') : (activeAccount?.adAccountName || 'N/A')}
+                       </p>
+                       <p className="text-xs font-mono font-medium text-brand-blue-deep/70 dark:text-brand-blue-deep/70 mt-0.5">
+                         {serviceType === 'Others'
+                           ? (othersSetup?.serviceDetails ? `Fee: ৳${(othersSetup.serviceFee || 0).toLocaleString()}` : '')
+                           : `ID: ${activeAccount?.adAccountId}`}
+                       </p>
+                     </div>
+                     {serviceType !== 'Others' && <div>
+                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Billing BM Hub</p>
+                       <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">{activeAccount?.bmName || 'AdsBuzz Partner'}</p>
+                     </div>}
+                   </div>
+
+                  <div className={`grid ${serviceType === 'Others' ? 'grid-cols-2' : 'grid-cols-3'} gap-3 text-xs pt-4 border-t border-border-blue dark:border-border-blue text-center`}>
+                    {serviceType === 'Others' ? (
+                      <div className="bg-surface-orange dark:bg-surface-orange p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
+                        <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">TOTAL AMOUNT</p>
+                        <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">৳{totalBDT.toLocaleString()}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="bg-surface-orange dark:bg-surface-orange p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
+                          <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">USD TOP-UP</p>
+                          <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${topupAmountUSD}</p>
+                        </div>
+                        <div className="bg-surface-green dark:bg-surface-green p-3.5 rounded-xl border border-border-green dark:border-border-green shadow-xs">
+                          <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">DOLLAR RATE</p>
+                          <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">৳{dollarRate}</p>
+                        </div>
+                        <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue-light dark:border-border-blue-light shadow-xs">
+                          <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">TOTAL BDT</p>
+                          <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">৳{totalBDT.toLocaleString()}</p>
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3 text-xs pt-4 border-t border-border-blue dark:border-border-blue text-center">
-                    <div className="bg-surface-orange dark:bg-surface-orange p-3.5 rounded-xl border border-border-orange dark:border-border-orange shadow-xs">
-                      <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">USD TOP-UP</p>
-                      <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">${topupAmountUSD}</p>
-                    </div>
-                    <div className="bg-surface-green dark:bg-surface-green p-3.5 rounded-xl border border-border-green dark:border-border-green shadow-xs">
-                      <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">DOLLAR RATE</p>
-                      <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">৳{dollarRate}</p>
-                    </div>
-                    <div className="bg-surface dark:bg-surface p-3.5 rounded-xl border border-border-blue-light dark:border-border-blue-light shadow-xs">
-                      <p className="text-[10px] text-brand-blue-deep/75 dark:text-brand-blue-deep/75 uppercase tracking-wider font-extrabold">TOTAL BDT</p>
-                      <p className="text-base sm:text-lg font-black text-brand-blue-deep dark:text-brand-blue-deep mt-1">৳{totalBDT.toLocaleString()}</p>
-                    </div>
-                  </div>
+                   {serviceType === 'Others' && othersSetup && (
+                     <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-amber-200/40 dark:border-amber-800/40">
+                       <div>
+                         <p className="text-amber-700 dark:text-amber-300 font-semibold">Service</p>
+                         <p className="font-extrabold text-sm text-amber-950 dark:text-amber-100 mt-0.5">{othersSetup.service}</p>
+                       </div>
+                     </div>
+                   )}
 
-                  <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue">
-                    <div>
-                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">BDT Amount Paid</p>
-                      <p className="font-black text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">৳{Number(paidBDT || 0).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Remaining Due</p>
-                      <p className={`font-black text-sm mt-0.5 ${dueBDT > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                        ৳{dueBDT.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
+                   <div className="grid grid-cols-2 gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue">
+                     <div>
+                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">BDT Amount Paid</p>
+                       <p className="font-black text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">৳{Number(paidBDT || 0).toLocaleString()}</p>
+                     </div>
+                     <div>
+                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Remaining Due</p>
+                       <p className={`font-black text-sm mt-0.5 ${dueBDT > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                         ৳{dueBDT.toLocaleString()}
+                       </p>
+                     </div>
+                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue items-center">
+                  <div className={`grid ${serviceType === 'Others' ? 'grid-cols-2' : 'grid-cols-3'} gap-4 text-xs pt-4 border-t border-border-blue dark:border-border-blue items-center`}>
                     <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold">Payment Channel</p>
                       <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">{paymentMethod}</p>
                     </div>
-                    <div>
+                    {serviceType === 'Others' ? <div>
+                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold mb-1">Working Status</p>
+                      <span className="inline-flex items-center text-xs px-2.5 py-1 rounded-lg font-extrabold border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800">{workingStatus}</span>
+                    </div> : <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold mb-1">Topup Status</p>
                       <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-lg font-extrabold border ${
                         topupStatus === 'Successfull'
@@ -1530,7 +1697,11 @@ function SalesView({
                       }`}>
                         {topupStatus === 'Successfull' ? 'Successful' : topupStatus}
                       </span>
-                    </div>
+                    </div>}
+                    {serviceType === 'Others' && <div>
+                      <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold mb-1">Assign Employee</p>
+                      <p className="font-extrabold text-sm text-brand-blue-deep dark:text-brand-blue-deep">{assignEmployee || 'Not assigned'}</p>
+                    </div>}
                     <div>
                       <p className="text-brand-blue-deep/75 dark:text-brand-blue-deep/75 font-semibold mb-1">Payment Status</p>
                       <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-lg font-extrabold border ${

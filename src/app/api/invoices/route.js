@@ -71,17 +71,22 @@ export const POST = asyncHandler(async (request) => {
   const body = await readJsonBody(request);
 
   const customerId = optionalString(body.customerId, 100);
-  const topupAmountUSD = body.topupAmountUSD === undefined
+  const isOthers = body.serviceType === "Others";
+  const topupAmountUSD = isOthers || body.topupAmountUSD === undefined
     ? null
     : requirePositiveNumber(body.topupAmountUSD, "topupAmountUSD");
+  if (isOthers) requirePositiveNumber(body.totalAmountBDT, "totalAmountBDT");
 
   if (!customerId) {
     throw new ApiError(HttpStatus.BAD_REQUEST, "customerId is required.");
   }
-  if (topupAmountUSD === null) {
+  if (!isOthers && topupAmountUSD === null) {
     throw new ApiError(HttpStatus.BAD_REQUEST, "topupAmountUSD is required.");
   }
-  if (body.serviceType !== "Others" && !optionalString(body.adAccountId, 200)) {
+  if (isOthers && !["Assigned", "In Progress"].includes(body.workingStatus)) {
+    throw new ApiError(HttpStatus.BAD_REQUEST, "workingStatus must be Assigned or In Progress for Others sales.");
+  }
+  if (!isOthers && !optionalString(body.adAccountId, 200)) {
     throw new ApiError(HttpStatus.BAD_REQUEST, "adAccountId is required for Ad Account Topup sales.");
   }
 

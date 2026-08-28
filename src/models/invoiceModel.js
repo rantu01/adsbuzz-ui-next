@@ -706,9 +706,10 @@ export async function createInvoice(data = {}) {
   const settings = await getSettings();
   const defaultRate = Number(settings.defaultDollarRate) > 0 ? Number(settings.defaultDollarRate) : DEFAULT_DOLLAR_RATE;
 
+  const isOthers = data.serviceType === "Others";
   const dollarRate = Number(data.dollarRate) > 0 ? Number(data.dollarRate) : defaultRate;
   const topupAmountUSD = Math.round(Number(data.topupAmountUSD || 0) * 100) / 100;
-  const totalAmountBDT = Math.round(Number(data.totalAmountBDT || topupAmountUSD * dollarRate) * 100) / 100;
+  const totalAmountBDT = Math.round(Number(data.totalAmountBDT || (isOthers ? data.serviceFee : topupAmountUSD * dollarRate)) * 100) / 100;
   const paidAmountBDT = Math.round(Number(data.paidAmountBDT || 0) * 100) / 100;
   const dueAmountBDT = Math.round((Number(data.dueAmountBDT ?? (totalAmountBDT - paidAmountBDT)) || 0) * 100) / 100;
   const paymentStatus = data.paymentStatus || computePaymentStatus({ totalAmountBDT, paidAmountBDT, dueAmountBDT });
@@ -724,14 +725,11 @@ export async function createInvoice(data = {}) {
     serviceType: data.serviceType === "Others" ? "Others" : "Ad Account Topup",
     serviceDetails: data.serviceDetails ? String(data.serviceDetails).trim() : "",
     serviceFee: Number(data.serviceFee) > 0 ? Number(data.serviceFee) : 0,
-    dollarRate,
-    topupAmountUSD,
     totalAmountBDT,
     paidAmountBDT,
     dueAmountBDT,
     paymentStatus,
     paymentMethod: String(data.paymentMethod || "").trim() || "N/A",
-    topupStatus: String(data.topupStatus || "Successfull"),
     approvalStatus,
     customerId: String(data.customerId || "").trim(),
     groupId: String(data.groupId || "").trim(),
@@ -745,6 +743,16 @@ export async function createInvoice(data = {}) {
     createdAtRaw: new Date(),
     updatedAt: new Date(),
   };
+
+  if (isOthers) {
+    invoice.workingStatus = String(data.workingStatus || "Assigned");
+    const employee = String(data.assignEmployee || "").trim();
+    if (employee) invoice.assignEmployee = employee;
+  } else {
+    invoice.dollarRate = dollarRate;
+    invoice.topupAmountUSD = topupAmountUSD;
+    invoice.topupStatus = String(data.topupStatus || "Successfull");
+  }
 
   await invoicesCollection.insertOne(invoice);
   logger.info(`createInvoice: created ${invoice.invoiceNo} (${invoice.topupAmountUSD} USD)`);
