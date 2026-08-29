@@ -1,6 +1,6 @@
 import { asyncHandler, ok, notFound } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
-import { getSocialAdAccountById, updateSocialAdAccount, deleteSocialAdAccount } from "@/models/socialAdAccountModel";
+import { getSocialAdAccountById, updateSocialAdAccount, updateSocialAdAccountStatus, deleteSocialAdAccount } from "@/models/socialAdAccountModel";
 import { cacheInvalidate } from "@/lib/cache";
 
 const CACHE_PREFIX = "GET:/api/social-ad-accounts";
@@ -18,7 +18,10 @@ export const PATCH = asyncHandler(async (request, { params }) => {
   const { id } = await params;
   const body = await readJsonBody(request);
 
-  const account = await updateSocialAdAccount(id, body);
+  const account = body.statusOnly
+    ? await updateSocialAdAccountStatus(id, body.status)
+    : await updateSocialAdAccount(id, body);
+
   if (!account) {
     return notFound("Social ad account not found.");
   }

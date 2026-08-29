@@ -185,9 +185,9 @@ export function useSocialAdAccounts(triggerToast) {
       setSocialAdAccounts((prev) => prev.map((a) => (match(a) ? { ...a, accountStatus: status } : a)));
 
       try {
-        const data = await apiFetch(`/api/social-ad-accounts/${encodeURIComponent(accountId)}`, {
+        const data = await apiFetch(`/api/ad-accounts/${encodeURIComponent(accountId)}`, {
           method: "PATCH",
-          body: JSON.stringify({ accountStatus: status, statusOnly: true }),
+          body: JSON.stringify({ status, statusOnly: true }),
         });
         const saved = data.adAccount;
         setSocialAdAccounts((prev) =>

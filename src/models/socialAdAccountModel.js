@@ -1,5 +1,6 @@
 import { getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
+import { mapStatusToLegacy } from "@/models/adAccountModel";
 
 const DEFAULT_DOLLAR_RATE = 132;
 const DEFAULT_GROUP_CODE = "GC-700";
@@ -164,6 +165,21 @@ export async function updateSocialAdAccount(id, ui) {
     updatedAt: new Date(),
   };
 
+  await collection.updateOne({ _id: new (await import("mongodb")).ObjectId(doc._id) }, { $set: update });
+  const saved = await collection.findOne({ _id: new (await import("mongodb")).ObjectId(doc._id) });
+  return toUiAccount(saved);
+}
+
+export async function updateSocialAdAccountStatus(id, uiStatus) {
+  const collection = await getCollection("socialAdAccounts");
+  const doc = await getSocialAdAccountById(id);
+  if (!doc) return null;
+
+  const update = {
+    accountStatus: uiStatus,
+    status: mapStatusToLegacy(uiStatus),
+    updatedAt: new Date(),
+  };
   await collection.updateOne({ _id: new (await import("mongodb")).ObjectId(doc._id) }, { $set: update });
   const saved = await collection.findOne({ _id: new (await import("mongodb")).ObjectId(doc._id) });
   return toUiAccount(saved);
