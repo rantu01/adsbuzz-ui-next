@@ -29,6 +29,10 @@ export const GET = asyncHandler(async (request) => {
   const paymentStatus = searchParams.get("paymentStatus") || "";
   const customerId = searchParams.get("customerId") || "";
   const adAccountId = searchParams.get("adAccountId") || "";
+  const date = (searchParams.get("date") || "").trim();
+  const dateFrom = (searchParams.get("dateFrom") || "").trim();
+  const dateTo = (searchParams.get("dateTo") || "").trim();
+  const month = (searchParams.get("month") || "").trim();
 
   // Build the Mongo filter once and let the database do the filtering,
   // counting, and slicing. This keeps the API payload tiny (one page) and the
@@ -37,6 +41,22 @@ export const GET = asyncHandler(async (request) => {
   if (paymentStatus && paymentStatus !== "All") filter.paymentStatus = paymentStatus;
   if (customerId) filter.customerId = customerId;
   if (adAccountId) filter.adAccountId = adAccountId;
+  // Date-wise / Month-wise filters for Sales Entry Records (filter by `date` field YYYY-MM-DD).
+  // Month takes precedence over date range filters when both are supplied.
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const start = `${month}-01`;
+    const end = `${month}-${String(lastDay).padStart(2, "0")}`;
+    filter.date = { $gte: start, $lte: end };
+  } else if (date) {
+    filter.date = String(date).slice(0, 10);
+  } else if (dateFrom || dateTo) {
+    const dateFilter = {};
+    if (dateFrom) dateFilter.$gte = String(dateFrom).slice(0, 10);
+    if (dateTo) dateFilter.$lte = String(dateTo).slice(0, 10);
+    filter.date = dateFilter;
+  }
   if (search) {
     const q = search.toLowerCase();
     filter.$or = [

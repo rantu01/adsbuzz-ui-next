@@ -156,34 +156,52 @@ function SaleSetupView({
   const [editErrors, setEditErrors] = useState({});
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // Group ID options: derived from all customers (Active and Inactive) with a groupId set
-  const groupIdOptions = customers
-    .filter(c => !!c.groupId)
-    .map(c => ({ value: c.groupId, label: c.groupId, sub: c.name }));
+  // Group ID options: deduplicated — each groupId appears once even if multiple
+  // customers share it (many-to-one agency grouping).
+  const groupIdOptions = useMemo(() => {
+    const seen = new Set();
+    return customers
+      .filter(c => !!c.groupId)
+      .filter(c => {
+        if (seen.has(c.groupId)) return false;
+        seen.add(c.groupId);
+        return true;
+      })
+      .map(c => ({ value: c.groupId, label: c.groupId, sub: c.name }));
+  }, [customers]);
 
   // ---- Add-form derived values ----
   const allAccounts = useMemo(() => [...(socialAdAccounts || [])], [socialAdAccounts]);
 
+  // All customers that share the selected groupId (handles many-to-one grouping).
+  const addGroupCustomerIds = useMemo(
+    () => new Set(customers.filter(c => c.groupId === form.groupId).map(c => c.id)),
+    [customers, form.groupId],
+  );
+
+  // First customer in the group (used for display only).
   const addCustomer = customers.find(c => c.groupId === form.groupId);
-  const addCustomerAccounts = addCustomer
+
+  const addCustomerAccounts = addGroupCustomerIds.size > 0
     ? allAccounts.filter(a =>
-        a.assignedCustomer === addCustomer.id ||
-        (a.userGroupCode && addCustomer.groupId === a.userGroupCode),
+        addGroupCustomerIds.has(a.assignedCustomer) ||
+        (a.userGroupCode && a.userGroupCode === form.groupId),
       )
     : [];
 
-  // Accounts that already have an ACTIVE Sale Setup configured. Only accounts that
-  // do NOT yet have an active setup are offered when creating a new Sale Setup
-  // entry. Terminated (unassigned) or replaced setups remain for history but do
-  // not block creating a fresh setup for the same account + group.
+  // Accounts that already have an ACTIVE Sale Setup configured FOR THIS GROUP. Only
+  // accounts that do NOT yet have an active setup for the current group are offered
+  // when creating a new Sale Setup entry. Terminated (unassigned) or replaced setups
+  // remain for history but do not block creating a fresh setup for the same account
+  // + group. An account can have active setups in different groups simultaneously.
   const configuredAccountIds = useMemo(
     () =>
       new Set(
         (setups || [])
-          .filter((s) => s.serviceType === 'Ad Account Sales Setup' && s.adAccountId && s.status === 'Active')
+          .filter((s) => s.serviceType === 'Ad Account Sales Setup' && s.adAccountId && s.status === 'Active' && s.groupId === form.groupId)
           .map((s) => s.adAccountId),
       ),
-    [setups],
+    [setups, form.groupId],
   );
 
   const addAccountOptions = addCustomerAccounts
@@ -211,15 +229,22 @@ function SaleSetupView({
 
   // ---- Edit-form derived values ----
   const isEditOthers = ['Others', 'Others Sale Setup'].includes(editSetupData?.serviceType);
-  const editCustomer = editSetupData
-    ? customers.find(c => c.groupId === editSetupData.groupId)
-    : null;
-  const editCustomerAccounts = editCustomer
+
+  // All customers that share the selected groupId (handles many-to-one grouping).
+  const editGroupCustomerIds = useMemo(
+    () => new Set(customers.filter(c => c.groupId === editSetupData?.groupId).map(c => c.id)),
+    [customers, editSetupData?.groupId],
+  );
+
+  const editCustomerAccounts = editGroupCustomerIds.size > 0
     ? allAccounts.filter(a =>
-        a.assignedCustomer === editCustomer.id ||
-        (a.userGroupCode && editCustomer.groupId === a.userGroupCode),
+        editGroupCustomerIds.has(a.assignedCustomer) ||
+        (a.userGroupCode && a.userGroupCode === editSetupData.groupId),
       )
     : [];
+
+  // First customer in the group (used for display only in edit mode).
+  const editCustomer = customers.find(c => c.groupId === editSetupData?.groupId);
 
   let editAccountOptions = editCustomerAccounts.map(a => ({
     value: a.adAccountId,

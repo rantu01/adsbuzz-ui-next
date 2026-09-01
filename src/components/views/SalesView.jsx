@@ -167,6 +167,76 @@ function SalesView({
   const salesLoading = salesInvoicePages.loading;
   const salesInvoiceError = salesInvoicePages.error;
 
+  // Sales Entry Records — Date-wise / Month-wise filters (above the table).
+  // Date-wise supports a single date (From only) or a range (From + To).
+  // Month-wise filters by YYYY-MM. Month and date filters are mutually exclusive.
+  const [salesDateFrom, setSalesDateFrom] = useState('');
+  const [salesDateTo, setSalesDateTo] = useState('');
+  const [salesMonth, setSalesMonth] = useState('');
+
+  const salesRecordsHasActiveFilter = !!(salesDateFrom || salesDateTo || salesMonth);
+
+  const applySalesDateFilter = useCallback((nextFrom, nextTo) => {
+    const filters = {};
+    if (nextFrom && nextTo) {
+      if (nextFrom === nextTo) {
+        filters.date = nextFrom;
+      } else {
+        const from = nextFrom < nextTo ? nextFrom : nextTo;
+        const to = nextFrom < nextTo ? nextTo : nextFrom;
+        filters.dateFrom = from;
+        filters.dateTo = to;
+      }
+    } else if (nextFrom) {
+      filters.date = nextFrom;
+    } else if (nextTo) {
+      filters.date = nextTo;
+    }
+    salesInvoicePages.setFilters(filters);
+  }, [salesInvoicePages]);
+
+  const handleSalesDateFromChange = useCallback((val) => {
+    setSalesDateFrom(val);
+    if (val) setSalesMonth('');
+    const nextFrom = val;
+    const nextTo = salesDateTo;
+    if (!nextFrom && !nextTo) {
+      salesInvoicePages.setFilters({});
+      return;
+    }
+    applySalesDateFilter(nextFrom, nextTo);
+  }, [salesDateTo, applySalesDateFilter, salesInvoicePages]);
+
+  const handleSalesDateToChange = useCallback((val) => {
+    setSalesDateTo(val);
+    if (val) setSalesMonth('');
+    const nextFrom = salesDateFrom;
+    const nextTo = val;
+    if (!nextFrom && !nextTo) {
+      salesInvoicePages.setFilters({});
+      return;
+    }
+    applySalesDateFilter(nextFrom, nextTo);
+  }, [salesDateFrom, applySalesDateFilter, salesInvoicePages]);
+
+  const handleSalesMonthChange = useCallback((val) => {
+    setSalesMonth(val);
+    if (val) {
+      setSalesDateFrom('');
+      setSalesDateTo('');
+      salesInvoicePages.setFilters({ month: val });
+    } else {
+      salesInvoicePages.setFilters({});
+    }
+  }, [salesInvoicePages]);
+
+  const clearSalesEntryFilters = useCallback(() => {
+    setSalesDateFrom('');
+    setSalesDateTo('');
+    setSalesMonth('');
+    salesInvoicePages.setFilters({});
+  }, [salesInvoicePages]);
+
   // Ad Account Search — verification panel: searches the real Sales Entry data
   // by Ad Account ID or Ad Account Name and lists every date on which a sales
   // entry was recorded for that account so missing/incorrect entries are easy
@@ -2037,6 +2107,83 @@ function SalesView({
           </span>
         </div>
 
+        {/* Sales Entry Records — Filters (date-wise / month-wise) */}
+        <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+            {/* Date-wise filter */}
+            <div className="flex-1 min-w-0">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                <CalendarDays size={12} className="text-slate-400" /> Date-wise Filter
+              </label>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1">From date</label>
+                  <input
+                    id="sales-filter-date-from"
+                    type="date"
+                    value={salesDateFrom}
+                    onChange={(e) => handleSalesDateFromChange(e.target.value)}
+                    className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+                  />
+                </div>
+                <span className="hidden sm:block text-xs text-slate-400 font-bold pt-6">—</span>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-semibold text-slate-400 mb-1">To date</label>
+                  <input
+                    id="sales-filter-date-to"
+                    type="date"
+                    value={salesDateTo}
+                    onChange={(e) => handleSalesDateToChange(e.target.value)}
+                    className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">Select a single date (fill From only) or a date range (From + To).</p>
+            </div>
+
+            {/* Month-wise filter */}
+            <div className="w-full sm:w-56 shrink-0">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                <CalendarDays size={12} className="text-slate-400" /> Month-wise Filter
+              </label>
+              <input
+                id="sales-filter-month"
+                type="month"
+                value={salesMonth}
+                onChange={(e) => handleSalesMonthChange(e.target.value)}
+                className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Select a specific month.</p>
+            </div>
+
+            {/* Clear */}
+            {salesRecordsHasActiveFilter && (
+              <button
+                id="sales-filter-clear"
+                type="button"
+                onClick={clearSalesEntryFilters}
+                className="shrink-0 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-1.5 self-start lg:self-end"
+              >
+                <XIcon size={12} /> Clear Filters
+              </button>
+            )}
+          </div>
+          {salesRecordsHasActiveFilter && (
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-3">
+              {salesMonth
+                ? <>Filtering by month: <span className="font-bold text-slate-700 dark:text-slate-200">{salesMonth}</span></>
+                : salesDateFrom && salesDateTo
+                  ? salesDateFrom === salesDateTo
+                    ? <>Filtering by date: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateFrom}</span></>
+                    : <>Filtering by date range: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateFrom < salesDateTo ? salesDateFrom : salesDateTo} → {salesDateFrom < salesDateTo ? salesDateTo : salesDateFrom}</span></>
+                  : salesDateFrom
+                    ? <>Filtering by date: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateFrom}</span></>
+                    : <>Filtering by date: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateTo}</span></>}
+              {' · '}Showing {salesInvoicePages.total} {salesInvoicePages.total === 1 ? 'entry' : 'entries'}.
+            </p>
+          )}
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-950/20 font-bold border-b border-slate-100 dark:border-slate-800 text-slate-500">
@@ -2136,6 +2283,21 @@ function SalesView({
                     <div className="flex items-center justify-center gap-2 text-slate-400">
                       <Loader2 size={16} className="animate-spin" />
                       <span className="text-xs font-semibold">Loading sales entries…</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {!salesLoading && paginatedInvoices.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="text-center py-10">
+                    <div className="flex flex-col items-center gap-1.5 text-slate-400">
+                      <CalendarDays size={18} className="text-slate-300 dark:text-slate-600" />
+                      <span className="text-xs font-semibold">
+                        {salesRecordsHasActiveFilter ? 'No sales entries found for the selected filter.' : 'No sales entries found.'}
+                      </span>
+                      {salesRecordsHasActiveFilter && (
+                        <span className="text-[10px]">Try adjusting the date or month filter, or clear filters to see all entries.</span>
+                      )}
                     </div>
                   </td>
                 </tr>
