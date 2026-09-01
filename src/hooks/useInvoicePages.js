@@ -50,16 +50,17 @@ export function useInvoicePages({ initialLimit = 10, initialFilters = {} } = {})
           page: String(currentPage),
           limit: String(limit),
         });
-        if (currentFilters.search) params.set('search', currentFilters.search);
-        if (currentFilters.paymentStatus && currentFilters.paymentStatus !== 'All') {
-          params.set('paymentStatus', currentFilters.paymentStatus);
-        }
-        if (currentFilters.customerId) params.set('customerId', currentFilters.customerId);
-        if (currentFilters.adAccountId) params.set('adAccountId', currentFilters.adAccountId);
-        if (currentFilters.date) params.set('date', currentFilters.date);
-        if (currentFilters.dateFrom) params.set('dateFrom', currentFilters.dateFrom);
-        if (currentFilters.dateTo) params.set('dateTo', currentFilters.dateTo);
-        if (currentFilters.month) params.set('month', currentFilters.month);
+      if (currentFilters.search) params.set('search', currentFilters.search);
+      if (currentFilters.invoiceNo) params.set('invoiceNo', currentFilters.invoiceNo);
+      if (currentFilters.paymentStatus && currentFilters.paymentStatus !== 'All') {
+        params.set('paymentStatus', currentFilters.paymentStatus);
+      }
+      if (currentFilters.customerId) params.set('customerId', currentFilters.customerId);
+      if (currentFilters.adAccountId) params.set('adAccountId', currentFilters.adAccountId);
+      if (currentFilters.date) params.set('date', currentFilters.date);
+      if (currentFilters.dateFrom) params.set('dateFrom', currentFilters.dateFrom);
+      if (currentFilters.dateTo) params.set('dateTo', currentFilters.dateTo);
+      if (currentFilters.month) params.set('month', currentFilters.month);
 
         const data = await apiFetch(`/api/invoices?${params.toString()}`);
         if (id !== requestId.current) return; // stale response

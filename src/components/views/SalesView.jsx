@@ -173,11 +173,13 @@ function SalesView({
   const [salesDateFrom, setSalesDateFrom] = useState('');
   const [salesDateTo, setSalesDateTo] = useState('');
   const [salesMonth, setSalesMonth] = useState('');
+  const [salesInvoiceNoSearch, setSalesInvoiceNoSearch] = useState('');
 
-  const salesRecordsHasActiveFilter = !!(salesDateFrom || salesDateTo || salesMonth);
+  const salesRecordsHasActiveFilter = !!(salesDateFrom || salesDateTo || salesMonth || salesInvoiceNoSearch);
 
-  const applySalesDateFilter = useCallback((nextFrom, nextTo) => {
+  const applySalesDateFilter = useCallback((nextFrom, nextTo, invoiceNo) => {
     const filters = {};
+    if (salesMonth) filters.month = salesMonth;
     if (nextFrom && nextTo) {
       if (nextFrom === nextTo) {
         filters.date = nextFrom;
@@ -192,8 +194,31 @@ function SalesView({
     } else if (nextTo) {
       filters.date = nextTo;
     }
+    if (invoiceNo) filters.invoiceNo = invoiceNo;
     salesInvoicePages.setFilters(filters);
-  }, [salesInvoicePages]);
+  }, [salesMonth, salesInvoicePages]);
+
+  const handleSalesInvoiceNoSearch = useCallback((val) => {
+    setSalesInvoiceNoSearch(val);
+    const filters = {};
+    if (salesMonth) filters.month = salesMonth;
+    if (salesDateFrom && salesDateTo) {
+      if (salesDateFrom === salesDateTo) {
+        filters.date = salesDateFrom;
+      } else {
+        const from = salesDateFrom < salesDateTo ? salesDateFrom : salesDateTo;
+        const to = salesDateFrom < salesDateTo ? salesDateTo : salesDateFrom;
+        filters.dateFrom = from;
+        filters.dateTo = to;
+      }
+    } else if (salesDateFrom) {
+      filters.date = salesDateFrom;
+    } else if (salesDateTo) {
+      filters.date = salesDateTo;
+    }
+    if (val.trim()) filters.invoiceNo = val.trim();
+    salesInvoicePages.setFilters(filters);
+  }, [salesMonth, salesDateFrom, salesDateTo, salesInvoicePages]);
 
   const handleSalesDateFromChange = useCallback((val) => {
     setSalesDateFrom(val);
@@ -201,11 +226,13 @@ function SalesView({
     const nextFrom = val;
     const nextTo = salesDateTo;
     if (!nextFrom && !nextTo) {
-      salesInvoicePages.setFilters({});
+      const filters = {};
+      if (salesInvoiceNoSearch.trim()) filters.invoiceNo = salesInvoiceNoSearch.trim();
+      salesInvoicePages.setFilters(filters);
       return;
     }
-    applySalesDateFilter(nextFrom, nextTo);
-  }, [salesDateTo, applySalesDateFilter, salesInvoicePages]);
+    applySalesDateFilter(nextFrom, nextTo, salesInvoiceNoSearch.trim() || undefined);
+  }, [salesDateTo, applySalesDateFilter, salesInvoicePages, salesInvoiceNoSearch]);
 
   const handleSalesDateToChange = useCallback((val) => {
     setSalesDateTo(val);
@@ -213,27 +240,34 @@ function SalesView({
     const nextFrom = salesDateFrom;
     const nextTo = val;
     if (!nextFrom && !nextTo) {
-      salesInvoicePages.setFilters({});
+      const filters = {};
+      if (salesInvoiceNoSearch.trim()) filters.invoiceNo = salesInvoiceNoSearch.trim();
+      salesInvoicePages.setFilters(filters);
       return;
     }
-    applySalesDateFilter(nextFrom, nextTo);
-  }, [salesDateFrom, applySalesDateFilter, salesInvoicePages]);
+    applySalesDateFilter(nextFrom, nextTo, salesInvoiceNoSearch.trim() || undefined);
+  }, [salesDateFrom, applySalesDateFilter, salesInvoicePages, salesInvoiceNoSearch]);
 
   const handleSalesMonthChange = useCallback((val) => {
     setSalesMonth(val);
     if (val) {
       setSalesDateFrom('');
       setSalesDateTo('');
-      salesInvoicePages.setFilters({ month: val });
+      const filters = { month: val };
+      if (salesInvoiceNoSearch.trim()) filters.invoiceNo = salesInvoiceNoSearch.trim();
+      salesInvoicePages.setFilters(filters);
     } else {
-      salesInvoicePages.setFilters({});
+      const filters = {};
+      if (salesInvoiceNoSearch.trim()) filters.invoiceNo = salesInvoiceNoSearch.trim();
+      salesInvoicePages.setFilters(filters);
     }
-  }, [salesInvoicePages]);
+  }, [salesInvoicePages, salesInvoiceNoSearch]);
 
   const clearSalesEntryFilters = useCallback(() => {
     setSalesDateFrom('');
     setSalesDateTo('');
     setSalesMonth('');
+    setSalesInvoiceNoSearch('');
     salesInvoicePages.setFilters({});
   }, [salesInvoicePages]);
 
@@ -2156,6 +2190,32 @@ function SalesView({
               <p className="text-[10px] text-slate-400 mt-1">Select a specific month.</p>
             </div>
 
+            {/* Invoice No search */}
+            <div className="w-full sm:w-56 shrink-0">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                <Search size={12} className="text-slate-400" /> Invoice No Search
+              </label>
+              <div className="relative">
+                <input
+                  id="sales-filter-invoice-no"
+                  type="text"
+                  value={salesInvoiceNoSearch}
+                  onChange={(e) => handleSalesInvoiceNoSearch(e.target.value)}
+                  placeholder="Search by invoice no…"
+                  className="w-full text-xs pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-blue dark:text-slate-100"
+                />
+                {salesInvoiceNoSearch && (
+                  <button
+                    type="button"
+                    onClick={() => handleSalesInvoiceNoSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <XIcon size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Clear */}
             {salesRecordsHasActiveFilter && (
               <button
@@ -2178,7 +2238,15 @@ function SalesView({
                     : <>Filtering by date range: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateFrom < salesDateTo ? salesDateFrom : salesDateTo} → {salesDateFrom < salesDateTo ? salesDateTo : salesDateFrom}</span></>
                   : salesDateFrom
                     ? <>Filtering by date: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateFrom}</span></>
-                    : <>Filtering by date: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateTo}</span></>}
+                    : salesDateTo
+                      ? <>Filtering by date: <span className="font-bold text-slate-700 dark:text-slate-200">{salesDateTo}</span></>
+                      : null}
+              {salesInvoiceNoSearch && (
+                <>
+                  {salesMonth || salesDateFrom || salesDateTo ? ' · ' : ''}
+                  Searching Invoice No: <span className="font-bold text-slate-700 dark:text-slate-200">{salesInvoiceNoSearch}</span>
+                </>
+              )}
               {' · '}Showing {salesInvoicePages.total} {salesInvoicePages.total === 1 ? 'entry' : 'entries'}.
             </p>
           )}

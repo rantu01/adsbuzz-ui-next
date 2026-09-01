@@ -29,6 +29,7 @@ export const GET = asyncHandler(async (request) => {
   const paymentStatus = searchParams.get("paymentStatus") || "";
   const customerId = searchParams.get("customerId") || "";
   const adAccountId = searchParams.get("adAccountId") || "";
+  const invoiceNo = (searchParams.get("invoiceNo") || "").trim();
   const date = (searchParams.get("date") || "").trim();
   const dateFrom = (searchParams.get("dateFrom") || "").trim();
   const dateTo = (searchParams.get("dateTo") || "").trim();
@@ -56,6 +57,9 @@ export const GET = asyncHandler(async (request) => {
     if (dateFrom) dateFilter.$gte = String(dateFrom).slice(0, 10);
     if (dateTo) dateFilter.$lte = String(dateTo).slice(0, 10);
     filter.date = dateFilter;
+  }
+  if (invoiceNo) {
+    filter.invoiceNo = { $regex: invoiceNo, $options: "i" };
   }
   if (search) {
     const q = search.toLowerCase();
