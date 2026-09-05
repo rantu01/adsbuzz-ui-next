@@ -25,6 +25,7 @@ import Pagination from '@/components/common/Pagination';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { useCustomerActivities } from '@/hooks/useCustomerActivities';
+import { useCustomerMonthlyInsights } from '@/hooks/useCustomerMonthlyInsights';
 
 const INVOICE_PAGE_SIZE = 10;
 const ACCOUNT_PAGE_SIZE = 6;
@@ -33,6 +34,7 @@ const ACTIVITY_PAGE_SIZE = 10;
 function CustomerDetailsPane({
   customer,
   stats,
+  insightsLoading = false,
   onToggleFavorite,
   onTopup,
   onEdit,
@@ -60,6 +62,16 @@ function CustomerDetailsPane({
   const [unassigning, setUnassigning] = useState(false);
 
   const { activities: historyActivities, loading: historyLoading } = useCustomerActivities(customer?.id);
+
+  // Server-side Monthly Topup Insights for the SELECTED customer only.
+  // The backend aggregates just this customer's invoices (never the full
+  // ledger), so this section loads fast and always reflects the correct
+  // customer. While fetching (insights === null) the UI shows a skeleton —
+  // never a default 0%.
+  const {
+    insights: serverMonthlyInsights,
+    loading: serverMonthlyInsightsLoading,
+  } = useCustomerMonthlyInsights(customer?.id);
 
   // The Activity / History tab is scoped strictly to Assign / Unassign logs.
   // Topup records live in the dedicated "Topup Ledger History" tab, so they are
@@ -185,10 +197,11 @@ function CustomerDetailsPane({
     return totals;
   }, [invoices]);
 
-  // Monthly Topup Insights calculation
-  // Read-only: derives every figure from the selected customer's actual
-  // invoice records already loaded in `stats.invoices`. Never hardcodes
-  // values and never writes to the database.
+  // Monthly Topup Insights calculation (client fallback only).
+  // Primary source is the server (`useCustomerMonthlyInsights` above).
+  // This fallback derives the same figures from the already-loaded
+  // `stats.invoices` and is used only if the server request fails/offline.
+  // Read-only: never hardcodes values and never writes to the database.
   const getInsightMonthPrefix = (inv) => {
     const raw = inv?.date || inv?.createdAtRaw || '';
     if (!raw) return '';
@@ -211,7 +224,7 @@ function CustomerDetailsPane({
     const topup = String(inv?.topupStatus || '').toLowerCase();
     return topup === 'successfull' || topup === 'successful';
   };
-  const monthlyInsights = useMemo(() => {
+  const fallbackMonthlyInsights = useMemo(() => {
     const now = new Date();
     const curYear = now.getFullYear();
     const curMonth = now.getMonth() + 1;
@@ -259,6 +272,21 @@ function CustomerDetailsPane({
       currentMonthSpend,
     };
   }, [stats?.invoices, customer?.creditLimitUSD]);
+
+  // Prefer the fast server-side insights for the selected customer; fall back
+  // to the client calculation only when the server has no data (e.g. request
+  // failed). Show the skeleton — never 0% — while the server has no data yet.
+  const monthlyInsights = serverMonthlyInsights || fallbackMonthlyInsights;
+  const showMonthlyInsightsLoading = serverMonthlyInsightsLoading && !serverMonthlyInsights;
+
+  // TOTAL TOPUP header values: prefer the server-side lifetime totals for the
+  // selected customer (same scoped per-customer query as the insights above).
+  // Fall back to the client `stats` aggregates only when the server has no
+  // data. While the server is still fetching, show a loading placeholder —
+  // never a false $0/৳0.
+  const showTotalsLoading = serverMonthlyInsightsLoading && !serverMonthlyInsights;
+  const displayTotalUSD = serverMonthlyInsights?.lifetimeTotalTopupUSD ?? stats?.totalUSD;
+  const displayTotalBDT = serverMonthlyInsights?.lifetimeTotalTopupBDT ?? stats?.totalBDT;
 
   const accountTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / ACCOUNT_PAGE_SIZE));
   const pagedAccounts = filteredAccounts.slice(
@@ -406,11 +434,19 @@ function CustomerDetailsPane({
         <div className="mt-4 grid grid-cols-3 gap-3 p-3.5 sm:p-4 rounded-xl border border-border-green dark:border-border-green bg-surface-green dark:bg-surface-green text-brand-blue-deep dark:text-brand-blue-deep shadow-xs">
           <div>
             <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 tracking-wider">TOTAL TOPUP (USD)</p>
-            <p className="text-base sm:text-lg font-extrabold text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">${(stats?.totalUSD || 0).toLocaleString()}</p>
+            {showTotalsLoading ? (
+              <p className="text-base sm:text-lg font-extrabold mt-0.5 animate-pulse text-brand-blue-deep/40">…</p>
+            ) : (
+              <p className="text-base sm:text-lg font-extrabold text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">${Number(displayTotalUSD || 0).toLocaleString()}</p>
+            )}
           </div>
           <div>
             <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 tracking-wider">TOTAL TOPUP (BDT)</p>
-            <p className="text-base sm:text-lg font-extrabold text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">৳{(stats?.totalBDT || 0).toLocaleString()}</p>
+            {showTotalsLoading ? (
+              <p className="text-base sm:text-lg font-extrabold mt-0.5 animate-pulse text-brand-blue-deep/40">…</p>
+            ) : (
+              <p className="text-base sm:text-lg font-extrabold text-brand-blue-deep dark:text-brand-blue-deep mt-0.5">৳{Number(displayTotalBDT || 0).toLocaleString()}</p>
+            )}
           </div>
           <div>
             <p className="text-[10px] uppercase font-bold text-brand-blue-deep/75 dark:text-brand-blue-deep/75 tracking-wider">MONTHLY SPEND</p>
@@ -699,8 +735,53 @@ function CustomerDetailsPane({
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={14} className="text-brand-blue" />
                 <h5 className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Monthly Topup Insights</h5>
+                {showMonthlyInsightsLoading && (
+                  <span className="text-[10px] font-semibold text-slate-400 animate-pulse">Loading monthly top-up data…</span>
+                )}
               </div>
 
+              {showMonthlyInsightsLoading ? (
+                <div aria-live="polite" aria-busy="true">
+                  {/* Success Ratio skeleton — never shows 0% while fetching */}
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm mb-4 animate-pulse">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="h-3 w-40 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-5 w-14 rounded bg-slate-200 dark:bg-slate-700" />
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full w-1/3 rounded-full bg-slate-200 dark:bg-slate-700" />
+                    </div>
+                    <div className="flex justify-between mt-1.5">
+                      <div className="h-2 w-24 rounded bg-slate-100 dark:bg-slate-800" />
+                      <div className="h-2 w-20 rounded bg-slate-100 dark:bg-slate-800" />
+                    </div>
+                  </div>
+                  {/* Monthly breakdown skeletons */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 animate-pulse"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="h-3 w-16 rounded bg-slate-200 dark:bg-slate-700" />
+                          <div className="h-2 w-10 rounded bg-slate-100 dark:bg-slate-800" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <div className="h-4 w-20 rounded bg-slate-100 dark:bg-slate-800" />
+                          <div className="h-4 w-20 rounded bg-slate-100 dark:bg-slate-800" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full" />
+                          <div className="h-2 w-8 rounded bg-slate-100 dark:bg-slate-800" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[10px] text-slate-400">Fetching the selected customer&apos;s actual monthly top-up records…</p>
+                </div>
+              ) : (
+              <>
               {/* Success Ratio Card */}
               <div className="p-4 rounded-xl bg-gradient-to-br from-brand-blue/5 to-brand-orange/5 border border-brand-blue/20 dark:border-brand-blue/10 shadow-sm mb-4">
                 <div className="flex items-center justify-between mb-2">
@@ -755,6 +836,8 @@ function CustomerDetailsPane({
                   </div>
                 ))}
               </div>
+              </>
+              )}
             </div>
           </div>
         )}

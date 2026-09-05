@@ -72,6 +72,7 @@ function CustomersView({
   onRetry,
   socialAdAccounts = [],
   invoices,
+  invoicesLoading = false,
   setups = [],
   onAddCustomer,
   onUpdateCustomer,
@@ -148,18 +149,20 @@ function CustomersView({
       const id = cust.id;
       const gid = cust.groupId;
       const normId = normalizeCustomerId(id) || id;
+      const normGid = String(gid || '').trim();
       const accounts = allAccounts.filter(a => a.assignedCustomer === id || (normId && a.assignedCustomer === normId));
       // Read-only mapping: an invoice belongs to this customer when its
-      // (normalised) customerId matches. The groupId is only a fallback for
-      // legacy invoices that carry no customerId, so invoices never leak
-      // across customers that happen to share a group.
+      // (normalised) customerId matches OR its groupId matches this
+      // customer's group. Either key alone is sufficient so legacy / backfilled
+      // records (which may carry only one of the two keys, or a legacy id
+      // shape) still resolve to the correct customer. Never writes to the DB.
       const invs = (invoices || []).filter(inv => {
         const invCid = String(inv.customerId || '').trim();
-        if (invCid) {
-          const normInvCid = normalizeCustomerId(invCid) || invCid;
-          return invCid === id || normInvCid === normId;
-        }
-        return Boolean(inv.groupId && gid && String(inv.groupId).trim() === String(gid).trim());
+        const normInvCid = invCid ? (normalizeCustomerId(invCid) || invCid) : '';
+        const customerMatch = Boolean(invCid && (invCid === id || (normInvCid && normInvCid === normId)));
+        const invGid = String(inv.groupId || '').trim();
+        const groupMatch = Boolean(invGid && normGid && invGid === normGid);
+        return customerMatch || groupMatch;
       });
       map[id] = {
         accounts,
@@ -706,6 +709,7 @@ function CustomersView({
             key={selectedCustomer.id}
             customer={selectedCustomer}
             stats={getCustomerStats(selectedCustomer.id)}
+            insightsLoading={Boolean(invoicesLoading || loading)}
             onToggleFavorite={handleToggleFav}
             onTopup={handlePaneTopup}
             onEdit={handleOpenEditModal}

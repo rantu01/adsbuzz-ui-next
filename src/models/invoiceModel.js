@@ -545,6 +545,131 @@ export async function getCustomerTopupSummary(customerId) {
   };
 }
 
+/**
+ * Server-side Monthly Topup Insights for ONE selected customer.
+ * Read-only: two indexed reads (one customer lookup + one scoped invoice
+ * find with a minimal projection). Never updates/inserts/deletes.
+ * Only this customer's invoices are fetched — never the full ledger — so
+ * the CRM Notes section loads fast even when the collection is large.
+ */
+export async function getCustomerMonthlyInsights(customerId) {
+  if (!customerId) return null;
+  await ensureInvoicesIndexesOnce();
+  const db = await getDb();
+
+  const rawId = String(customerId).trim();
+  const normId = normalizeCustomerId(rawId) || rawId;
+
+  // Single indexed customer lookup for group + spend limit (minimal fields).
+  const customersCollection = db.collection("customers");
+  const customer =
+    (await customersCollection.findOne({ id: normId }, { projection: { id: 1, groupId: 1, creditLimitUSD: 1 } })) ||
+    (normId !== rawId
+      ? await customersCollection.findOne({ id: rawId }, { projection: { id: 1, groupId: 1, creditLimitUSD: 1 } })
+      : null);
+
+  const effectiveId = customer?.id || normId;
+  const groupId = String(customer?.groupId || "").trim();
+  const creditLimit = Number(customer?.creditLimitUSD || 0);
+
+  // Scoped filter: this customer's records only (by customerId and/or group
+  // so legacy/backfilled rows carrying only one key still resolve correctly).
+  const idSet = new Set([rawId, normId, effectiveId].filter(Boolean));
+  const or = [...idSet].map((id) => ({ customerId: id }));
+  if (groupId) or.push({ groupId });
+  const filter = or.length === 1 ? or[0] : { $or: or };
+
+  // Minimal projection — only fields the insights math needs.
+  const docs = await db
+    .collection("invoices")
+    .find(filter, {
+      projection: {
+        date: 1,
+        createdAtRaw: 1,
+        topupAmountUSD: 1,
+        totalAmountBDT: 1,
+        paidAmountBDT: 1,
+        approvalStatus: 1,
+        topupStatus: 1,
+      },
+    })
+    .toArray();
+
+  const monthPrefixOf = (inv) => {
+    const raw = inv?.date || inv?.createdAtRaw || "";
+    if (!raw) return "";
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+      return `${raw.getFullYear()}-${String(raw.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const s = String(raw);
+    if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) {
+      return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+    }
+    return s.slice(0, 7);
+  };
+  const isSuccess = (inv) => {
+    if (inv?.approvalStatus === "Approved") return true;
+    const t = String(inv?.topupStatus || "").toLowerCase();
+    return t === "successfull" || t === "successful";
+  };
+
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const m = curMonth - i;
+    const y = m <= 0 ? curYear - 1 : curYear;
+    const mo = m <= 0 ? m + 12 : m;
+    months.push(`${y}-${String(mo).padStart(2, "0")}`);
+  }
+
+  // Bucket this customer's (already small) doc set by month — O(n), no DB aggregation overhead.
+  const buckets = new Map(months.map((m) => [m, []]));
+  for (const inv of docs) {
+    const prefix = monthPrefixOf(inv);
+    if (buckets.has(prefix)) buckets.get(prefix).push(inv);
+  }
+
+  const monthData = months.map((month) => {
+    const invs = buckets.get(month) || [];
+    const totalUSD = round2(invs.reduce((s, inv) => s + Number(inv.topupAmountUSD || 0), 0));
+    const totalBDT = round2(invs.reduce((s, inv) => s + Number(inv.totalAmountBDT || inv.paidAmountBDT || 0), 0));
+    const approvedInvoices = invs.filter(isSuccess).length;
+    const totalInvoices = invs.length;
+    const successRatio = totalInvoices > 0 ? Math.round((approvedInvoices / totalInvoices) * 100) : 0;
+    return { month, totalUSD, totalBDT, totalInvoices, approvedInvoices, successRatio };
+  });
+
+  const curKey = `${curYear}-${String(curMonth).padStart(2, "0")}`;
+  const currentMonthData = monthData.find((m) => m.month === curKey) || monthData[monthData.length - 1];
+  const overallSuccessRatio = Number(currentMonthData?.successRatio || 0);
+  const currentMonthSpend = Number(currentMonthData?.totalUSD || 0);
+
+  // Lifetime totals for the header overview card — summed over the SAME
+  // scoped per-customer doc set above (all sources included), so TOTAL
+  // TOPUP (USD/BDT) reflects this customer's actual records.
+  const lifetimeTotalTopupUSD = round2(docs.reduce((s, inv) => s + Number(inv.topupAmountUSD || 0), 0));
+  const lifetimeTotalTopupBDT = round2(
+    docs.reduce((s, inv) => s + Number(inv.totalAmountBDT || inv.paidAmountBDT || 0), 0),
+  );
+
+  return {
+    customerId: effectiveId,
+    groupId,
+    creditLimit,
+    monthData,
+    overallSuccessRatio,
+    currentMonthData,
+    currentMonthSpend,
+    lifetimeTotalTopupUSD,
+    lifetimeTotalTopupBDT,
+    lifetimeTopupCount: docs.length,
+  };
+}
+
 async function getNextInvoiceNo(date = new Date()) {
   const db = await getDb();
   const result = await db.collection("counters").findOneAndUpdate(

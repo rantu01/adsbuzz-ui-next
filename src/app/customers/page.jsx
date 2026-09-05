@@ -22,6 +22,7 @@ function CustomersPageInner() {
       adAccounts={app.adAccounts}
       socialAdAccounts={app.socialAdAccounts}
       invoices={app.invoices}
+      invoicesLoading={app.invoicesLoading}
       setups={app.setups}
       onAddCustomer={app.handleAddCustomer}
       onUpdateCustomer={app.handleUpdateCustomer}
