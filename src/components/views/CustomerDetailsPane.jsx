@@ -186,6 +186,31 @@ function CustomerDetailsPane({
   }, [invoices]);
 
   // Monthly Topup Insights calculation
+  // Read-only: derives every figure from the selected customer's actual
+  // invoice records already loaded in `stats.invoices`. Never hardcodes
+  // values and never writes to the database.
+  const getInsightMonthPrefix = (inv) => {
+    const raw = inv?.date || inv?.createdAtRaw || '';
+    if (!raw) return '';
+    // Date instance (e.g. deserialised Mongo Date)
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+      return `${raw.getFullYear()}-${String(raw.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const s = String(raw);
+    // YYYY-MM-DD or ISO YYYY-MM-DDTHH... -> first 7 chars already YYYY-MM
+    if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+    // Fallback: try parsing any other date representation
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) {
+      return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return s.slice(0, 7);
+  };
+  const isInsightSuccess = (inv) => {
+    if (inv?.approvalStatus === 'Approved') return true;
+    const topup = String(inv?.topupStatus || '').toLowerCase();
+    return topup === 'successfull' || topup === 'successful';
+  };
   const monthlyInsights = useMemo(() => {
     const now = new Date();
     const curYear = now.getFullYear();
@@ -201,10 +226,10 @@ function CustomerDetailsPane({
     }
 
     const monthData = months.map(month => {
-      const invs = (stats?.invoices || []).filter(inv => String(inv.date || '').slice(0, 7) === month);
-      const totalUSD = invs.reduce((s, inv) => s + (inv.topupAmountUSD || 0), 0);
-      const totalBDT = invs.reduce((s, inv) => s + (inv.paidAmountBDT || 0), 0);
-      const totalApproved = invs.filter(inv => inv.approvalStatus === 'Approved' && inv.paymentStatus === 'Paid').length;
+      const invs = (stats?.invoices || []).filter(inv => getInsightMonthPrefix(inv) === month);
+      const totalUSD = invs.reduce((s, inv) => s + Number(inv.topupAmountUSD || 0), 0);
+      const totalBDT = invs.reduce((s, inv) => s + Number(inv.totalAmountBDT || inv.paidAmountBDT || 0), 0);
+      const totalApproved = invs.filter(isInsightSuccess).length;
       const totalInvoices = invs.length;
       const successRatio = totalInvoices > 0 ? Math.round((totalApproved / totalInvoices) * 100) : 0;
 
@@ -223,8 +248,8 @@ function CustomerDetailsPane({
     const overallSuccessRatio = currentMonthData?.successRatio || 0;
 
     // Calculate based on credit limit utilization for success indicator
-    const creditLimit = customer?.creditLimitUSD || 1;
-    const currentMonthSpend = currentMonthData?.totalUSD || 0;
+    const creditLimit = Number(customer?.creditLimitUSD || 0);
+    const currentMonthSpend = Number(currentMonthData?.totalUSD || 0);
 
     return {
       monthData,

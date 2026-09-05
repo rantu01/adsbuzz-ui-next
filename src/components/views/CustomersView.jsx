@@ -21,6 +21,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner';
 import FieldError from '@/components/ui/FieldError';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { validate, hasErrors, required, email, phone, positiveNumber, maxLength } from '@/utils/formValidation';
+import { normalizeCustomerId } from '@/utils/customerIds';
 
 const CustomerRow = memo(function CustomerRow({ cust, isSelected, stats, onSelect }) {
   return (
@@ -146,14 +147,26 @@ function CustomersView({
     for (const cust of customers) {
       const id = cust.id;
       const gid = cust.groupId;
-      const accounts = allAccounts.filter(a => a.assignedCustomer === id);
-      const invs = invoices.filter(inv => inv.customerId === id || (inv.groupId && gid === inv.groupId));
+      const normId = normalizeCustomerId(id) || id;
+      const accounts = allAccounts.filter(a => a.assignedCustomer === id || (normId && a.assignedCustomer === normId));
+      // Read-only mapping: an invoice belongs to this customer when its
+      // (normalised) customerId matches. The groupId is only a fallback for
+      // legacy invoices that carry no customerId, so invoices never leak
+      // across customers that happen to share a group.
+      const invs = (invoices || []).filter(inv => {
+        const invCid = String(inv.customerId || '').trim();
+        if (invCid) {
+          const normInvCid = normalizeCustomerId(invCid) || invCid;
+          return invCid === id || normInvCid === normId;
+        }
+        return Boolean(inv.groupId && gid && String(inv.groupId).trim() === String(gid).trim());
+      });
       map[id] = {
         accounts,
         activeAccounts: accounts.length,
         invoices: invs,
-        totalUSD: invs.reduce((sum, inv) => sum + (inv.topupAmountUSD || 0), 0),
-        totalBDT: invs.reduce((sum, inv) => sum + (inv.paidAmountBDT || 0), 0),
+        totalUSD: invs.reduce((sum, inv) => sum + Number(inv.topupAmountUSD || 0), 0),
+        totalBDT: invs.reduce((sum, inv) => sum + Number(inv.totalAmountBDT || inv.paidAmountBDT || 0), 0),
       };
     }
     return map;
