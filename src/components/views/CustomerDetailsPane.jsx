@@ -31,6 +31,29 @@ const INVOICE_PAGE_SIZE = 10;
 const ACCOUNT_PAGE_SIZE = 6;
 const ACTIVITY_PAGE_SIZE = 10;
 
+// Format the actual stored timestamp (createdAt) as Date + Time so the
+// Activity / History feed never shows a placeholder like "Just now".
+// Falls back to the legacy `time` field only when no usable timestamp exists,
+// and never returns "Just now".
+function formatActivityDateTime(act) {
+  const source = act?.createdAt || act?.createdAtRaw || null;
+  if (source) {
+    const d = source instanceof Date ? source : new Date(source);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+  }
+  const t = String(act?.time || '').trim();
+  if (!t || /^just now$/i.test(t)) return '';
+  // If the legacy `time` already holds a full date, normalize it to the same
+  // Date + Time format for consistency.
+  const parsed = new Date(t);
+  if (!Number.isNaN(parsed.getTime()) && /(\d{4}|\/|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t)) {
+    return parsed.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  return t;
+}
+
 function CustomerDetailsPane({
   customer,
   stats,
@@ -876,7 +899,7 @@ function CustomerDetailsPane({
                       <div className="ml-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{act.action}</p>
-                          <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">{act.time || ''}</span>
+                          <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap" title={act?.createdAt ? String(new Date(act.createdAt)) : undefined}>{formatActivityDateTime(act)}</span>
                         </div>
                         <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed break-words">
                           {act.details}

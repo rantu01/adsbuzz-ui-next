@@ -943,7 +943,7 @@ function CustomersView({
             </div>
             {editCustData?.status !== (selectedCustomer?.status || 'Active') &&
               (editCustData?.status === 'Inactive' || editCustData?.status === 'Lost') && (
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                     Reason for Status Change <span className="text-red-500">*</span>
                   </label>
