@@ -23,6 +23,7 @@ import {
   X as XIcon,
   Copy,
   CopyCheck,
+  Download,
   Search,
   History,
   Loader2,
@@ -511,6 +512,48 @@ function SalesView({
     return map;
   }, [setups]);
 
+  // All active "Others Sale Setup" records grouped by groupId. A single group
+  // can contain multiple services, so the sale flow lets the user pick the
+  // specific service they want (see "Select Service" in Step 1).
+  const othersSetupListByGroup = useMemo(() => {
+    const map = new Map();
+    (setups || []).forEach((s) => {
+      if (s.serviceType !== 'Others Sale Setup' || s.status !== 'Active') return;
+      const key = s.groupId;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(s);
+    });
+    return map;
+  }, [setups]);
+
+  const othersServiceKeyOf = (s) => String(s?.id ?? `${s?.service || ''}||${s?.serviceDetails || ''}||${s?.serviceFee ?? ''}`);
+
+  // The specific Others service the user picked from the selected group.
+  const [selectedOthersServiceId, setSelectedOthersServiceId] = useState('');
+
+  // Service options available for the currently selected Other Service Group.
+  const othersServiceOptions = useMemo(() => {
+    if (serviceType !== 'Others' || !groupIdCode) return [];
+    return othersSetupListByGroup.get(groupIdCode) || [];
+  }, [serviceType, groupIdCode, othersSetupListByGroup]);
+
+  // Default to the first service in the group; keep the selection while it is
+  // still part of the group, and clear it when the group has no services.
+  useEffect(() => {
+    if (serviceType !== 'Others' || !groupIdCode) {
+      setSelectedOthersServiceId('');
+      return;
+    }
+    const list = othersSetupListByGroup.get(groupIdCode) || [];
+    if (list.length === 0) {
+      setSelectedOthersServiceId('');
+      return;
+    }
+    const stillValid = list.some((s) => othersServiceKeyOf(s) === selectedOthersServiceId);
+    if (!stillValid) setSelectedOthersServiceId(othersServiceKeyOf(list[0]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceType, groupIdCode, othersSetupListByGroup]);
+
   // The configured Sales Setup for an account: exact customer-group match wins,
   // otherwise fall back to any active setup for that account.
   const getConfiguredSetupFor = useCallback(
@@ -621,11 +664,16 @@ function SalesView({
 
   // Look up the "Others Sale Setup" for the currently selected group so
   // that the service fee and details from the setup are available in the
-  // sale flow.
-  const othersSetup = useMemo(
-    () => (serviceType === 'Others' ? getConfiguredOthersSetupForGroup(groupIdCode) : null),
-    [serviceType, groupIdCode, getConfiguredOthersSetupForGroup],
-  );
+  // sale flow. When the group contains multiple services, the one picked in
+  // "Select Service" wins; otherwise the first active setup is used.
+  const othersSetup = useMemo(() => {
+    if (serviceType !== 'Others' || !groupIdCode) return null;
+    const list = othersSetupListByGroup.get(groupIdCode) || [];
+    if (list.length > 0) {
+      return list.find((s) => othersServiceKeyOf(s) === selectedOthersServiceId) || list[0];
+    }
+    return getConfiguredOthersSetupForGroup(groupIdCode);
+  }, [serviceType, groupIdCode, othersSetupListByGroup, selectedOthersServiceId, getConfiguredOthersSetupForGroup]);
 
   // When serviceType is "Others", totalBDT is driven by the service fee
   // from the Others Sale Setup instead of topupAmountUSD × dollarRate.
@@ -1013,6 +1061,65 @@ function SalesView({
   // STEP 5 — LIVE CHECKOUT INVOICE copy
   const [copied, setCopied] = useState(false);
 
+  // PDF invoice download — Other Services only. Builds the invoice from the
+  // current checkout draft and downloads a server-generated PDF. Never used
+  // for Ad Account Topup sales, so existing invoice functionality is untouched.
+  const [downloadingOthersInvoice, setDownloadingOthersInvoice] = useState(false);
+  const [othersInvoiceError, setOthersInvoiceError] = useState('');
+
+  const handleDownloadOthersInvoice = async () => {
+    if (serviceType !== 'Others') return;
+    if (downloadingOthersInvoice) return;
+    setDownloadingOthersInvoice(true);
+    setOthersInvoiceError('');
+    try {
+      const res = await fetch('/api/sales/others-invoice-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceType: 'Others',
+          invoiceNo: previewInvoiceNo || undefined,
+          date: saleDate || new Date().toISOString().split('T')[0],
+          groupId: groupIdCode,
+          customerId: activeCustomer?.id,
+          customerName: activeCustomer?.name,
+          companyName: activeCustomer?.companyName,
+          service: othersSetup?.service,
+          serviceDetails: othersSetup?.serviceDetails || othersSetup?.service,
+          serviceFee: othersSetup ? Number(othersSetup.serviceFee) : Number(othersTotalAmount) || 0,
+          totalAmountBDT: totalBDT,
+          paidAmountBDT: Number.isFinite(paidBDT) ? paidBDT : 0,
+          dueAmountBDT: Number.isFinite(dueBDT) ? dueBDT : 0,
+          paymentStatus: paymentStatusBadge.label,
+          paymentMethod,
+          workingStatus,
+          assignEmployee: assignEmployee || undefined,
+          note: noteText || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `Invoice download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = /filename="?([^"]+)"?/.exec(disposition);
+      const filename = match?.[1] || 'AdsBuzz_Others_Invoice.pdf';
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setOthersInvoiceError(err?.message || 'Failed to download the invoice. Please try again.');
+    } finally {
+      setDownloadingOthersInvoice(false);
+    }
+  };
+
   const buildInvoiceText = () => {
     const date = new Date().toLocaleDateString('en-GB');
     const invNo = previewInvoiceNo || `ADB ${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}000`;
@@ -1272,6 +1379,35 @@ function SalesView({
                   </div>
                 </div>
 
+                {/* Select Service — shown for Other Services after an Other Service Group is selected */}
+                {serviceType === 'Others' && groupIdCode && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Select Service</label>
+                    {othersServiceOptions.length > 0 ? (
+                      <select
+                        id="checkout-others-service-select"
+                        className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                        value={selectedOthersServiceId}
+                        onChange={(e) => setSelectedOthersServiceId(e.target.value)}
+                      >
+                        {othersServiceOptions.map((s) => {
+                          const key = othersServiceKeyOf(s);
+                          const label = s.service
+                            ? `${s.service} — ৳${Number(s.serviceFee || 0).toLocaleString()}`
+                            : `${s.serviceDetails || 'Service'} — ৳${Number(s.serviceFee || 0).toLocaleString()}`;
+                          return (
+                            <option key={key} value={key}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 italic">No active services found for this Group ID. Please configure one on the Sale Setup page.</p>
+                    )}
+                  </div>
+                )}
+
                 {/* 3. Client Information — resolved automatically from the selected Group ID */}
                 {serviceType !== 'Others' && <div className="space-y-4">
                   {activeCustomer ? (
@@ -1520,8 +1656,8 @@ function SalesView({
                           min={0}
                           step="0.01"
                           className="w-full text-xs pl-8 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
-                          value={paidBDT || ''}
-                          onChange={(e) => setPaidBDT(Number(e.target.value))}
+                          value={paidBDT === '' || paidBDT === null || paidBDT === undefined ? '' : paidBDT}
+                          onChange={(e) => setPaidBDT(e.target.value === '' ? '' : Number(e.target.value))}
                         />
                         <span className="absolute left-3 top-3 text-slate-400 text-xs font-bold">৳</span>
                       </div>
@@ -1914,20 +2050,41 @@ function SalesView({
               <Receipt className="text-brand-blue-dark dark:text-brand-blue-dark" size={16} />
               <h3 className="text-xs font-bold text-brand-blue-deep dark:text-brand-blue-deep uppercase tracking-wider">Live Checkout Invoice</h3>
             </div>
-            <button
-              id="btn-copy-invoice"
-              type="button"
-              onClick={handleCopyInvoice}
-              className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer active:scale-95 ${
-                copied
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-brand-blue text-white hover:bg-[#154673]'
-              }`}
-            >
-              {copied ? <CopyCheck size={12} /> : <Copy size={12} />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
+            <div className="flex items-center gap-2">
+              {serviceType === 'Others' && (
+                <button
+                  id="btn-download-others-invoice"
+                  type="button"
+                  onClick={handleDownloadOthersInvoice}
+                  disabled={downloadingOthersInvoice}
+                  className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer active:scale-95 ${
+                    downloadingOthersInvoice
+                      ? 'bg-slate-300 text-slate-600 cursor-wait'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  <Download size={12} />
+                  {downloadingOthersInvoice ? 'Preparing…' : 'Download Invoice'}
+                </button>
+              )}
+              <button
+                id="btn-copy-invoice"
+                type="button"
+                onClick={handleCopyInvoice}
+                className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer active:scale-95 ${
+                  copied
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-brand-blue text-white hover:bg-[#154673]'
+                }`}
+              >
+                {copied ? <CopyCheck size={12} /> : <Copy size={12} />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
           </div>
+          {serviceType === 'Others' && othersInvoiceError && (
+            <p className="text-[10px] text-rose-500 font-semibold mb-4">{othersInvoiceError}</p>
+          )}
 
           {/* Client summary */}
           <div className="space-y-4">

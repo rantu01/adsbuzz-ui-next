@@ -7,7 +7,10 @@ import {
   Star,
   Phone,
   Layers,
-  UserPlus
+  UserPlus,
+  UserX,
+  AlertTriangle,
+  TrendingUp,
 } from 'lucide-react';
 import SummaryCard from '@/components/common/SummaryCard';
 import Pagination from '@/components/common/Pagination';
@@ -112,6 +115,12 @@ function CustomersView({
   const [assignSearchTerm, setAssignSearchTerm] = useState('');
   const [assigning, setAssigning] = useState(false);
 
+  // Status Change Reason Popup state
+  const [showStatusReasonModal, setShowStatusReasonModal] = useState(false);
+  const [statusChangeReason, setStatusChangeReason] = useState('');
+  const [pendingStatusChange, setPendingStatusChange] = useState(null);
+  const [statusChanging, setStatusChanging] = useState(false);
+
   // Delete Customer state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
@@ -193,6 +202,11 @@ function CustomersView({
     [groupIdIsUnique],
   );
 
+  const availableStatuses = useMemo(() => {
+    const statuses = new Set(customers.map(c => c.status).filter(Boolean));
+    return ['All', ...Array.from(statuses).sort()];
+  }, [customers]);
+
   const filteredCustomers = useMemo(() => {
     const q = searchTerm.toLowerCase();
     return customers.filter(c => {
@@ -217,6 +231,42 @@ function CustomersView({
       favoriteUsers: customers.filter(c => c.favorite === true).length,
     };
   }, [customers, loading]);
+
+  const summaryMetrics = useMemo(() => {
+    const now = new Date();
+    const curPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const inactiveCount = customers.filter(c => c.status === 'Inactive').length;
+    const lostCount = customers.filter(c => c.status === 'Lost').length;
+
+    // Calculate current month topups per customer
+    const topupMap = {};
+    for (const inv of invoices || []) {
+      const prefix = String(inv.date || "").slice(0, 7);
+      if (prefix === curPrefix) {
+        const cid = inv.customerId;
+        topupMap[cid] = (topupMap[cid] || 0) + (inv.topupAmountUSD || 0);
+      }
+    }
+
+    // Find top client
+    let topClient = null;
+    let topTopup = 0;
+    for (const cust of customers) {
+      const total = topupMap[cust.id] || 0;
+      if (total > topTopup) {
+        topTopup = total;
+        topClient = cust;
+      }
+    }
+
+    return {
+      inactiveCount,
+      lostCount,
+      topClient,
+      topTopup,
+      currentMonthPrefix: curPrefix,
+    };
+  }, [customers, invoices, loading]);
 
   const customerTotalPages = Math.max(1, Math.ceil(filteredCustomers.length / LIST_PAGE_SIZE));
   const pagedCustomers = useMemo(
@@ -362,8 +412,25 @@ function CustomersView({
     if (selectedCustomer) {
       setEditCustData({ ...selectedCustomer });
       setShowEditModal(true);
+      setStatusChangeReason('');
+      setEditFormErrors({});
     }
   }, [selectedCustomer]);
+
+  const handleConfirmStatusChange = useCallback(() => {
+    if (!pendingStatusChange) return;
+    setStatusChanging(true);
+    try {
+      const payload = { ...pendingStatusChange };
+      setShowEditModal(false);
+      setEditFormErrors({});
+      setStatusChangeReason('');
+      setPendingStatusChange(null);
+      onUpdateCustomer(payload).catch(() => {});
+    } finally {
+      setStatusChanging(false);
+    }
+  }, [pendingStatusChange, onUpdateCustomer]);
 
   const handleSaveEditCustomer = (e) => {
     e.preventDefault();
@@ -395,8 +462,23 @@ function CustomersView({
       return;
     }
     setEditFormErrors({});
+
+    // Check if status changed to Inactive or Lost
+    const originalStatus = selectedCustomer?.status || '';
+    const newStatus = editCustData.status || '';
+    if (originalStatus !== newStatus && (newStatus === 'Inactive' || newStatus === 'Lost')) {
+      if (!statusChangeReason.trim()) {
+        setEditFormErrors({ status: 'A reason is required when changing status to Inactive or Lost.' });
+        return;
+      }
+      // Open the status reason confirmation modal instead of proceeding directly
+      setPendingStatusChange({ ...editCustData, statusChangeReason: statusChangeReason.trim() });
+      return;
+    }
+
     const payload = { ...editCustData };
     setShowEditModal(false);
+    setEditFormErrors({});
     onUpdateCustomer(payload).catch(() => {});
   };
 
@@ -449,6 +531,32 @@ function CustomersView({
             loading={customerMetrics.loading}
           />
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 mt-4 sm:mt-5">
+          <SummaryCard
+            id="metric-total-inactive-users"
+            label="Total Inactive Users"
+            value={summaryMetrics.inactiveCount}
+            subtext="Accounts currently marked as inactive"
+            variant="amber"
+            loading={customerMetrics.loading}
+          />
+          <SummaryCard
+            id="metric-total-lost-users"
+            label="Total Lost Users"
+            value={summaryMetrics.lostCount}
+            subtext="Accounts marked as lost"
+            variant="rose"
+            loading={customerMetrics.loading}
+          />
+          <SummaryCard
+            id="metric-top-client-current-month"
+            label="Top Client Current Month"
+            value={summaryMetrics.topTopup}
+            subtext={summaryMetrics.topClient ? `${summaryMetrics.topClient.name} (${summaryMetrics.topClient.groupId || 'GC-GENERIC'})` : 'No top-up data this month'}
+            variant="blue"
+            loading={customerMetrics.loading}
+          />
+        </div>
       </section>
 
       {/* Split master-detail layout */}
@@ -472,25 +580,28 @@ function CustomersView({
             </div>
             
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <select
-                  id="status-filter-select"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className={`text-[10px] font-bold px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-blue cursor-pointer transition-colors ${
-                    statusFilter === 'Active' 
-                      ? 'text-emerald-600 dark:text-emerald-400' 
-                      : 'text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  <option value="All" className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-medium">
-                    All Statuses
-                  </option>
-                  <option value="Active" className="text-emerald-600 dark:text-emerald-400 font-bold bg-white dark:bg-slate-900">
-                    Active
-                  </option>
-                </select>
-              </div>
+               <div className="flex items-center gap-1.5">
+                 <select
+                   id="status-filter-select"
+                   value={statusFilter}
+                   onChange={(e) => setStatusFilter(e.target.value)}
+                   className={`text-[10px] font-bold px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-blue cursor-pointer transition-colors ${
+                     statusFilter === 'Active' 
+                       ? 'text-emerald-600 dark:text-emerald-400' 
+                       : statusFilter === 'Inactive'
+                         ? 'text-amber-600 dark:text-amber-400'
+                         : statusFilter === 'Lost'
+                           ? 'text-rose-600 dark:text-rose-400'
+                           : 'text-slate-700 dark:text-slate-300'
+                   }`}
+                 >
+                   {availableStatuses.map(s => (
+                     <option key={s} value={s} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 font-medium">
+                       {s === 'All' ? 'All Statuses' : s}
+                     </option>
+                   ))}
+                 </select>
+               </div>
 
               <button
                 id="filter-favorites"
@@ -797,13 +908,39 @@ function CustomersView({
                 id="edit-cust-status"
                 className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-bold"
                 value={editCustData?.status ?? 'Active'}
-                onChange={(e) => editCustData && setEditCustData({ ...editCustData, status: e.target.value })}
+                onChange={(e) => {
+                  const newStatus = e.target.value;
+                  const originalStatus = selectedCustomer?.status || '';
+                  if (originalStatus !== newStatus && (newStatus === 'Inactive' || newStatus === 'Lost')) {
+                    setStatusChangeReason('');
+                    setEditFormErrors({});
+                  }
+                  editCustData && setEditCustData({ ...editCustData, status: e.target.value });
+                }}
               >
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
                 <option value="Lost">Lost</option>
               </select>
+              {editFormErrors.status && <FieldError error={editFormErrors.status} />}
             </div>
+            {editCustData?.status !== (selectedCustomer?.status || 'Active') &&
+              (editCustData?.status === 'Inactive' || editCustData?.status === 'Lost') && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    Reason for Status Change <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="edit-status-reason"
+                    rows={2}
+                    className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+                    placeholder="Enter the reason for changing status..."
+                    value={statusChangeReason}
+                    onChange={(e) => setStatusChangeReason(e.target.value)}
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">Required before saving status changes.</p>
+                </div>
+              )}
           </div>
 
           <div>
@@ -938,6 +1075,59 @@ function CustomersView({
               // leftIcon={<Layers size={12} />}
             >
               {assigning ? 'Assigning...' : 'Assign Account'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Status Change Reason Confirmation Modal */}
+      <Modal
+        isOpen={!!pendingStatusChange}
+        onClose={() => { setPendingStatusChange(null); setStatusChangeReason(''); }}
+        title="Confirm Status Change"
+        description={pendingStatusChange ? `Change ${pendingStatusChange.name} (${pendingStatusChange.id}) status to ${pendingStatusChange.status}?` : undefined}
+        size="md"
+        variant="animated"
+      >
+        <div className="p-6 space-y-4">
+          {pendingStatusChange && (
+            <div className="p-3 rounded-xl bg-surface-blue-light dark:bg-surface-blue-light border border-border-blue-light dark:border-border-blue-light text-xs text-brand-blue-deep dark:text-brand-blue-deep">
+              <p className="font-bold">{pendingStatusChange.name}</p>
+              <p className="mt-0.5">Current Status: <span className="font-semibold">{selectedCustomer?.status}</span> → New Status: <span className="font-semibold text-red-600">{pendingStatusChange.status}</span></p>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+              Reason / Note <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              id="status-change-reason-input"
+              rows={3}
+              required
+              placeholder="Enter the reason for this status change..."
+              className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
+              value={statusChangeReason}
+              onChange={(e) => setStatusChangeReason(e.target.value)}
+            />
+            <p className="mt-1 text-[10px] text-slate-400">A reason is required before the status change can be saved.</p>
+          </div>
+          <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => { setPendingStatusChange(null); setStatusChangeReason(''); }}
+              disabled={statusChanging}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleConfirmStatusChange}
+              disabled={!statusChangeReason.trim() || statusChanging}
+              leftIcon={<AlertTriangle size={11} />}
+            >
+              {statusChanging ? 'Confirming...' : 'Confirm Status Change'}
             </Button>
           </div>
         </div>

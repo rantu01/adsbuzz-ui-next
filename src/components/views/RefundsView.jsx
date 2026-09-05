@@ -26,6 +26,16 @@ function todayStr() {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
 }
 
+function formatMonthLabel(month) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(month || ''));
+  if (!m) return String(month || '');
+  const names = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${names[Number(m[2]) - 1] || m[2]} ${m[1]}`;
+}
+
 function RefundsView({
   refunds = [],
   refundSummary = { lifetimeRefund: 0, thisMonthRefund: 0, thisMonthName: '', thisMonthLabel: '' },
@@ -52,6 +62,14 @@ function RefundsView({
 
   const [pendingDelete, setPendingDelete] = useState(null);
 
+  // Month-wise filter (YYYY-MM) derived from each refund's existing date.
+  // Empty = all months (existing behavior unchanged).
+  const [selectedMonth, setSelectedMonth] = useState('');
+
+  // Pagination for the refund logs.
+  const [currentPage, setCurrentPage] = useState(1);
+  const REFUNDS_PER_PAGE = 10;
+
   useEffect(() => {
     if (!paymentMethod && paymentMethods.length > 0) {
       setPaymentMethod(paymentMethods[0]);
@@ -75,6 +93,7 @@ function RefundsView({
     () =>
       (refunds || [])
         .filter((r) => {
+          if (selectedMonth && String(r.date || '').slice(0, 7) !== selectedMonth) return false;
           if (!search) return true;
           const q = search.toLowerCase();
           return (
@@ -85,8 +104,50 @@ function RefundsView({
             (r.note || '').toLowerCase().includes(q)
           );
         }),
-    [refunds, search],
+    [refunds, search, selectedMonth],
   );
+
+  // Refunds belonging to the selected month (ignores the search text) — drives
+  // the monthly summary totals.
+  const monthRefunds = useMemo(
+    () =>
+      !selectedMonth
+        ? []
+        : (refunds || []).filter((r) => String(r.date || '').slice(0, 7) === selectedMonth),
+    [refunds, selectedMonth],
+  );
+
+  const monthTotalAmount = useMemo(
+    () => monthRefunds.reduce((sum, r) => sum + (Number(r.totalAmountBDT) || 0), 0),
+    [monthRefunds],
+  );
+
+  const monthLabel = selectedMonth ? formatMonthLabel(selectedMonth) : '';
+
+  // Paginated slice of the (month + search) filtered logs.
+  const totalPages = Math.max(1, Math.ceil(filteredRefunds.length / REFUNDS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedRefunds = filteredRefunds.slice(
+    (safeCurrentPage - 1) * REFUNDS_PER_PAGE,
+    safeCurrentPage * REFUNDS_PER_PAGE,
+  );
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    const start = Math.max(1, safeCurrentPage - Math.floor(maxVisible / 2));
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    for (let i = start; i <= end; i += 1) pages.push(i);
+    return pages;
+  };
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedMonth, refunds]);
 
   const openAdd = () => {
     setEditingRefund(null);
@@ -352,8 +413,48 @@ function RefundsView({
       {/* Transaction Log */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-slate-800 dark:text-white">Refund Transaction Log</h2>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search refunds…" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <input
+            id="refund-month-filter"
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            aria-label="Filter refunds by month"
+            className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-orange outline-none dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
+          />
+          {selectedMonth && (
+            <button
+              id="refund-month-clear"
+              type="button"
+              onClick={() => setSelectedMonth('')}
+              className="text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Clear
+            </button>
+          )}
+          <SearchBar value={search} onChange={setSearch} placeholder="Search refunds…" />
+        </div>
       </div>
+
+      {/* Monthly Summary — shown when a month is selected */}
+      {selectedMonth && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <StatCard
+            id="refund-month-total-card"
+            title={`Total Amount Of Refund — ${monthLabel}`}
+            value={formatBDT(monthTotalAmount)}
+            subtext={`Refunded in ${monthLabel}`}
+            variant="rose"
+          />
+          <StatCard
+            id="refund-month-count-card"
+            title={`Total Refund Transactions — ${monthLabel}`}
+            value={String(monthRefunds.length)}
+            subtext={`Refund records in ${monthLabel}`}
+            variant="amber"
+          />
+        </div>
+      )}
 
       <div
         id="refund-log-card"
@@ -372,7 +473,7 @@ function RefundsView({
             </tr>
           </thead>
           <tbody>
-            {filteredRefunds.length === 0 ? (
+            {paginatedRefunds.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                   <FileText size={24} className="mx-auto mb-2 opacity-50" />
@@ -380,7 +481,7 @@ function RefundsView({
                 </td>
               </tr>
             ) : (
-              filteredRefunds.map((r) => (
+              paginatedRefunds.map((r) => (
                 <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                     {r.date ? String(r.date).slice(0, 10) : '-'}
@@ -423,6 +524,50 @@ function RefundsView({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredRefunds.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Showing {(safeCurrentPage - 1) * REFUNDS_PER_PAGE + 1}–
+            {Math.min(safeCurrentPage * REFUNDS_PER_PAGE, filteredRefunds.length)} of{' '}
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{filteredRefunds.length}</span>{' '}
+            refund records
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handlePageChange(safeCurrentPage - 1)}
+              disabled={safeCurrentPage === 1}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+            >
+              Prev
+            </button>
+            {getPageNumbers().map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => handlePageChange(page)}
+                className={`min-w-[32px] px-2 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  page === safeCurrentPage
+                    ? 'bg-brand-orange text-white shadow-md shadow-orange-500/20'
+                    : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => handlePageChange(safeCurrentPage + 1)}
+              disabled={safeCurrentPage === totalPages}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         isOpen={Boolean(pendingDelete)}

@@ -17,7 +17,12 @@ export async function apiFetch(url, options = {}) {
 
   if (!res.ok) {
     const message = data?.message || (typeof data === 'string' && data) || `Request failed (${res.status})`;
-    throw new Error(message);
+    const err = new Error(message);
+    // Surfaced additively so callers can branch on structured error codes
+    // (e.g. INSUFFICIENT_BALANCE) without changing existing message handling.
+    err.status = res.status;
+    err.details = data?.details;
+    throw err;
   }
 
   return data;

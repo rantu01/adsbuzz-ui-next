@@ -76,7 +76,7 @@ function AdAccountsView({
   const [newBmName, setNewBmName] = useState('');
   const [newBmId, setNewBmId] = useState('');
   const [newCard, setNewCard] = useState('');
-  const [newAccountStatus, setNewAccountStatus] = useState('Active');
+  const [newAccountStatus, setNewAccountStatus] = useState('Available');
   const [seriesFilter, setSeriesFilter] = useState('All');
 
   // Edit Account Modal
@@ -252,7 +252,7 @@ function AdAccountsView({
     setNewBmName('');
     setNewBmId('');
     setNewCard('');
-    setNewAccountStatus('Active');
+    setNewAccountStatus('Available');
     setShowAddModal(false);
   };
 
@@ -985,9 +985,11 @@ function AdAccountsView({
                 value={newAccountStatus}
                 onChange={(e) => setNewAccountStatus(e.target.value)}
               >
-                <option value="Active">Active</option>
-                <option value="Disabled">Disabled</option>
-                <option value="Pending">Pending</option>
+                <option value="Available">Available</option>
+                <option value="Terminated">Terminated</option>
+                <option value="Need Support">Need Support</option>
+                <option value="Disable">Disable</option>
+                <option value="Sold">Sold</option>
               </select>
             </div>
           </div>

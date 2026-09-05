@@ -26,6 +26,7 @@ import { useSocialAdAccounts } from '@/hooks/useSocialAdAccounts';
 import { useOfficeExpenses } from '@/hooks/useOfficeExpenses';
 import { useOfficeExpenseEntries } from '@/hooks/useOfficeExpenseEntries';
 import { useOfficeExpenseMonths } from '@/hooks/useOfficeExpenseMonths';
+import { useOfficeExpenseFund } from '@/hooks/useOfficeExpenseFund';
 import { useRefunds } from '@/hooks/useRefunds';
 import { uploadScreenshot, getErrorMessage } from '@/utils/api';
 
@@ -201,6 +202,14 @@ export function AppProvider({ children }) {
     refetch: refetchOfficeExpenseMonths,
   } = useOfficeExpenseMonths(triggerToast);
   const {
+    fund: officeExpenseFund,
+    transactions: officeExpenseFundTransactions,
+    loading: officeExpenseFundLoading,
+    error: officeExpenseFundError,
+    addFunds: rawAddOfficeExpenseFunds,
+    refetch: refetchOfficeExpenseFund,
+  } = useOfficeExpenseFund(triggerToast);
+  const {
     refunds,
     summary: refundSummary,
     error: refundsError,
@@ -210,8 +219,21 @@ export function AppProvider({ children }) {
     refetch: refetchRefunds,
   } = useRefunds(triggerToast);
 
+  const getNowTime = () => new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
   const logActivityFx = (user, action, details, type, customerId) => {
-    addActivity({ time: "Just now", user, action, details, type, ...(customerId && { customerId }) });
+    addActivity({ time: getNowTime(), user, action, details, type, ...(customerId && { customerId }) });
+  };
+
+  const logStatusChangeActivity = (customerId, customerName, prevStatus, newStatus, reason) => {
+    addActivity({
+      time: getNowTime(),
+      user: "Rakibul R.",
+      action: `Customer Status Changed: ${prevStatus} → ${newStatus}`,
+      details: `${customerName} (${customerId}) status changed from ${prevStatus} to ${newStatus}. Reason: ${reason || 'N/A'}.`,
+      type: 'customer',
+      customerId,
+    });
   };
 
   // Wrapped mutation handlers so every action also writes to the activity feed
@@ -267,8 +289,16 @@ export function AppProvider({ children }) {
   };
 
   const handleUpdateCustomer = async (cust) => {
+    const prev = customers.find(c => c.id === cust.id);
+    const prevStatus = prev?.status || '';
+    const newStatus = cust.status || '';
     const result = await rawUpdateCustomer(cust);
-    wrapCustomerUpdate(result, "Updated Customer", "customer", cust.id);
+    if (result) {
+      if (prevStatus !== newStatus && (newStatus === 'Inactive' || newStatus === 'Lost')) {
+        logStatusChangeActivity(result.id, result.name, prevStatus, newStatus, cust.statusChangeReason || '');
+      }
+      wrapCustomerUpdate(result, "Updated Customer", "customer", cust.id);
+    }
     return result;
   };
 
@@ -466,19 +496,28 @@ export function AppProvider({ children }) {
 
   const handleAddOfficeExpenseEntry = async (entryData) => {
     const result = await rawAddOfficeExpenseEntry(entryData);
-    if (result) logActivityFx("Rakibul R.", "Added Office Expense Entry", `Voucher ${result.voucherNo || ''} (${result.category}) recorded.`, "payment");
+    if (result) {
+      logActivityFx("Rakibul R.", "Added Office Expense Entry", `Voucher ${result.voucherNo || ''} (${result.category}) recorded.`, "payment");
+      refetchOfficeExpenseFund();
+    }
     return result;
   };
 
   const handleUpdateOfficeExpenseEntry = async (entry) => {
     const result = await rawUpdateOfficeExpenseEntry(entry);
-    if (result) logActivityFx("Rakibul R.", "Updated Office Expense Entry", `Voucher ${result.voucherNo || ''} updated.`, "payment");
+    if (result) {
+      logActivityFx("Rakibul R.", "Updated Office Expense Entry", `Voucher ${result.voucherNo || ''} updated.`, "payment");
+      refetchOfficeExpenseFund();
+    }
     return result;
   };
 
   const handleDeleteOfficeExpenseEntry = async (id) => {
     const result = await rawDeleteOfficeExpenseEntry(id);
-    if (result) logActivityFx("Rakibul R.", "Deleted Office Expense Entry", `Voucher ${result.voucherNo || ''} removed.`, "payment");
+    if (result) {
+      logActivityFx("Rakibul R.", "Deleted Office Expense Entry", `Voucher ${result.voucherNo || ''} removed.`, "payment");
+      refetchOfficeExpenseFund();
+    }
     return result;
   };
 
@@ -491,6 +530,12 @@ export function AppProvider({ children }) {
   const handleUpdateOfficeExpenseMonth = async (monthCode, updates) => {
     const result = await rawUpdateOfficeExpenseMonth(monthCode, updates);
     if (result) logActivityFx("Rakibul R.", "Updated Expense Month", `${monthCode} updated.`, "system");
+    return result;
+  };
+
+  const handleAddOfficeExpenseFunds = async ({ amount, note, month }) => {
+    const result = await rawAddOfficeExpenseFunds({ amount, note, month });
+    if (result) logActivityFx("Rakibul R.", "Funded Office Expense Balance", `৳${Number(amount).toLocaleString()} added to the office expense balance.`, "payment");
     return result;
   };
 
@@ -591,7 +636,7 @@ export function AppProvider({ children }) {
     const newCustomer = addCustomer(customerData);
     addActivity({
       id: `act-${Date.now()}`,
-      time: "Just now",
+      time: getNowTime(),
       user: "Rakibul Riyet",
       action: "Onboarded Customer",
       details: `Created profile for ${customerData.name} (${customerData.companyName})`,
@@ -605,7 +650,7 @@ export function AppProvider({ children }) {
     addSocialAdAccount(accountData);
     addActivity({
       id: `act-${Date.now()}`,
-      time: "Just now",
+      time: getNowTime(),
       user: "Rakibul R.",
       action: "Cataloged Ad Account",
       details: `Loaded ${accountData.adAccountName} (${accountData.platform}) to unassigned pool.`,
@@ -617,7 +662,7 @@ export function AppProvider({ children }) {
     addSocialAdAccount(accountData);
     addActivity({
       id: `act-${Date.now()}`,
-      time: "Just now",
+      time: getNowTime(),
       user: "Rakibul R.",
       action: "Loaded Social Ad Account",
       details: `Cataloged ${accountData.adAccountName} (${accountData.platform}) to Load Social Ad Account entries.`,
@@ -955,6 +1000,10 @@ export function AppProvider({ children }) {
     officeExpenseEntriesError,
     officeExpenseMonths,
     officeExpenseMonthsError,
+    officeExpenseFund,
+    officeExpenseFundTransactions,
+    officeExpenseFundLoading,
+    officeExpenseFundError,
     refunds,
     refundSummary,
     refundsError,
@@ -975,6 +1024,7 @@ export function AppProvider({ children }) {
     refetchOfficeExpenses,
     refetchOfficeExpenseEntries,
     refetchOfficeExpenseMonths,
+    refetchOfficeExpenseFund,
     refetchRefunds,
 
     toggleTheme,
@@ -1032,6 +1082,7 @@ export function AppProvider({ children }) {
     handleDeleteOfficeExpenseEntry,
     handleAddOfficeExpenseMonth,
     handleUpdateOfficeExpenseMonth,
+    handleAddOfficeExpenseFunds,
     handleAddRefund,
     handleUpdateRefund,
     handleDeleteRefund,

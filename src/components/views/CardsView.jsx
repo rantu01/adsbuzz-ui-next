@@ -140,10 +140,10 @@ function CardsView({
   // Create Card State
   const [newCardName, setNewCardName] = useState('');
   const [newCardInitial, setNewCardInitial] = useState('');
-  const [newCardType, setNewCardType] = useState('Visa');
+  const [newCardType, setNewCardType] = useState('');
   const [newCardPlatform, setNewCardPlatform] = useState('');
   const [newCardWallet, setNewCardWallet] = useState('');
-  const [newCardStatus, setNewCardStatus] = useState('Active');
+  const [newCardStatus, setNewCardStatus] = useState('');
 
   // Filter wallets based on selected platform
   const filteredWallets = wallets.filter(w => !newCardPlatform || w.platformId === newCardPlatform);
@@ -167,8 +167,22 @@ function CardsView({
   const handleCreateCardSubmit = (e) => {
     e.preventDefault();
     const errors = validate(
-      { name: newCardName },
-      { name: [required('Card display name is required'), maxLength(60)] },
+      {
+        name: newCardName,
+        initial: newCardInitial,
+        type: newCardType,
+        platform: newCardPlatform,
+        wallet: newCardWallet,
+        status: newCardStatus,
+      },
+      {
+        name: [required('Card display name is required'), maxLength(60)],
+        initial: [required('Card initials are required'), maxLength(50)],
+        type: [required('Card type is required')],
+        platform: [required('Card platform is required')],
+        wallet: [required('Wallet is required')],
+        status: [required('Status is required')],
+      },
     );
     if (hasErrors(errors)) {
       setAddFormErrors(errors);
@@ -196,10 +210,10 @@ function CardsView({
 
     setNewCardName('');
     setNewCardInitial('');
-    setNewCardType('Visa');
+    setNewCardType('');
     setNewCardPlatform('');
     setNewCardWallet('');
-    setNewCardStatus('Active');
+    setNewCardStatus('');
     setShowAddModal(false);
   };
 
@@ -550,7 +564,7 @@ Edit
       >
         <form onSubmit={handleCreateCardSubmit} className="p-4 sm:p-6 space-y-4" id="form-add-card">
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Display Name</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Display Name <span className="text-red-500">*</span></label>
             <input
               id="add-card-name"
               type="text"
@@ -558,44 +572,51 @@ Edit
               placeholder="e.g. ADSBUZZ DBBL - 7473"
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={newCardName}
-              onChange={(e) => setNewCardName(e.target.value)}
+              onChange={(e) => { setNewCardName(e.target.value); if (addFormErrors.name) setAddFormErrors((p) => ({ ...p, name: undefined })); }}
             />
             <FieldError error={addFormErrors.name} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Initials</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Initials <span className="text-red-500">*</span></label>
             <input
               id="add-card-initial"
               type="text"
+              required
               placeholder="e.g. DB / DBBL Visa"
               maxLength={50}
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-mono"
               value={newCardInitial}
-              onChange={(e) => setNewCardInitial(e.target.value)}
+              onChange={(e) => { setNewCardInitial(e.target.value); if (addFormErrors.initial) setAddFormErrors((p) => ({ ...p, initial: undefined })); }}
             />
+            <FieldError error={addFormErrors.initial} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Type</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Type <span className="text-red-500">*</span></label>
             <select
               id="add-card-type"
+              required
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={newCardType}
-              onChange={(e) => setNewCardType(e.target.value)}
+              onChange={(e) => { setNewCardType(e.target.value); if (addFormErrors.type) setAddFormErrors((p) => ({ ...p, type: undefined })); }}
             >
+              <option value="">Select card type</option>
               <option value="Visa">Visa</option>
               <option value="Mastercard">Mastercard</option>
               <option value="Union Pay">Union Pay</option>
             </select>
+            <FieldError error={addFormErrors.type} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Platform</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Card Platform <span className="text-red-500">*</span></label>
             <select
               id="add-card-platform"
+              required
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={newCardPlatform}
               onChange={(e) => {
                 setNewCardPlatform(e.target.value);
                 setNewCardWallet('');
+                if (addFormErrors.platform) setAddFormErrors((p) => ({ ...p, platform: undefined }));
               }}
             >
               <option value="">Select platform</option>
@@ -603,36 +624,42 @@ Edit
                 <option key={p.platformId} value={p.platformId}>{p.platformName}</option>
               ))}
             </select>
+            <FieldError error={addFormErrors.platform} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Wallets</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Wallets <span className="text-red-500">*</span></label>
             <select
               id="add-card-wallet"
+              required
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100"
               value={newCardWallet}
-              onChange={(e) => setNewCardWallet(e.target.value)}
+              onChange={(e) => { setNewCardWallet(e.target.value); if (addFormErrors.wallet) setAddFormErrors((p) => ({ ...p, wallet: undefined })); }}
             >
               <option value="">Select wallet</option>
               {filteredWallets.map((w) => (
                 <option key={w.walletId} value={w.walletId}>{w.ownerName}</option>
               ))}
             </select>
+            <FieldError error={addFormErrors.wallet} />
             {newCardPlatform && filteredWallets.length === 0 && (
               <p className="text-[10px] text-amber-500 mt-1">No wallets available for this platform. Add a wallet first.</p>
             )}
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Status <span className="text-red-500">*</span></label>
             <select
               id="add-card-status"
+              required
               className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 font-medium"
               value={newCardStatus}
-              onChange={(e) => setNewCardStatus(e.target.value)}
+              onChange={(e) => { setNewCardStatus(e.target.value); if (addFormErrors.status) setAddFormErrors((p) => ({ ...p, status: undefined })); }}
             >
+              <option value="">Select status</option>
               <option value="Active">Active</option>
               <option value="Disable">Disable</option>
               <option value="Restricted">Restricted</option>
             </select>
+            <FieldError error={addFormErrors.status} />
           </div>
 
           <div className="custom-modal-footer flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">

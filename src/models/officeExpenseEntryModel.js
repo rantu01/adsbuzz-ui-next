@@ -3,6 +3,11 @@ import logger from "@/utils/logger";
 import { INITIAL_OFFICE_EXPENSE_ENTRIES } from "@/data/seedData";
 import { listOfficeExpenses } from "@/models/officeExpenseModel";
 import { listOfficeExpenseMonths } from "@/models/officeExpenseMonthModel";
+import {
+  deductForExpense,
+  adjustForExpenseUpdate,
+  refundForExpenseDelete,
+} from "@/models/officeExpenseFundModel";
 
 function toNumber(value) {
   const n = Number(value);
@@ -85,7 +90,24 @@ export async function createOfficeExpenseEntry(data) {
   const doc = { ...s, createdAt: new Date(), updatedAt: new Date() };
   await collection.insertOne(doc);
   const { _id, ...rest } = doc;
-  return { ...rest, id: _id.toString() };
+  const entry = { ...rest, id: _id.toString() };
+
+  // Every recorded expense is deducted from the persistent office-expense
+  // fund balance. If funds are insufficient the entry is rolled back so no
+  // un-funded expense can ever be recorded.
+  try {
+    await deductForExpense({
+      amount: s.amount,
+      entryId: entry.id,
+      month: s.month,
+      voucherNo: s.voucherNo,
+      note: s.description,
+    });
+  } catch (err) {
+    await collection.deleteOne({ _id });
+    throw err;
+  }
+  return entry;
 }
 
 export async function updateOfficeExpenseEntry(id, data) {
@@ -109,7 +131,46 @@ export async function updateOfficeExpenseEntry(id, data) {
   if (data.amount !== undefined) patch.amount = s.amount;
   if ("date" in data) patch.date = s.date;
 
+  const oldAmount = Number(existing.amount) || 0;
+  const newAmount = data.amount !== undefined ? s.amount : oldAmount;
+  const newMonth = s.month || existing.month;
+  const newVoucher = typeof s.voucherNo === "string" ? s.voucherNo : existing.voucherNo;
+  const delta = Math.round((newAmount - oldAmount) * 100) / 100;
+
   await collection.updateOne({ _id: existing._id }, { $set: patch });
+
+  // Keep the fund balance in sync with the new amount. A positive delta is
+  // balance-checked; if funds are insufficient the entry is rolled back to
+  // its previous values so the recorded expense never exceeds the balance.
+  if (delta !== 0) {
+    try {
+      await adjustForExpenseUpdate({
+        entryId: existing._id.toString(),
+        month: newMonth,
+        voucherNo: newVoucher,
+        oldAmount,
+        newAmount,
+      });
+    } catch (err) {
+      await collection.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            month: existing.month,
+            voucherNo: existing.voucherNo,
+            category: existing.category,
+            subCategory: existing.subCategory,
+            description: existing.description,
+            amount: existing.amount,
+            date: existing.date,
+            updatedAt: new Date(),
+          },
+        },
+      );
+      throw err;
+    }
+  }
+
   const updated = await collection.findOne({ _id: existing._id });
   const { _id, ...rest } = updated;
   return { ...rest, id: _id.toString() };
@@ -126,6 +187,13 @@ export async function deleteOfficeExpenseEntry(id) {
   }
   if (!existing) return null;
   await collection.deleteOne({ _id: existing._id });
+  // Refund the removed expense back to the available fund balance.
+  await refundForExpenseDelete({
+    entryId: existing._id.toString(),
+    month: existing.month,
+    voucherNo: existing.voucherNo,
+    amount: Number(existing.amount) || 0,
+  });
   const { _id, ...rest } = existing;
   return { ...rest, id: _id.toString() };
 }

@@ -45,6 +45,12 @@ export const POST = asyncHandler(async (request) => {
     if (err.message === "CATEGORY_REQUIRED") {
       throw new ApiError(HttpStatus.BAD_REQUEST, "Category is required.");
     }
+    if (err.code === "INSUFFICIENT_BALANCE") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, err.message, {
+        code: "INSUFFICIENT_BALANCE",
+        available: err.available ?? 0,
+      });
+    }
     throw err;
   }
 });

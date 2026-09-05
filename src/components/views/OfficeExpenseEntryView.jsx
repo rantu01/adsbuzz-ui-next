@@ -9,12 +9,18 @@ import {
   Receipt,
   Wallet,
   FileText,
+  Banknote,
+  History,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SearchBar from '@/components/ui/SearchBar';
 import ErrorBanner from '@/components/ui/ErrorBanner';
+import Pagination from '@/components/common/Pagination';
+
+const ENTRY_PAGE_SIZE = 10;
+const FUND_PAGE_SIZE = 10;
 
 function formatBDT(n) {
   const num = Number(n) || 0;
@@ -26,13 +32,19 @@ function OfficeExpenseEntryView({
   officeExpenseEntries = [],
   officeExpenseEntriesError,
   officeExpenseMonths = [],
+  officeExpenseFund = null,
+  officeExpenseFundTransactions = [],
+  officeExpenseFundLoading = false,
+  officeExpenseFundError = null,
   onRetryEntries,
   onRetryMonths,
+  onRetryFund,
   onAddEntry,
   onUpdateEntry,
   onDeleteEntry,
   onAddMonth,
   onUpdateMonth,
+  onAddFunds,
 }) {
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [search, setSearch] = useState('');
@@ -57,6 +69,17 @@ function OfficeExpenseEntryView({
   const [formError, setFormError] = useState('');
 
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  // Pagination state (entries table + fund history table)
+  const [entryPage, setEntryPage] = useState(1);
+  const [fundPage, setFundPage] = useState(1);
+
+  // Add Money / Fund Balance state (new functionality — existing flows untouched)
+  const [isFundModalOpen, setIsFundModalOpen] = useState(false);
+  const [fundAmount, setFundAmount] = useState('');
+  const [fundNote, setFundNote] = useState('');
+  const [fundFormError, setFundFormError] = useState('');
+  const [fundSaving, setFundSaving] = useState(false);
 
   const categoryMap = useMemo(() => {
     const map = {};
@@ -98,6 +121,34 @@ function OfficeExpenseEntryView({
   const monthTotal = useMemo(
     () => monthEntries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
     [monthEntries],
+  );
+
+  // Reset to first page whenever the visible entry set changes.
+  useEffect(() => {
+    setEntryPage(1);
+  }, [selectedMonth, search, officeExpenseEntries]);
+
+  const entryTotalPages = Math.max(1, Math.ceil(monthEntries.length / ENTRY_PAGE_SIZE));
+  const safeEntryPage = Math.min(entryPage, entryTotalPages);
+  const pagedEntries = useMemo(
+    () => monthEntries.slice((safeEntryPage - 1) * ENTRY_PAGE_SIZE, safeEntryPage * ENTRY_PAGE_SIZE),
+    [monthEntries, safeEntryPage],
+  );
+
+  // Reset fund history page whenever new transactions arrive.
+  useEffect(() => {
+    setFundPage(1);
+  }, [officeExpenseFundTransactions]);
+
+  const fundTotalPages = Math.max(1, Math.ceil((officeExpenseFundTransactions || []).length / FUND_PAGE_SIZE));
+  const safeFundPage = Math.min(fundPage, fundTotalPages);
+  const pagedTransactions = useMemo(
+    () =>
+      (officeExpenseFundTransactions || []).slice(
+        (safeFundPage - 1) * FUND_PAGE_SIZE,
+        safeFundPage * FUND_PAGE_SIZE,
+      ),
+    [officeExpenseFundTransactions, safeFundPage],
   );
 
   const openAddEntry = () => {
@@ -152,8 +203,43 @@ function OfficeExpenseEntryView({
       }
       setIsEntryModalOpen(false);
       setEditingEntry(null);
+    } catch (err) {
+      // Surface a clear inline message when the fund balance blocks the save;
+      // other errors are already reported via toast by the data hooks.
+      if (err?.details?.code === 'INSUFFICIENT_BALANCE' || /insufficient/i.test(err?.message || '')) {
+        setFormError(err?.message || 'Insufficient available balance. Please add money first.');
+      }
+    }
+  };
+
+  const openFundModal = () => {
+    setFundAmount('');
+    setFundNote('');
+    setFundFormError('');
+    setIsFundModalOpen(true);
+  };
+
+  const handleAddFunds = async () => {
+    const amt = Number(fundAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setFundFormError('Enter a valid amount greater than 0.');
+      return;
+    }
+    if (!onAddFunds) {
+      setFundFormError('Funding is not available right now.');
+      return;
+    }
+    setFundSaving(true);
+    try {
+      await onAddFunds({ amount: amt, note: fundNote.trim(), month: selectedMonth || '' });
+      setIsFundModalOpen(false);
+      setFundAmount('');
+      setFundNote('');
+      setFundFormError('');
     } catch {
-      // toast already shown
+      // toast already shown by the hook
+    } finally {
+      setFundSaving(false);
     }
   };
 
@@ -237,6 +323,44 @@ function OfficeExpenseEntryView({
       </div>
 
       <ErrorBanner error={officeExpenseEntriesError} onRetry={onRetryEntries} />
+      <ErrorBanner error={officeExpenseFundError} onRetry={onRetryFund} />
+
+      {/* Office Expense Fund Balance — persistent wallet that every expense deducts from */}
+      <div
+        id="office-expense-fund-card"
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Banknote size={14} className="text-emerald-500" /> Available Expense Balance
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {officeExpenseFundLoading && !officeExpenseFund ? '…' : formatBDT(officeExpenseFund?.balance)}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500">
+              <span>
+                Total Funded:{' '}
+                <strong className="text-emerald-600 dark:text-emerald-400">
+                  {officeExpenseFundLoading && !officeExpenseFund ? '…' : formatBDT(officeExpenseFund?.totalFunded)}
+                </strong>
+              </span>
+              <span>
+                Total Spent:{' '}
+                <strong className="text-rose-600 dark:text-rose-400">
+                  {officeExpenseFundLoading && !officeExpenseFund ? '…' : formatBDT(officeExpenseFund?.totalSpent)}
+                </strong>
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Every new expense is automatically deducted from this balance. Expenses are blocked when funds are insufficient.
+            </p>
+          </div>
+          <Button onClick={openFundModal} leftIcon={<Plus size={14} />}>
+            Add Money
+          </Button>
+        </div>
+      </div>
 
       {selectedMonth && (
         <div
@@ -312,7 +436,7 @@ function OfficeExpenseEntryView({
                 </td>
               </tr>
             ) : (
-              monthEntries.map((entry) => (
+              pagedEntries.map((entry) => (
                 <tr key={entry.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                     {entry.date ? String(entry.date).slice(0, 10) : '-'}
@@ -362,6 +486,84 @@ function OfficeExpenseEntryView({
             </tfoot>
           )}
         </table>
+        <Pagination page={safeEntryPage} totalPages={entryTotalPages} onPageChange={setEntryPage} />
+      </div>
+
+      {/* Fund Transaction History — money added vs. money deducted by expenses */}
+      <div
+        id="office-expense-fund-history"
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto"
+      >
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+            <History size={14} className="text-brand-blue" /> Fund History
+          </h3>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-500">
+              <th className="text-left font-bold px-4 py-3">Date</th>
+              <th className="text-left font-bold px-4 py-3">Type</th>
+              <th className="text-left font-bold px-4 py-3">Month / Voucher</th>
+              <th className="text-left font-bold px-4 py-3">Note</th>
+              <th className="text-right font-bold px-4 py-3">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(officeExpenseFundTransactions || []).length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                  No funding activity yet. Use “Add Money” to fund the balance.
+                </td>
+              </tr>
+            ) : (
+              pagedTransactions.map((txn) => {
+                const amt = Number(txn.amount) || 0;
+                const positive = amt >= 0;
+                return (
+                  <tr key={txn.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {txn.createdAt ? new Date(txn.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                          txn.type === 'fund' || txn.type === 'opening'
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : txn.type === 'expense_reversal'
+                              ? 'bg-blue-500/15 text-brand-blue dark:text-blue-400'
+                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                        }`}
+                      >
+                        {txn.type === 'fund'
+                          ? 'Fund Added'
+                          : txn.type === 'opening'
+                            ? 'Opening'
+                            : txn.type === 'expense'
+                              ? 'Expense'
+                              : txn.type === 'expense_adjust'
+                                ? 'Adjustment'
+                                : txn.type === 'expense_reversal'
+                                  ? 'Refund'
+                                  : txn.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {[txn.month, txn.voucherNo].filter(Boolean).join(' · ') || '-'}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate" title={txn.note}>
+                      {txn.note || '-'}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap ${positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {positive ? '+' : '−'}{formatBDT(Math.abs(amt))}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+        <Pagination page={safeFundPage} totalPages={fundTotalPages} onPageChange={setFundPage} />
       </div>
 
       {/* Entry Modal */}
@@ -502,6 +704,55 @@ function OfficeExpenseEntryView({
               Cancel
             </Button>
             <Button onClick={handleCreateMonth}>Create Month</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add Money / Fund Balance Modal */}
+      <Modal
+        isOpen={isFundModalOpen}
+        onClose={() => setIsFundModalOpen(false)}
+        title="Add Money to Expense Balance"
+        description={selectedMonth ? `Funding will be available for expenses in ${selectedMonth} and all months.` : undefined}
+        size="sm"
+      >
+        <div className="space-y-4">
+          {fundFormError && (
+            <div className="text-xs font-semibold text-rose-600 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-800/50 rounded-lg px-3 py-2">
+              {fundFormError}
+            </div>
+          )}
+          <div className="rounded-xl bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+            Current available balance:{' '}
+            <strong>{officeExpenseFundLoading && !officeExpenseFund ? '…' : formatBDT(officeExpenseFund?.balance)}</strong>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200">Amount (BDT) *</label>
+            <input
+              type="number"
+              min="1"
+              value={fundAmount}
+              onChange={(e) => setFundAmount(e.target.value)}
+              placeholder="e.g. 50000"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-orange outline-none dark:bg-slate-800 dark:border-slate-700"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200">Note (optional)</label>
+            <input
+              value={fundNote}
+              onChange={(e) => setFundNote(e.target.value)}
+              placeholder="e.g. Monthly office fund from accounts"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-orange outline-none dark:bg-slate-800 dark:border-slate-700"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setIsFundModalOpen(false)} disabled={fundSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddFunds} disabled={fundSaving} leftIcon={<Banknote size={14} />}>
+              {fundSaving ? 'Adding…' : 'Add Money'}
+            </Button>
           </div>
         </div>
       </Modal>

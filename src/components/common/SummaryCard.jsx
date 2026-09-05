@@ -11,6 +11,10 @@ const VARIANT_STYLES = {
     card: 'bg-amber-50/50 border-amber-200/80',
     value: 'text-amber-800',
   },
+  rose: {
+    card: 'bg-rose-50/50 border-rose-200/80',
+    value: 'text-rose-800',
+  },
 };
 
 function SummaryCardSkeleton() {

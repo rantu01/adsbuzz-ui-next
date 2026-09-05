@@ -1,4 +1,4 @@
-import { asyncHandler, ok, notFound, badRequest } from "@/utils/http";
+import { asyncHandler, ok, notFound, badRequest, ApiError, HttpStatus } from "@/utils/http";
 import { readJsonBody } from "@/utils/validate";
 import {
   getOfficeExpenseEntryById,
@@ -20,8 +20,18 @@ export const PATCH = asyncHandler(async (request, { params }) => {
   const existing = await getOfficeExpenseEntryById(id);
   if (!existing) return notFound("Expense entry not found.");
 
-  const entry = await updateOfficeExpenseEntry(id, body);
-  return ok({ message: "Expense entry updated.", entry });
+  try {
+    const entry = await updateOfficeExpenseEntry(id, body);
+    return ok({ message: "Expense entry updated.", entry });
+  } catch (err) {
+    if (err.code === "INSUFFICIENT_BALANCE") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, err.message, {
+        code: "INSUFFICIENT_BALANCE",
+        available: err.available ?? 0,
+      });
+    }
+    throw err;
+  }
 });
 
 export const DELETE = asyncHandler(async (request, { params }) => {

@@ -16,6 +16,9 @@ import {
   AlertCircle,
   UserRound,
   Search,
+  TrendingUp,
+  BarChart3,
+  Target,
 } from 'lucide-react';
 import PlatformText from '@/components/common/PlatformText';
 import Pagination from '@/components/common/Pagination';
@@ -181,6 +184,56 @@ function CustomerDetailsPane({
     }
     return totals;
   }, [invoices]);
+
+  // Monthly Topup Insights calculation
+  const monthlyInsights = useMemo(() => {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+
+    // Get last 6 months of data
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const m = curMonth - i;
+      const y = m <= 0 ? curYear - 1 : curYear;
+      const mo = m <= 0 ? m + 12 : m;
+      months.push(`${y}-${String(mo).padStart(2, '0')}`);
+    }
+
+    const monthData = months.map(month => {
+      const invs = (stats?.invoices || []).filter(inv => String(inv.date || '').slice(0, 7) === month);
+      const totalUSD = invs.reduce((s, inv) => s + (inv.topupAmountUSD || 0), 0);
+      const totalBDT = invs.reduce((s, inv) => s + (inv.paidAmountBDT || 0), 0);
+      const totalApproved = invs.filter(inv => inv.approvalStatus === 'Approved' && inv.paymentStatus === 'Paid').length;
+      const totalInvoices = invs.length;
+      const successRatio = totalInvoices > 0 ? Math.round((totalApproved / totalInvoices) * 100) : 0;
+
+      return {
+        month,
+        totalUSD,
+        totalBDT,
+        totalInvoices,
+        approvedInvoices: totalApproved,
+        successRatio,
+      };
+    });
+
+    // Overall current month stats for success ratio progress bar
+    const currentMonthData = monthData.find(m => m.month === `${curYear}-${String(curMonth).padStart(2, '0')}`) || monthData[monthData.length - 1];
+    const overallSuccessRatio = currentMonthData?.successRatio || 0;
+
+    // Calculate based on credit limit utilization for success indicator
+    const creditLimit = customer?.creditLimitUSD || 1;
+    const currentMonthSpend = currentMonthData?.totalUSD || 0;
+
+    return {
+      monthData,
+      overallSuccessRatio,
+      currentMonthData,
+      creditLimit,
+      currentMonthSpend,
+    };
+  }, [stats?.invoices, customer?.creditLimitUSD]);
 
   const accountTotalPages = Math.max(1, Math.ceil(filteredAccounts.length / ACCOUNT_PAGE_SIZE));
   const pagedAccounts = filteredAccounts.slice(
@@ -613,6 +666,69 @@ function CustomerDetailsPane({
                 <div>
                   <span className="text-slate-400">Customer ID:</span> <span className="font-semibold text-slate-700 dark:text-slate-300 font-mono">{customer.id}</span>
                 </div>
+              </div>
+            </div>
+
+            {/* Monthly Topup Insights Section */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 size={14} className="text-brand-blue" />
+                <h5 className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Monthly Topup Insights</h5>
+              </div>
+
+              {/* Success Ratio Card */}
+              <div className="p-4 rounded-xl bg-gradient-to-br from-brand-blue/5 to-brand-orange/5 border border-brand-blue/20 dark:border-brand-blue/10 shadow-sm mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Target size={14} className="text-brand-orange" />
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Success Ratio — {monthlyInsights.currentMonthData?.month || ''}</span>
+                  </div>
+                  <span className="text-lg font-black text-brand-blue dark:text-blue-400">{monthlyInsights.overallSuccessRatio}%</span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-brand-blue to-brand-orange transition-all duration-700"
+                    style={{ width: `${monthlyInsights.overallSuccessRatio}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-[10px] text-slate-400">${(monthlyInsights.currentMonthSpend || 0).toLocaleString()} USD spent</span>
+                  <span className="text-[10px] text-slate-400">Limit: ${monthlyInsights.creditLimit.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Monthly Breakdown Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {monthlyInsights.monthData.map((md) => (
+                  <div
+                    key={md.month}
+                    className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-sm transition-shadow"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{md.month}</span>
+                      <span className="text-[10px] font-mono font-bold text-brand-blue dark:text-blue-400">{md.totalInvoices} inv.</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <p className="text-[9px] text-slate-400 uppercase">Top-up USD</p>
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">${md.totalUSD.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-400 uppercase">Top-up BDT</p>
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">৳{md.totalBDT.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-brand-blue"
+                          style={{ width: `${md.successRatio}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">{md.successRatio}%</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
