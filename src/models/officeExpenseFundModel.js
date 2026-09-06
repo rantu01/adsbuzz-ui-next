@@ -88,6 +88,19 @@ export async function listFundTransactions({ limit = 100 } = {}) {
   return items.map(({ _id, ...rest }) => ({ ...rest, id: _id.toString() }));
 }
 
+function normalizeAddedBy(actor) {
+  if (!actor) return null;
+  if (typeof actor === "string") {
+    const v = actor.trim();
+    return v ? { name: v } : null;
+  }
+  const uid = actor.uid != null ? String(actor.uid) : "";
+  const name = actor.name != null ? String(actor.name) : "";
+  const email = actor.email != null ? String(actor.email) : "";
+  if (!uid && !name && !email) return null;
+  return { ...(uid ? { uid } : {}), ...(name ? { name } : {}), ...(email ? { email } : {}) };
+}
+
 async function recordTransaction(txn) {
   const collection = await getCollection("officeExpenseFundTransactions");
   const type = TXN_TYPES.includes(txn.type) ? txn.type : "fund";
@@ -98,6 +111,7 @@ async function recordTransaction(txn) {
     voucherNo: String(txn.voucherNo || ""),
     entryId: String(txn.entryId || ""),
     note: String(txn.note || ""),
+    addedBy: normalizeAddedBy(txn.addedBy || txn.actor || null),
     createdAt: new Date(),
   };
   await collection.insertOne(doc);
@@ -116,7 +130,7 @@ function mapFundResult(result) {
   return mapFund(result.value || result);
 }
 
-export async function addFunds({ amount, note = "", month = "" } = {}) {
+export async function addFunds({ amount, note = "", month = "", actor = null, addedBy = null } = {}) {
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) {
     const err = new Error("Amount must be a positive number.");
@@ -134,7 +148,7 @@ export async function addFunds({ amount, note = "", month = "" } = {}) {
     { returnDocument: "after" },
   );
   const fund = mapFundResult(updated);
-  await recordTransaction({ type: "fund", amount: amt, month, note });
+  await recordTransaction({ type: "fund", amount: amt, month, note, addedBy: addedBy || actor || null });
   logger.info(`addFunds: +${amt} office-expense fund (balance ${fund?.balance}).`);
   return fund;
 }

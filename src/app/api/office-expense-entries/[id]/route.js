@@ -24,6 +24,9 @@ export const PATCH = asyncHandler(async (request, { params }) => {
     const entry = await updateOfficeExpenseEntry(id, body);
     return ok({ message: "Expense entry updated.", entry });
   } catch (err) {
+    if (err.message === "FUTURE_MONTH_DATE") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Date must not be in a future (not-yet-started) month.");
+    }
     if (err.code === "INSUFFICIENT_BALANCE") {
       throw new ApiError(HttpStatus.BAD_REQUEST, err.message, {
         code: "INSUFFICIENT_BALANCE",

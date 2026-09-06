@@ -647,6 +647,10 @@ export async function getCustomerMonthlyInsights(customerId) {
   const currentMonthData = monthData.find((m) => m.month === curKey) || monthData[monthData.length - 1];
   const overallSuccessRatio = Number(currentMonthData?.successRatio || 0);
   const currentMonthSpend = Number(currentMonthData?.totalUSD || 0);
+  // Topup progress vs MONTHLY SPEND (creditLimit): e.g. $20 topped up of a
+  // $1,000 monthly spend => 2%. Capped at 100%, 0 when no spend limit is set.
+  const monthlyTopupProgress =
+    creditLimit > 0 ? Math.min(100, Math.round((currentMonthSpend / creditLimit) * 100)) : 0;
 
   // Lifetime totals for the header overview card — summed over the SAME
   // scoped per-customer doc set above (all sources included), so TOTAL
@@ -664,10 +668,153 @@ export async function getCustomerMonthlyInsights(customerId) {
     overallSuccessRatio,
     currentMonthData,
     currentMonthSpend,
+    monthlyTopupProgress,
     lifetimeTotalTopupUSD,
     lifetimeTotalTopupBDT,
     lifetimeTopupCount: docs.length,
   };
+}
+
+/**
+ * Pure per-customer month aggregation behind getTopClientCurrentMonth.
+ * Exported so unit tests can validate the math without a database.
+ *
+ * Sums `topupAmountUSD` per NORMALIZED customer id for invoices whose month
+ * (YYYY-MM) equals `monthPrefix`, then returns the top client with resolved
+ * Client Name, Group ID and Total Topup Amount.
+ *
+ * Validation applied per invoice (each fixes a silent-drop/mis-sum in the
+ * previous client-side calculation):
+ * - month is derived from `date` (YYYY-MM-DD string or Date instance) with a
+ *   `createdAtRaw` fallback, so Date-typed or dateless rows are not dropped;
+ * - amounts are Number-coerced (never string-concatenated) and rounded;
+ * - customer ids are normalized (legacy CUST-* vs ADB*) before grouping so
+ *   the same customer never splits into two buckets;
+ * - rows without any customer id are skipped (they cannot be attributed);
+ * - ties break deterministically by ascending customer id.
+ * Returns `{ month, topClient: null, totalTopupUSD: 0 }` when the month has
+ * no attributable topups.
+ */
+export function aggregateTopClientCurrentMonth(invoiceDocs = [], customerDocs = [], monthPrefix = "") {
+  if (!monthPrefix) return { month: "", topClient: null, totalTopupUSD: 0 };
+
+  const monthPrefixOf = (inv) => {
+    const raw = inv?.date || inv?.createdAtRaw || "";
+    if (!raw) return "";
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+      return `${raw.getFullYear()}-${String(raw.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const s = String(raw);
+    if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) {
+      return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+    }
+    return s.slice(0, 7);
+  };
+
+  const totals = new Map();
+  for (const inv of invoiceDocs || []) {
+    if (monthPrefixOf(inv) !== monthPrefix) continue;
+    const rawId = String(inv?.customerId || "").trim();
+    if (!rawId) continue;
+    const normId = normalizeCustomerId(rawId) || rawId;
+    const amount = Number(inv?.topupAmountUSD);
+    const safeAmount = Number.isFinite(amount) ? amount : 0;
+    const entry = totals.get(normId) || { totalUSD: 0, groupId: "" };
+    entry.totalUSD += safeAmount;
+    const invGroup = String(inv?.groupId || "").trim();
+    if (!entry.groupId && invGroup) entry.groupId = invGroup;
+    totals.set(normId, entry);
+  }
+
+  let winnerId = null;
+  let winnerTotal = 0;
+  for (const [id, entry] of totals) {
+    const total = round2(entry.totalUSD);
+    if (
+      total > winnerTotal ||
+      (total === winnerTotal && total > 0 && (winnerId === null || id < winnerId))
+    ) {
+      winnerId = id;
+      winnerTotal = total;
+    }
+  }
+
+  if (!winnerId) return { month: monthPrefix, topClient: null, totalTopupUSD: 0 };
+
+  const customer = (customerDocs || []).find(
+    (c) => (normalizeCustomerId(c?.id) || String(c?.id || "")) === winnerId,
+  );
+  const groupId = String(customer?.groupId || totals.get(winnerId)?.groupId || "").trim();
+
+  return {
+    month: monthPrefix,
+    topClient: {
+      customerId: winnerId,
+      name: customer?.name || winnerId,
+      groupId,
+      totalTopupUSD: winnerTotal,
+    },
+    totalTopupUSD: winnerTotal,
+  };
+}
+
+/**
+ * Server-side "Top Client Current Month": the customer with the highest total
+ * top-up amount (USD) in the current calendar month. Read-only.
+ *
+ * MongoDB pre-filters to current-month candidates (string `date` prefix plus
+ * BSON-Date / dateless fallbacks) with a minimal projection, then the shared
+ * pure aggregation validates each row and picks the winner — the client
+ * receives one tiny payload instead of downloading the full ledger.
+ */
+export async function getTopClientCurrentMonth(now = new Date()) {
+  await ensureInvoicesIndexesOnce();
+  const db = await getDb();
+
+  const ref = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  const monthPrefix = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
+  const monthStart = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
+
+  // String dates match the prefix clause; true BSON Dates match the range
+  // clause (BSON type ordering keeps strings out of Date comparisons); rows
+  // with no usable `date` fall back to `createdAtRaw`. Every candidate is
+  // re-validated in JS by aggregateTopClientCurrentMonth.
+  const docs = await db
+    .collection("invoices")
+    .find(
+      {
+        $or: [
+          { date: { $regex: `^${monthPrefix}` } },
+          { date: { $gte: monthStart, $lt: monthEnd } },
+          {
+            $and: [
+              { $or: [{ date: null }, { date: "" }, { date: { $exists: false } }] },
+              { createdAtRaw: { $gte: monthStart, $lt: monthEnd } },
+            ],
+          },
+        ],
+      },
+      {
+        projection: {
+          customerId: 1,
+          groupId: 1,
+          date: 1,
+          createdAtRaw: 1,
+          topupAmountUSD: 1,
+        },
+      },
+    )
+    .toArray();
+
+  const customerDocs = await db
+    .collection("customers")
+    .find({}, { projection: { id: 1, name: 1, groupId: 1 } })
+    .toArray();
+
+  return aggregateTopClientCurrentMonth(docs, customerDocs, monthPrefix);
 }
 
 async function getNextInvoiceNo(date = new Date()) {

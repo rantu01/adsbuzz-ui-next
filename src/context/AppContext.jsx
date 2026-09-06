@@ -192,6 +192,10 @@ export function AppProvider({ children }) {
     addEntry: rawAddOfficeExpenseEntry,
     updateEntry: rawUpdateOfficeExpenseEntry,
     deleteEntry: rawDeleteOfficeExpenseEntry,
+    approveEntry: rawApproveOfficeExpenseEntry,
+    finalApproveEntry: rawFinalApproveOfficeExpenseEntry,
+    reviewEntry: rawReviewOfficeExpenseEntry,
+    rejectEntry: rawRejectOfficeExpenseEntry,
     refetch: refetchOfficeExpenseEntries,
   } = useOfficeExpenseEntries(triggerToast);
   const {
@@ -521,6 +525,33 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const handleApproveOfficeExpenseEntry = async (id, payload) => {
+    const result = await rawApproveOfficeExpenseEntry(id, payload);
+    if (result) logActivityFx("Rakibul R.", "Approved Office Expense", `Voucher ${result.voucherNo || ''} approval ${result.approvals?.length || 0}/${result.requiredApprovals || 0}.`, "payment");
+    return result;
+  };
+
+  const handleFinalApproveOfficeExpenseEntry = async (id, payload) => {
+    const result = await rawFinalApproveOfficeExpenseEntry(id, payload);
+    if (result) {
+      logActivityFx("Rakibul R.", "Finally Approved Office Expense", `Voucher ${result.voucherNo || ''} finally approved.`, "payment");
+      refetchOfficeExpenseFund();
+    }
+    return result;
+  };
+
+  const handleReviewOfficeExpenseEntry = async (id, note, payload) => {
+    const result = await rawReviewOfficeExpenseEntry(id, note, payload);
+    if (result) logActivityFx("Rakibul R.", "Requested Expense Review", `Voucher ${result.voucherNo || ''} marked Review Need.`, "payment");
+    return result;
+  };
+
+  const handleRejectOfficeExpenseEntry = async (id, note, payload) => {
+    const result = await rawRejectOfficeExpenseEntry(id, note, payload);
+    if (result) logActivityFx("Rakibul R.", "Rejected Office Expense", `Voucher ${result.voucherNo || ''} rejected.`, "payment");
+    return result;
+  };
+
   const handleAddOfficeExpenseMonth = async (monthData) => {
     const result = await rawAddOfficeExpenseMonth(monthData);
     if (result) logActivityFx("Rakibul R.", "Added Expense Month", `${result.month} created.`, "system");
@@ -533,8 +564,8 @@ export function AppProvider({ children }) {
     return result;
   };
 
-  const handleAddOfficeExpenseFunds = async ({ amount, note, month }) => {
-    const result = await rawAddOfficeExpenseFunds({ amount, note, month });
+  const handleAddOfficeExpenseFunds = async ({ amount, note, month, actor }) => {
+    const result = await rawAddOfficeExpenseFunds({ amount, note, month, actor });
     if (result) logActivityFx("Rakibul R.", "Funded Office Expense Balance", `৳${Number(amount).toLocaleString()} added to the office expense balance.`, "payment");
     return result;
   };
@@ -632,8 +663,12 @@ export function AppProvider({ children }) {
     if (pendingSetupPrefill !== null) setPendingSetupPrefill(null);
   }, []);
 
-  const handleAddCustomer = (customerData) => {
-    const newCustomer = addCustomer(customerData);
+  const handleAddCustomer = async (customerData) => {
+    // Awaited so the "Onboarded Customer" log below carries the real customer
+    // id and shows up in that customer's Activity / History tab. (Previously
+    // the promise was not awaited, so the log was written with an empty
+    // customerId and never appeared per-customer.)
+    const newCustomer = await addCustomer(customerData);
     addActivity({
       id: `act-${Date.now()}`,
       time: getNowTime(),
@@ -1080,6 +1115,10 @@ export function AppProvider({ children }) {
     handleAddOfficeExpenseEntry,
     handleUpdateOfficeExpenseEntry,
     handleDeleteOfficeExpenseEntry,
+    handleApproveOfficeExpenseEntry,
+    handleFinalApproveOfficeExpenseEntry,
+    handleReviewOfficeExpenseEntry,
+    handleRejectOfficeExpenseEntry,
     handleAddOfficeExpenseMonth,
     handleUpdateOfficeExpenseMonth,
     handleAddOfficeExpenseFunds,

@@ -26,11 +26,11 @@ export function useOfficeExpenseFund(triggerToast) {
   }, [fetchFund]);
 
   const addFunds = useCallback(
-    async ({ amount, note, month }) => {
+    async ({ amount, note, month, actor }) => {
       try {
         const data = await apiFetch('/api/office-expense-fund', {
           method: 'POST',
-          body: JSON.stringify({ amount, note, month }),
+          body: JSON.stringify({ amount, note, month, actor }),
         });
         setFund(data.fund || null);
         // Refresh the ledger so the new funding appears in history immediately.

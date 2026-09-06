@@ -22,6 +22,7 @@ import FieldError from '@/components/ui/FieldError';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { validate, hasErrors, required, email, phone, positiveNumber, maxLength } from '@/utils/formValidation';
 import { normalizeCustomerId } from '@/utils/customerIds';
+import { useTopClientCurrentMonth } from '@/hooks/useTopClientCurrentMonth';
 
 const CustomerRow = memo(function CustomerRow({ cust, isSelected, stats, onSelect }) {
   return (
@@ -248,19 +249,42 @@ function CustomersView({
     };
   }, [customers, loading]);
 
+  // Server-side "Top Client Current Month" (Client Name, Group ID, Total
+  // Topup Amount) — one tiny payload instead of client-side ledger math, so
+  // the card resolves fast. While fetching, the card shows a skeleton.
+  const {
+    topClient: serverTopClient,
+    totalTopupUSD: serverTopTopup,
+    month: serverTopMonth,
+    data: serverTopData,
+    loading: topClientLoading,
+  } = useTopClientCurrentMonth();
+
   const summaryMetrics = useMemo(() => {
     const now = new Date();
     const curPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const inactiveCount = customers.filter(c => c.status === 'Inactive').length;
     const lostCount = customers.filter(c => c.status === 'Lost').length;
 
-    // Calculate current month topups per customer
+    // Prefer the server result; the local math below runs ONLY when the
+    // server has no data (request failed/offline).
+    if (serverTopData) {
+      return {
+        inactiveCount,
+        lostCount,
+        topClient: serverTopClient,
+        topTopup: Number(serverTopTopup || 0),
+        currentMonthPrefix: serverTopMonth || curPrefix,
+      };
+    }
+
+    // Calculate current month topups per customer (fallback only)
     const topupMap = {};
     for (const inv of invoices || []) {
       const prefix = String(inv.date || "").slice(0, 7);
       if (prefix === curPrefix) {
-        const cid = inv.customerId;
-        topupMap[cid] = (topupMap[cid] || 0) + (inv.topupAmountUSD || 0);
+        const cid = normalizeCustomerId(inv.customerId) || inv.customerId;
+        topupMap[cid] = (topupMap[cid] || 0) + (Number(inv.topupAmountUSD) || 0);
       }
     }
 
@@ -282,7 +306,7 @@ function CustomersView({
       topTopup,
       currentMonthPrefix: curPrefix,
     };
-  }, [customers, invoices, loading]);
+  }, [customers, invoices, loading, serverTopData, serverTopClient, serverTopTopup, serverTopMonth]);
 
   const customerTotalPages = Math.max(1, Math.ceil(filteredCustomers.length / LIST_PAGE_SIZE));
   const pagedCustomers = useMemo(
@@ -570,7 +594,7 @@ function CustomersView({
             value={summaryMetrics.topTopup}
             subtext={summaryMetrics.topClient ? `${summaryMetrics.topClient.name} (${summaryMetrics.topClient.groupId || 'GC-GENERIC'})` : 'No top-up data this month'}
             variant="blue"
-            loading={customerMetrics.loading}
+            loading={customerMetrics.loading || (topClientLoading && !serverTopData)}
           />
         </div>
       </section>

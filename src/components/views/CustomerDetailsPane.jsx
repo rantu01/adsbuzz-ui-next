@@ -96,11 +96,13 @@ function CustomerDetailsPane({
     loading: serverMonthlyInsightsLoading,
   } = useCustomerMonthlyInsights(customer?.id);
 
-  // The Activity / History tab is scoped strictly to Assign / Unassign logs.
+  // The Activity / History tab shows the customer journey: Assign / Unassign
+  // logs plus who added the customer ("Onboarded Customer") and who marked
+  // the customer Inactive/Lost ("Customer Status Changed", with reason).
   // Topup records live in the dedicated "Topup Ledger History" tab, so they are
   // excluded here.
   const assignActivities = useMemo(
-    () => historyActivities.filter(a => /assign|unassign/i.test(a.action || '')),
+    () => historyActivities.filter(a => /assign|unassign|onboard|customer status changed/i.test(a.action || '')),
     [historyActivities],
   );
 
@@ -286,6 +288,10 @@ function CustomerDetailsPane({
     // Calculate based on credit limit utilization for success indicator
     const creditLimit = Number(customer?.creditLimitUSD || 0);
     const currentMonthSpend = Number(currentMonthData?.totalUSD || 0);
+    // Topup progress vs MONTHLY SPEND: e.g. $20 topped up of a $1,000
+    // monthly spend => 2%. Capped at 100%, 0 when no spend limit is set.
+    const monthlyTopupProgress =
+      creditLimit > 0 ? Math.min(100, Math.round((currentMonthSpend / creditLimit) * 100)) : 0;
 
     return {
       monthData,
@@ -293,6 +299,7 @@ function CustomerDetailsPane({
       currentMonthData,
       creditLimit,
       currentMonthSpend,
+      monthlyTopupProgress,
     };
   }, [stats?.invoices, customer?.creditLimitUSD]);
 
@@ -301,6 +308,19 @@ function CustomerDetailsPane({
   // failed). Show the skeleton — never 0% — while the server has no data yet.
   const monthlyInsights = serverMonthlyInsights || fallbackMonthlyInsights;
   const showMonthlyInsightsLoading = serverMonthlyInsightsLoading && !serverMonthlyInsights;
+
+  // Progress based on MONTHLY SPEND vs actual topped-up amount in the current
+  // month: e.g. MONTHLY SPEND $1,000 with $20 topped up => 20 / 1,000 = 2%.
+  // Prefer the server-computed value; otherwise derive it from the available
+  // insights so the bar never shows the old success-ratio percentage.
+  const monthlySpendLimit = Number(monthlyInsights?.creditLimit || customer?.creditLimitUSD || 0);
+  const monthlySpendCurrent = Number(monthlyInsights?.currentMonthSpend || 0);
+  const monthlyTopupProgress =
+    typeof monthlyInsights?.monthlyTopupProgress === 'number'
+      ? monthlyInsights.monthlyTopupProgress
+      : monthlySpendLimit > 0
+        ? Math.min(100, Math.round((monthlySpendCurrent / monthlySpendLimit) * 100))
+        : 0;
 
   // TOTAL TOPUP header values: prefer the server-side lifetime totals for the
   // selected customer (same scoped per-customer query as the insights above).
@@ -509,6 +529,16 @@ function CustomerDetailsPane({
           }`}
         >
           Profile CRM Notes
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          className={`flex-1 py-2.5 text-[11px] font-semibold text-center border-b-2 transition-all cursor-pointer ${
+            activeTab === 'insights'
+              ? 'border-brand-blue text-brand-blue bg-white dark:bg-slate-900'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          Monthly Topup Insights
         </button>
         <button
           onClick={() => setActiveTab('activity')}
@@ -753,8 +783,13 @@ function CustomerDetailsPane({
               </div>
             </div>
 
-            {/* Monthly Topup Insights Section */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+          </div>
+        )}
+
+        {/* Tab: Monthly Topup Insights (moved out of Profile CRM Notes) */}
+        {activeTab === 'insights' && (
+          <div className="space-y-4">
+            <div>
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={14} className="text-brand-blue" />
                 <h5 className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Monthly Topup Insights</h5>
@@ -765,7 +800,7 @@ function CustomerDetailsPane({
 
               {showMonthlyInsightsLoading ? (
                 <div aria-live="polite" aria-busy="true">
-                  {/* Success Ratio skeleton — never shows 0% while fetching */}
+                  {/* Topup progress skeleton — never shows 0% while fetching */}
                   <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm mb-4 animate-pulse">
                     <div className="flex items-center justify-between mb-2">
                       <div className="h-3 w-40 rounded bg-slate-200 dark:bg-slate-700" />
@@ -805,24 +840,24 @@ function CustomerDetailsPane({
                 </div>
               ) : (
               <>
-              {/* Success Ratio Card */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-brand-blue/5 to-brand-orange/5 border border-brand-blue/20 dark:border-brand-blue/10 shadow-sm mb-4">
+              {/* Topup Progress vs MONTHLY SPEND Card */}
+              <div className="p-4 rounded-xl bg-white dark:bg-white border border-brand-blue/20 dark:border-brand-blue/10 shadow-sm mb-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Target size={14} className="text-brand-orange" />
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Success Ratio — {monthlyInsights.currentMonthData?.month || ''}</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Topup Progress — {monthlyInsights.currentMonthData?.month || ''}</span>
                   </div>
-                  <span className="text-lg font-black text-brand-blue dark:text-blue-400">{monthlyInsights.overallSuccessRatio}%</span>
+                  <span className="text-lg font-black text-brand-blue dark:text-blue-400">{monthlyTopupProgress}%</span>
                 </div>
-                <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="w-full h-3 bg-white dark:bg-white rounded-full overflow-hidden border border-brand-blue">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-brand-blue to-brand-orange transition-all duration-700"
-                    style={{ width: `${monthlyInsights.overallSuccessRatio}%` }}
+                    className="h-full rounded-full bg-brand-orange transition-all duration-700"
+                    style={{ width: `${monthlyTopupProgress}%` }}
                   />
                 </div>
                 <div className="flex justify-between mt-1.5">
-                  <span className="text-[10px] text-slate-400">${(monthlyInsights.currentMonthSpend || 0).toLocaleString()} USD spent</span>
-                  <span className="text-[10px] text-slate-400">Limit: ${monthlyInsights.creditLimit.toLocaleString()}</span>
+                  <span className="text-[10px] text-slate-400">${monthlySpendCurrent.toLocaleString()} USD topped up</span>
+                  <span className="text-[10px] text-slate-400">Monthly Spend: ${monthlySpendLimit.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -831,7 +866,7 @@ function CustomerDetailsPane({
                 {monthlyInsights.monthData.map((md) => (
                   <div
                     key={md.month}
-                    className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-sm transition-shadow"
+                    className="p-3 rounded-xl border border-brand-blue/20 dark:border-brand-blue/10 bg-white dark:bg-white hover:shadow-sm transition-shadow"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{md.month}</span>
@@ -848,9 +883,9 @@ function CustomerDetailsPane({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-white dark:bg-white rounded-full overflow-hidden border border-brand-blue">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-brand-blue"
+                          className="h-full rounded-full bg-brand-orange"
                           style={{ width: `${md.successRatio}%` }}
                         />
                       </div>
@@ -883,8 +918,8 @@ function CustomerDetailsPane({
             ) : assignActivities.length === 0 ? (
               <div className="py-12 text-center text-slate-400 dark:text-slate-500 border border-dashed border-slate-100 dark:border-slate-800 rounded-xl">
                 <Clock className="mx-auto mb-2 opacity-40" size={32} />
-                <p className="text-xs">No assign / unassign activity recorded for this customer yet.</p>
-                <p className="text-[10px] mt-1">Account assignment and unassignment logs will appear here.</p>
+                <p className="text-xs">No activity recorded for this customer yet.</p>
+                <p className="text-[10px] mt-1">Account assignment, customer creation and status change logs will appear here.</p>
               </div>
             ) : (
               <div className="space-y-4">

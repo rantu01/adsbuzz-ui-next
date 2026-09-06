@@ -11,6 +11,8 @@ export const GET = asyncHandler(async (request) => {
     month: searchParams.get("month") || "",
     category: searchParams.get("category") || "",
     search: searchParams.get("search") || "",
+    status: searchParams.get("status") || "",
+    date: searchParams.get("date") || "",
   });
   return ok({ entries, total: entries.length });
 });
@@ -30,15 +32,18 @@ export const POST = asyncHandler(async (request) => {
   try {
     const entry = await createOfficeExpenseEntry({
       month,
-      voucherNo: body.voucherNo,
       category,
       subCategory: body.subCategory,
       description: body.description,
       amount: body.amount,
       date: body.date,
+      createdBy: body.createdBy || body.actor || null,
     });
     return ok({ message: "Expense entry created.", entry }, HttpStatus.CREATED);
   } catch (err) {
+    if (err.message === "FUTURE_MONTH_DATE") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, "Date must not be in a future (not-yet-started) month.");
+    }
     if (err.message === "MONTH_REQUIRED") {
       throw new ApiError(HttpStatus.BAD_REQUEST, "Month is required.");
     }

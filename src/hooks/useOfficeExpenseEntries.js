@@ -65,6 +65,84 @@ export function useOfficeExpenseEntries(triggerToast) {
     [entries, triggerToast],
   );
 
+  const applyApprovalResult = useCallback((saved) => {
+    if (!saved) return saved;
+    setEntries((prevE) => prevE.map((e) => (e.id === saved.id ? saved : e)));
+    return saved;
+  }, []);
+
+  const approveEntry = useCallback(
+    async (entryId, payload = {}) => {
+      try {
+        const data = await apiFetch(`/api/office-expense-entries/${encodeURIComponent(entryId)}/approve`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        const saved = applyApprovalResult(data.entry);
+        triggerToast('success', 'Approval Recorded', `Voucher ${saved?.voucherNo || ''} approved (${saved?.approvals?.length || 0}/${saved?.requiredApprovals || 0}).`);
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Approval Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [triggerToast, applyApprovalResult],
+  );
+
+  const finalApproveEntry = useCallback(
+    async (entryId, payload = {}) => {
+      try {
+        const data = await apiFetch(`/api/office-expense-entries/${encodeURIComponent(entryId)}/final-approve`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        const saved = applyApprovalResult(data.entry);
+        triggerToast('success', 'Finally Approved', `Voucher ${saved?.voucherNo || ''} approved. Amount deducted from Cash In Hand.`);
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Final Approval Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [triggerToast, applyApprovalResult],
+  );
+
+  const reviewEntry = useCallback(
+    async (entryId, note, payload = {}) => {
+      try {
+        const data = await apiFetch(`/api/office-expense-entries/${encodeURIComponent(entryId)}/review`, {
+          method: 'PATCH',
+          body: JSON.stringify({ note, ...payload }),
+        });
+        const saved = applyApprovalResult(data.entry);
+        triggerToast('warning', 'Review Requested', `Voucher ${saved?.voucherNo || ''} marked as Review Need.`);
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Review Request Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [triggerToast, applyApprovalResult],
+  );
+
+  const rejectEntry = useCallback(
+    async (entryId, note, payload = {}) => {
+      try {
+        const data = await apiFetch(`/api/office-expense-entries/${encodeURIComponent(entryId)}/reject`, {
+          method: 'PATCH',
+          body: JSON.stringify({ note, ...payload }),
+        });
+        const saved = applyApprovalResult(data.entry);
+        triggerToast('error', 'Entry Rejected', `Voucher ${saved?.voucherNo || ''} rejected.`);
+        return saved;
+      } catch (err) {
+        triggerToast('error', 'Rejection Failed', getErrorMessage(err));
+        throw err;
+      }
+    },
+    [triggerToast, applyApprovalResult],
+  );
+
   const refetch = useCallback(() => {
     setLoading(true);
     return fetchEntries();
@@ -91,5 +169,5 @@ export function useOfficeExpenseEntries(triggerToast) {
     [entries, triggerToast],
   );
 
-  return { entries, loading, error, addEntry, updateEntry, deleteEntry, refetch };
+  return { entries, loading, error, addEntry, updateEntry, deleteEntry, approveEntry, finalApproveEntry, reviewEntry, rejectEntry, refetch };
 }

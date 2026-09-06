@@ -5,6 +5,7 @@ import {
   addFunds,
   listFundTransactions,
 } from "@/models/officeExpenseFundModel";
+import { getRequestActor } from "@/utils/auditActor";
 
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
@@ -27,7 +28,8 @@ export const POST = asyncHandler(async (request) => {
   }
 
   try {
-    const fund = await addFunds({ amount, note, month });
+    const actor = (await getRequestActor(request)) || body.actor || body.addedBy || null;
+    const fund = await addFunds({ amount, note, month, actor });
     return ok({ message: "Office expense balance funded.", fund }, HttpStatus.CREATED);
   } catch (err) {
     if (err.code === "INVALID_AMOUNT") {

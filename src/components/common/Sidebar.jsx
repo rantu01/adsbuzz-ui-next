@@ -55,6 +55,7 @@ const MENU_ITEMS = [
     children: [
       { id: 'office-expense', name: 'Dashboard', icon: LayoutDashboard },
       { id: 'office-expense/entry', name: 'Monthly Data Entry', icon: CalendarDays },
+      { id: 'office-expense/wallet', name: 'Office Wallet', icon: Wallet },
       { id: 'office-expense/settings', name: 'Setting', icon: Settings },
     ],
   },

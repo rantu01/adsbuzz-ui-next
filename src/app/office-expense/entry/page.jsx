@@ -11,7 +11,6 @@ export default function OfficeExpenseEntryPage() {
       officeExpenseEntriesError={app.officeExpenseEntriesError}
       officeExpenseMonths={app.officeExpenseMonths}
       officeExpenseFund={app.officeExpenseFund}
-      officeExpenseFundTransactions={app.officeExpenseFundTransactions}
       officeExpenseFundLoading={app.officeExpenseFundLoading}
       officeExpenseFundError={app.officeExpenseFundError}
       onRetryEntries={app.refetchOfficeExpenseEntries}
@@ -20,9 +19,11 @@ export default function OfficeExpenseEntryPage() {
       onAddEntry={app.handleAddOfficeExpenseEntry}
       onUpdateEntry={app.handleUpdateOfficeExpenseEntry}
       onDeleteEntry={app.handleDeleteOfficeExpenseEntry}
+      onApproveEntry={app.handleApproveOfficeExpenseEntry}
+      onFinalApproveEntry={app.handleFinalApproveOfficeExpenseEntry}
+      onReviewEntry={app.handleReviewOfficeExpenseEntry}
+      onRejectEntry={app.handleRejectOfficeExpenseEntry}
       onAddMonth={app.handleAddOfficeExpenseMonth}
-      onUpdateMonth={app.handleUpdateOfficeExpenseMonth}
-      onAddFunds={app.handleAddOfficeExpenseFunds}
     />
   );
 }
