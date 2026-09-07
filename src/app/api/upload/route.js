@@ -43,7 +43,8 @@ export const POST = asyncHandler(async (request) => {
     throw new ApiError(HttpStatus.BAD_REQUEST, "Image data could not be persisted.");
   }
 
-  logger.info(`upload: saved ${url.split("/").pop()} (${buffer.length} bytes)`);
+  const provider = String(url).includes("res.cloudinary.com") ? "cloudinary" : "local";
+  logger.info(`upload: saved ${url.split("/").pop()} (${buffer.length} bytes) via ${provider}`);
 
-  return ok({ message: "Upload complete.", url, size: buffer.length }, HttpStatus.CREATED);
+  return ok({ message: "Upload complete.", url, provider, size: buffer.length }, HttpStatus.CREATED);
 });

@@ -86,9 +86,10 @@ export function ensureInvoicesIndexesOnce() {
  * `paymentScreenshot` (2-3 MB each) when the upload fallback fired during a
  * sale. Those embedded payloads made every list read transfer megabytes of
  * image data, stalling the Topups/Invoices pages for minutes on throttled
- * connections. This persists each embedded screenshot as a normal upload file
- * (a plain `/uploads/...` URL, exactly what the View Screenshot modal renders)
- * and rewrites the invoice to reference the file. Idempotent and non-destructive.
+ * connections. This persists each embedded screenshot via the upload store
+ * (Cloudinary `secure_url` when configured, otherwise a plain `/uploads/...`
+ * URL — exactly what the View Screenshot modal renders) and rewrites the
+ * invoice to reference the file. Idempotent and non-destructive.
  */
 export async function migrateEmbeddedPaymentScreenshots() {
   const invoicesCollection = await getCollection("invoices");

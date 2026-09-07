@@ -24,6 +24,14 @@ export const config = {
     path: env.UPLOAD_PATH || "uploads",
   },
 
+  cloudinary: {
+    url: env.CLOUDINARY_URL || "",
+    cloudName: env.CLOUDINARY_CLOUD_NAME || "",
+    apiKey: env.CLOUDINARY_API_KEY || "",
+    apiSecret: env.CLOUDINARY_API_SECRET || "",
+    folder: env.CLOUDINARY_FOLDER || "adsbuzz/payment-screenshots",
+  },
+
   logLevel: env.LOG_LEVEL || "info",
 };
 

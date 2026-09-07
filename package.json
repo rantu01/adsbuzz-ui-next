@@ -10,6 +10,7 @@
     "test": "node --import ./tests/load-env.mjs --test-reporter=spec --test tests/invoiceMath.test.mjs tests/formValidation.test.mjs tests/pagination.test.mjs tests/customerIds.test.mjs tests/topClient.test.mjs tests/integration.test.mjs"
   },
   "dependencies": {
+    "cloudinary": "^2.11.0",
     "firebase": "^12.13.0",
     "firebase-admin": "^14.1.0",
     "lucide-react": "^0.546.0",

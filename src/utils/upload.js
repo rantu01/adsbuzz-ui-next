@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import config from "@/config";
+import logger from "@/utils/logger";
 
 export const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -54,6 +55,24 @@ export async function persistDataUrl({ data, name = "screenshot.png" } = {}) {
   }
   if (!buffer || buffer.length === 0 || buffer.length > MAX_BYTES) return null;
 
+  // Primary store: Cloudinary. The returned `secure_url` is a permanent remote
+  // URL — callers save it in MongoDB (invoice.paymentScreenshot,
+  // payments[].screenshot, screenshots[].url) so the proof stays visible in
+  // the UI at any time, on any device.
+  try {
+    const { isCloudinaryConfigured, uploadDataUrlToCloudinary } = await import(
+      "@/lib/cloudinary"
+    );
+    if (isCloudinaryConfigured()) {
+      const url = await uploadDataUrlToCloudinary(data, { name });
+      if (url) return url;
+    }
+  } catch (error) {
+    logger.error("Cloudinary upload failed, falling back to local file.", error);
+  }
+
+  // Fallback store: local `public/` file (kept so a proof is never lost when
+  // Cloudinary is unreachable or unconfigured).
   const fileName = buildFileName(name, parsed.mime);
   const relativeDir = resolveRelativeDir();
   const publicDir = path.join(process.cwd(), "public");
