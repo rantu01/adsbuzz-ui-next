@@ -10,6 +10,12 @@ export default function TopupsPage() {
     invoices,
     loading,
     error,
+    page,
+    totalPages,
+    total,
+    pendingCount,
+    limit,
+    goToPage,
     approveInvoice,
     rejectInvoice,
     submitFeedback,
@@ -26,6 +32,12 @@ export default function TopupsPage() {
       error={error}
       onRetry={refetch}
       customers={app.customers}
+      page={page}
+      totalPages={totalPages}
+      total={total}
+      pendingCount={pendingCount}
+      limit={limit}
+      onPageChange={goToPage}
       onApproveInvoice={approveInvoice}
       onRejectInvoice={rejectInvoice}
       onSubmitFeedback={submitFeedback}

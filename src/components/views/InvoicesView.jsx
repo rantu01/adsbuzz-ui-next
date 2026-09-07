@@ -307,7 +307,6 @@ function InvoicesView({ invoices, customers, onUpdateInvoice, onRecordPayment, l
       <ErrorBanner
         error={error}
         onRetry={() => {
-          onRetry?.();
           invoicePages.refetch();
         }}
       />

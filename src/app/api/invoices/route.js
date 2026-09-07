@@ -12,6 +12,13 @@ const CACHE_PREFIX = "GET:/api/invoices";
 // still need the full ledger for cross-record math.
 const MAX_PAGE_LIMIT = 200;
 
+// User search text is interpolated into Mongo `$regex` filters below — escape
+// it so invoice numbers containing regex metacharacters (e.g. parentheses)
+// match literally instead of throwing or matching far more than intended.
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export const GET = asyncHandler(async (request) => {
   const key = `${CACHE_PREFIX}:${request.url}`;
   const cached = cacheGet(key);
@@ -59,10 +66,10 @@ export const GET = asyncHandler(async (request) => {
     filter.date = dateFilter;
   }
   if (invoiceNo) {
-    filter.invoiceNo = { $regex: invoiceNo, $options: "i" };
+    filter.invoiceNo = { $regex: escapeRegExp(invoiceNo), $options: "i" };
   }
   if (search) {
-    const q = search.toLowerCase();
+    const q = escapeRegExp(search.toLowerCase());
     filter.$or = [
       { invoiceNo: { $regex: q, $options: "i" } },
       { adAccountName: { $regex: q, $options: "i" } },

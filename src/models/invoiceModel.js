@@ -50,6 +50,9 @@ const INVOICE_INDEXES = [
   { key: { approvalStatus: 1, createdAtRaw: -1 }, name: "invoices_approval_status" },
   { key: { topupStatus: 1 }, name: "invoices_topup_status" },
   { key: { paymentStatus: 1 }, name: "invoices_payment_status" },
+  // The /invoices ledger tabs filter by paymentStatus and always sort by date
+  // ascending, so this compound index serves that exact query shape.
+  { key: { paymentStatus: 1, date: 1 }, name: "invoices_payment_status_date" },
   { key: { customerId: 1 }, name: "invoices_customer_id" },
   { key: { source: 1 }, name: "invoices_source" },
 ];
@@ -340,6 +343,42 @@ export async function listInvoices({ search = "", paymentStatus = "", customerId
  * `limit === 0` is a sentinel meaning "return everything" (used by the
  * analytics pages that still need the full ledger for cross-record math).
  */
+/**
+ * Lightweight list projection for the invoice ledger. Covers every field the
+ * table, copy, edit, record-payment, and activity-log UI reads from a row
+ * (including `payments`/`auditLog` for the View Log modal, which therefore
+ * needs no extra request). Excluded: `screenshots` (base64 blobs — fetched on
+ * demand), `paymentScreenshot` (no column/modal on this page reads it), and
+ * `note` (only used server-side for search matching). Read-only — stored
+ * documents are never modified.
+ */
+const INVOICE_LIST_PROJECTION = {
+  invoiceNo: 1,
+  date: 1,
+  platform: 1,
+  adAccountName: 1,
+  adAccountId: 1,
+  serviceType: 1,
+  serviceDetails: 1,
+  serviceFee: 1,
+  dollarRate: 1,
+  topupAmountUSD: 1,
+  totalAmountBDT: 1,
+  paidAmountBDT: 1,
+  dueAmountBDT: 1,
+  paymentStatus: 1,
+  paymentMethod: 1,
+  paymentVerificationStatus: 1,
+  topupStatus: 1,
+  approvalStatus: 1,
+  customerId: 1,
+  groupId: 1,
+  source: 1,
+  createdAtRaw: 1,
+  auditLog: 1,
+  payments: 1,
+};
+
 export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) {
   await ensureInvoicesIndexesOnce();
   const invoicesCollection = await getCollection("invoices");
@@ -350,7 +389,7 @@ export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) 
   if (limit === 0) {
     data = await invoicesCollection
       .find(filter)
-      .project({ screenshots: 0 })
+      .project(INVOICE_LIST_PROJECTION)
       .sort({ date: 1 })
       .toArray();
   } else {
@@ -358,7 +397,7 @@ export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) 
     const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 20;
     data = await invoicesCollection
       .find(filter)
-      .project({ screenshots: 0 })
+      .project(INVOICE_LIST_PROJECTION)
       .sort({ date: 1 })
       .skip((safePage - 1) * safeLimit)
       .limit(safeLimit)
@@ -402,9 +441,25 @@ function bdtOf(inv) {
  * list's search/status/page filter) so the summary numbers stay accurate even
  * though the table only shows one page. Mirrors the exact math the Invoices
  * view used to do client-side over the entire array.
+ *
+ * The scan is memoized for a short TTL: every page navigation, search
+ * keystroke, and refetch on `/invoices` otherwise re-scans all ~5k documents.
+ * 30s matches the `GET:/api/invoices` route-cache staleness, so overview-card
+ * semantics are unchanged.
  */
-export async function computeInvoiceAggregates() {
-  const invoicesCollection = await getCollection("invoices");
+const AGGREGATES_TTL_MS = 30_000;
+let aggregatesCache = null;
+let aggregatesCachedAt = 0;
+let aggregatesInflight = null;
+
+export async function computeInvoiceAggregates({ force = false } = {}) {
+  if (!force && aggregatesCache && Date.now() - aggregatesCachedAt < AGGREGATES_TTL_MS) {
+    return aggregatesCache;
+  }
+  if (!force && aggregatesInflight) return aggregatesInflight;
+
+  aggregatesInflight = (async () => {
+    const invoicesCollection = await getCollection("invoices");
   const docs = await invoicesCollection
     .find({})
     .project({
@@ -473,29 +528,40 @@ export async function computeInvoiceAggregates() {
     };
   };
 
-  return {
-    lifetime,
-    currentMonth: { ...currentMonth, label: formatMonthLabel(activeMonthStr), monthStr: activeMonthStr },
-    daily: { ...daily, date: activeTodayStr },
-    currentYear,
-    paymentStatus: {
-      paid: paymentBucket("Paid", "paidAmountBDT"),
-      partiallyPaid: paymentBucket("Partially Paid", "paidAmountBDT"),
-      due: paymentBucket("Due", "dueAmountBDT"),
-    },
-    pendingApprovals: docs.filter((i) => i.approvalStatus === "Pending").length,
-    pendingTopups: docs.filter((i) => i.topupStatus === "Pending").length,
-    paidTodayUsd: round2(
-      docs
-        .filter((i) => i.date === today && i.paymentStatus === "Paid")
-        .reduce((s, i) => s + Number(i.topupAmountUSD || 0), 0),
-    ),
-    paidCurrentMonthUsd: round2(
-      docs
-        .filter((i) => String(i.date || "").startsWith(monthPrefix) && i.paymentStatus === "Paid")
-        .reduce((s, i) => s + Number(i.topupAmountUSD || 0), 0),
-    ),
-  };
+    const result = {
+      lifetime,
+      currentMonth: { ...currentMonth, label: formatMonthLabel(activeMonthStr), monthStr: activeMonthStr },
+      daily: { ...daily, date: activeTodayStr },
+      currentYear,
+      paymentStatus: {
+        paid: paymentBucket("Paid", "paidAmountBDT"),
+        partiallyPaid: paymentBucket("Partially Paid", "paidAmountBDT"),
+        due: paymentBucket("Due", "dueAmountBDT"),
+      },
+      pendingApprovals: docs.filter((i) => i.approvalStatus === "Pending").length,
+      pendingTopups: docs.filter((i) => i.topupStatus === "Pending").length,
+      paidTodayUsd: round2(
+        docs
+          .filter((i) => i.date === today && i.paymentStatus === "Paid")
+          .reduce((s, i) => s + Number(i.topupAmountUSD || 0), 0),
+      ),
+      paidCurrentMonthUsd: round2(
+        docs
+          .filter((i) => String(i.date || "").startsWith(monthPrefix) && i.paymentStatus === "Paid")
+          .reduce((s, i) => s + Number(i.topupAmountUSD || 0), 0),
+      ),
+    };
+
+    aggregatesCache = result;
+    aggregatesCachedAt = Date.now();
+    return result;
+  })();
+
+  try {
+    return await aggregatesInflight;
+  } finally {
+    aggregatesInflight = null;
+  }
 }
 
 /**
@@ -1124,6 +1190,173 @@ export async function createHistoricalInvoice(data = {}) {
   logger.info(`createHistoricalInvoice: created ${invoice.invoiceNo} (${invoice.topupAmountUSD} USD) for ${invoice.date}`);
 
   return mapInvoice(invoice);
+}
+
+/**
+ * Lightweight list projection for the Topups audit queue. The table only
+ * renders identity/amount/status columns plus presence of a payment proof;
+ * the audit-log count/badge and the View Log modal read `auditLog` from the
+ * row. Everything heavy (`screenshots`, `payments`, `note`, service detail
+ * fields) is excluded here and loaded on demand via
+ * GET /api/invoices/[invoiceNo] only when a modal needs it. Read-only —
+ * it never modifies stored documents.
+ */
+const TOPUP_LIST_PROJECTION = {
+  invoiceNo: 1,
+  date: 1,
+  platform: 1,
+  adAccountName: 1,
+  adAccountId: 1,
+  customerId: 1,
+  groupId: 1,
+  topupAmountUSD: 1,
+  totalAmountBDT: 1,
+  paidAmountBDT: 1,
+  dueAmountBDT: 1,
+  paymentStatus: 1,
+  paymentMethod: 1,
+  approvalStatus: 1,
+  topupStatus: 1,
+  createdAtRaw: 1,
+  paymentScreenshot: 1,
+  auditLog: 1,
+};
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildTopupFilter({
+  search = "",
+  onlyPending = false,
+  approvalStatus = "",
+  paymentStatus = "",
+  topupStatus = "",
+  customerId = "",
+  adAccount = "",
+  date = "",
+} = {}) {
+  const and = [];
+
+  if (onlyPending) {
+    and.push({
+      $or: [
+        { approvalStatus: { $in: AUDIT_ACTIVE_STATES } },
+        { topupStatus: "Pending" },
+      ],
+    });
+  }
+  if (approvalStatus) and.push({ approvalStatus: String(approvalStatus) });
+  if (paymentStatus) and.push({ paymentStatus: String(paymentStatus) });
+  if (topupStatus) and.push({ topupStatus: String(topupStatus) });
+  if (customerId) {
+    const id = String(customerId).trim();
+    and.push({ $or: [{ customerId: id }, { groupId: id }] });
+  }
+  if (adAccount) {
+    const q = escapeRegExp(String(adAccount).trim());
+    and.push({
+      $or: [
+        { adAccountId: { $regex: q, $options: "i" } },
+        { adAccountName: { $regex: q, $options: "i" } },
+      ],
+    });
+  }
+  if (date) {
+    const d = String(date).trim().slice(0, 10);
+    and.push(
+      d.length === 7
+        ? { date: { $regex: `^${escapeRegExp(d)}` } }
+        : { date: d }
+    );
+  }
+  if (search) {
+    const q = escapeRegExp(String(search).trim());
+    and.push({
+      $or: [
+        { invoiceNo: { $regex: q, $options: "i" } },
+        { adAccountName: { $regex: q, $options: "i" } },
+        { groupId: { $regex: q, $options: "i" } },
+        { customerId: { $regex: q, $options: "i" } },
+      ],
+    });
+  }
+
+  if (and.length === 0) return {};
+  if (and.length === 1) return and[0];
+  return { $and: and };
+}
+
+/**
+ * Server-side paginated Topup ledger for the `/topups` audit queue.
+ * MongoDB applies the filter + sort + skip/limit so each request transfers
+ * only the current page of lightweight rows (see TOPUP_LIST_PROJECTION).
+ * Header counts (`total`, `pending`) come from indexed `countDocuments`
+ * calls — no full-collection download, no in-React filtering/sorting.
+ */
+export async function queryTopups({
+  search = "",
+  onlyPending = false,
+  approvalStatus = "",
+  paymentStatus = "",
+  topupStatus = "",
+  customerId = "",
+  adAccount = "",
+  date = "",
+  page = 1,
+  limit = 20,
+} = {}) {
+  await ensureInvoicesIndexesOnce();
+  const invoicesCollection = await getCollection("invoices");
+
+  const filter = buildTopupFilter({
+    search,
+    onlyPending,
+    approvalStatus,
+    paymentStatus,
+    topupStatus,
+    customerId,
+    adAccount,
+    date,
+  });
+
+  const safePage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
+  const rawLimit = Number(limit);
+  const safeLimit =
+    Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 20;
+  const skip = (safePage - 1) * safeLimit;
+
+  const pendingFilter = {
+    $or: [
+      { approvalStatus: { $in: AUDIT_ACTIVE_STATES } },
+      { topupStatus: "Pending" },
+    ],
+  };
+
+  const [items, total, pending, activeAudits] = await Promise.all([
+    invoicesCollection
+      .find(filter)
+      .project(TOPUP_LIST_PROJECTION)
+      .sort({ createdAtRaw: -1, date: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .toArray(),
+    invoicesCollection.countDocuments(filter),
+    invoicesCollection.countDocuments(pendingFilter),
+    invoicesCollection.countDocuments({ approvalStatus: { $in: AUDIT_ACTIVE_STATES } }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+
+  return {
+    items: items.map(({ _id, ...rest }) => mapInvoice(rest)),
+    total,
+    pending,
+    activeAudits,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+  };
 }
 
 /**

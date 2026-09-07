@@ -1,15 +1,46 @@
 import { asyncHandler, ok } from "@/utils/http";
-import { listTopups, AUDIT_ACTIVE_STATES } from "@/models/invoiceModel";
+import { queryTopups } from "@/models/invoiceModel";
 
+function firstParam(searchParams, names) {
+  for (const name of names) {
+    const value = searchParams.get(name);
+    if (value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
+/**
+ * GET /api/topups?page=1&limit=20&search=&scope=pending
+ * Server-side paginated audit queue. MongoDB applies filters/search/sort and
+ * returns only the current page of lightweight rows plus indexed counts.
+ * The `topups` key is kept so existing readers keep working; `items` is the
+ * same page under its canonical name.
+ */
 export const GET = asyncHandler(async (request) => {
   const { searchParams } = new URL(request.url);
   const onlyPending = searchParams.get("scope") === "pending";
-  const topups = await listTopups({
-    search: searchParams.get("search") || "",
+
+  const result = await queryTopups({
+    search: firstParam(searchParams, ["search", "q"]),
     onlyPending,
+    approvalStatus: firstParam(searchParams, ["approvalStatus", "approval"]),
+    paymentStatus: firstParam(searchParams, ["paymentStatus", "payment"]),
+    topupStatus: firstParam(searchParams, ["topupStatus", "topup"]),
+    customerId: firstParam(searchParams, ["customerId", "customer"]),
+    adAccount: firstParam(searchParams, ["adAccount", "account"]),
+    date: firstParam(searchParams, ["date", "month"]),
+    page: Number(searchParams.get("page")) || 1,
+    limit: Number(searchParams.get("limit")) || 20,
   });
-  const pending = topups.filter(
-    (inv) => AUDIT_ACTIVE_STATES.includes(inv.approvalStatus) || inv.topupStatus === "Pending"
-  ).length;
-  return ok({ topups, total: topups.length, pending });
+
+  return ok({
+    topups: result.items,
+    items: result.items,
+    total: result.total,
+    pending: result.pending,
+    activeAudits: result.activeAudits,
+    page: result.page,
+    limit: result.limit,
+    totalPages: result.totalPages,
+  });
 });

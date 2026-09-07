@@ -27,6 +27,11 @@ export function useInvoicePages({ initialLimit = 10, initialFilters = {} } = {})
   // (e.g. rapidly clicking through pages or changing filters mid-fetch).
   const requestId = useRef(0);
 
+  // Shares one in-flight promise per identical page+filter key so concurrent
+  // callers (e.g. the React Strict Mode double-effect on mount) don't fire
+  // duplicate network requests for the same slice.
+  const inflightRef = useRef(new Map());
+
   // Latest values, read inside the stable `load` without forcing it to depend
   // on `filters`/`page`/`totalPages` (which would churn its identity and create
   // a refetch loop in callers that list it in effect deps).
@@ -41,15 +46,11 @@ export function useInvoicePages({ initialLimit = 10, initialFilters = {} } = {})
     async (nextPage, nextFilters) => {
       const currentPage = nextPage == null ? pageRef.current : nextPage;
       const currentFilters = nextFilters || filtersRef.current;
-      const id = ++requestId.current;
 
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({
-          page: String(currentPage),
-          limit: String(limit),
-        });
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(limit),
+      });
       if (currentFilters.search) params.set('search', currentFilters.search);
       if (currentFilters.invoiceNo) params.set('invoiceNo', currentFilters.invoiceNo);
       if (currentFilters.paymentStatus && currentFilters.paymentStatus !== 'All') {
@@ -62,23 +63,42 @@ export function useInvoicePages({ initialLimit = 10, initialFilters = {} } = {})
       if (currentFilters.dateTo) params.set('dateTo', currentFilters.dateTo);
       if (currentFilters.month) params.set('month', currentFilters.month);
 
-        const data = await apiFetch(`/api/invoices?${params.toString()}`);
-        if (id !== requestId.current) return; // stale response
+      const key = params.toString();
+      const ongoing = inflightRef.current.get(key);
+      if (ongoing) return ongoing;
 
-        setRows(Array.isArray(data.invoices) ? data.invoices : []);
-        setTotal(Number(data.total) || 0);
-        setTotalPages(Number(data.totalPages) || 1);
-        setAggregates(data.aggregates || null);
-        setPageState(currentPage);
-      } catch (err) {
-        if (id !== requestId.current) return;
-        setError(err);
-        setRows([]);
-        setTotal(0);
-        setTotalPages(1);
-      } finally {
-        if (id === requestId.current) setLoading(false);
-      }
+      const id = ++requestId.current;
+
+      const promise = (async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const data = await apiFetch(`/api/invoices?${key}`);
+          if (id !== requestId.current) return;
+
+          setRows(Array.isArray(data.invoices) ? data.invoices : []);
+          setTotal(Number(data.total) || 0);
+          setTotalPages(Number(data.totalPages) || 1);
+          setAggregates(data.aggregates || null);
+          setPageState(currentPage);
+        } catch (err) {
+          if (id !== requestId.current) throw err;
+          setError(err);
+          setRows([]);
+          setTotal(0);
+          setTotalPages(1);
+          throw err;
+        } finally {
+          inflightRef.current.delete(key);
+          if (id === requestId.current) setLoading(false);
+        }
+      })();
+
+      inflightRef.current.set(key, promise);
+      // Swallow unhandled rejections for fire-and-forget callers (setPage /
+      // setFilters don't await); the error state is still set above.
+      promise.catch(() => {});
+      return promise;
     },
     [limit],
   );

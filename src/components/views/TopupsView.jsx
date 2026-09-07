@@ -92,7 +92,13 @@ function TopupsView({
   onSyncTopupStatus,
   loading = false,
   error,
-  onRetry
+  onRetry,
+  page = 1,
+  totalPages = 1,
+  total = 0,
+  pendingCount = 0,
+  limit = PAGE_SIZE,
+  onPageChange,
 }) {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [feedbackTarget, setFeedbackTarget] = useState(null);
@@ -100,7 +106,6 @@ function TopupsView({
   const [screenshotTarget, setScreenshotTarget] = useState(null);
   const [logTarget, setLogTarget] = useState(null);
   const [viewFeedbackTarget, setViewFeedbackTarget] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const [busyKey, setBusyKey] = useState(null);
   const [feedbackScreenshotError, setFeedbackScreenshotError] = useState('');
   const [screenshotLoading, setScreenshotLoading] = useState(false);
@@ -121,14 +126,19 @@ function TopupsView({
     }
   };
 
-  const activeAudits = invoices.filter(inv => ACTIVE_AUDIT_STATES.includes(inv.approvalStatus));
+  // Server-side pagination: `invoices` holds only the current page (fetched
+  // via GET /api/topups?page=&limit=); header counts come from indexed
+  // MongoDB counts so the full ledger is never downloaded or filtered here.
+  const activeAuditCount = Number(pendingCount) || 0;
+  const totalRecords = Number(total) || 0;
 
-  // Client-side pagination over the already-fetched topup ledger.
-  const totalPages = Math.max(1, Math.ceil(invoices.length / PAGE_SIZE));
-  const safePage = Math.min(currentPage, totalPages);
-  const pagedInvoices = invoices.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const pageStart = (safePage - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(safePage * PAGE_SIZE, invoices.length);
+  const safePage = Math.min(Math.max(1, Number(page) || 1), Math.max(1, Number(totalPages) || 1));
+  const safeTotalPages = Math.max(1, Number(totalPages) || 1);
+  const pageSize = Number(limit) > 0 ? Number(limit) : PAGE_SIZE;
+  const pagedInvoices = invoices;
+  const pageStart = totalRecords === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(safePage * pageSize, totalRecords);
+  const handlePageChange = typeof onPageChange === 'function' ? onPageChange : () => {};
 
   // Runs a workflow action, keeping a per-row spinner active on the triggering
   // button until the request settles. Errors are surfaced by the hooks' toasts.
@@ -234,10 +244,10 @@ function TopupsView({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-1.5 rounded-full font-semibold border border-amber-100 dark:border-amber-500/20">
-            {activeAudits.length} Pending Audits
+            {activeAuditCount} Pending Audits
           </span>
           <span className="text-xs bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full font-semibold border border-blue-100 dark:border-blue-500/20">
-            {invoices.length} Topup Records
+            {totalRecords} Topup Records
           </span>
         </div>
       </div>
@@ -246,14 +256,14 @@ function TopupsView({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl">
         <StatCard
           title="AUDITS AWAITING ACTION"
-          value={`${activeAudits.length} transactions`}
+          value={`${activeAuditCount} transactions`}
           variant="amber"
           icon={<Clock size={16} />}
           size="compact"
         />
         <StatCard
           title="TOTAL TOPUPS"
-          value={`${invoices.length} records`}
+          value={`${totalRecords} records`}
           variant="blue"
           icon={<DollarSign size={16} />}
           size="compact"
@@ -282,7 +292,7 @@ function TopupsView({
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Loading audit queue...</h4>
             <p className="text-xs mt-1">Fetching pending approvals and top-up syncs.</p>
           </div>
-        ) : invoices.length === 0 ? (
+        ) : totalRecords === 0 ? (
           <div className="p-16 text-center text-slate-400 dark:text-slate-500">
             <CheckCircle className="mx-auto mb-3 text-emerald-500" size={40} />
             <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Topup Records Yet</h4>
@@ -477,14 +487,14 @@ function TopupsView({
             </table>
           </div>
 
-          {totalPages > 1 && (
+          {safeTotalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                Showing {pageStart}–{pageEnd} of {invoices.length} records
+                Showing {pageStart}–{pageEnd} of {totalRecords} records
               </span>
             </div>
           )}
-          <Pagination page={safePage} totalPages={totalPages} onPageChange={setCurrentPage} />
+          <Pagination page={safePage} totalPages={safeTotalPages} onPageChange={handlePageChange} />
           </>
         )}
       </div>
