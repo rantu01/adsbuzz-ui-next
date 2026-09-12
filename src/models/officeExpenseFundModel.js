@@ -3,6 +3,7 @@ import logger from "@/utils/logger";
 
 const FUND_ID = "main";
 const TXN_TYPES = ["opening", "fund", "expense", "expense_adjust", "expense_reversal"];
+const ADD_TYPES_SAFE = ["fund", "opening"];
 
 function toNumber(value) {
   const n = Number(value);
@@ -92,13 +93,43 @@ function normalizeAddedBy(actor) {
   if (!actor) return null;
   if (typeof actor === "string") {
     const v = actor.trim();
-    return v ? { name: v } : null;
+    return v ? { name: v, username: v } : null;
   }
   const uid = actor.uid != null ? String(actor.uid) : "";
-  const name = actor.name != null ? String(actor.name) : "";
+  const username = actor.username != null ? String(actor.username) : actor.name != null ? String(actor.name) : "";
+  const name = actor.name != null ? String(actor.name) : username;
   const email = actor.email != null ? String(actor.email) : "";
-  if (!uid && !name && !email) return null;
-  return { ...(uid ? { uid } : {}), ...(name ? { name } : {}), ...(email ? { email } : {}) };
+  const role = actor.role != null ? String(actor.role) : "";
+  if (!uid && !name && !email && !username && !role) return null;
+  return {
+    ...(uid ? { uid } : {}),
+    ...(name ? { name } : {}),
+    ...(username ? { username } : {}),
+    ...(email ? { email } : {}),
+    ...(role ? { role } : {}),
+  };
+}
+
+function normalizeEditedBy(actor) {
+  return normalizeAddedBy(actor);
+}
+
+async function resolveTxnFilter(id) {
+  const raw = String(id || "").trim();
+  if (!raw) return null;
+  try {
+    const { ObjectId } = await import("mongodb");
+    if (ObjectId.isValid(raw)) return { _id: new ObjectId(raw) };
+  } catch {
+    // fall through to string-id match
+  }
+  return { _id: raw };
+}
+
+function mapTxn(doc) {
+  if (!doc) return null;
+  const { _id, ...rest } = doc;
+  return { ...rest, id: _id != null ? _id.toString() : rest.id };
 }
 
 async function recordTransaction(txn) {
@@ -247,4 +278,146 @@ export async function refundForExpenseDelete({ entryId = "", month = "", voucher
   const fund = mapFundResult(updated);
   await recordTransaction({ type: "expense_reversal", amount: amt, month, voucherNo, entryId });
   return fund;
+}
+
+/**
+ * Edit an "Ad Money History" funding transaction (type 'fund' or 'opening').
+ * - Adjusts the wallet balance/totalFunded by the amount delta so totals stay
+ *   consistent.
+ * - Appends an entry to `editHistory` recording the old/new values, the edit
+ *   note (reason), and the editor's username + role.
+ */
+export async function updateFundTransaction(id, { amount, note, editNote = "", actor = null } = {}) {
+  const filter = await resolveTxnFilter(id);
+  if (!filter) {
+    const err = new Error("Transaction id is required.");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+  const txns = await getCollection("officeExpenseFundTransactions");
+  const existing = await txns.findOne(filter);
+  if (!existing) {
+    const err = new Error("Ad money entry not found.");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+  if (!ADD_TYPES_SAFE.includes(existing.type)) {
+    const err = new Error("Only Ad Money entries can be edited from the wallet.");
+    err.code = "NOT_EDITABLE";
+    throw err;
+  }
+
+  const newAmount = Number(amount);
+  if (!Number.isFinite(newAmount) || newAmount <= 0) {
+    const err = new Error("Amount must be a positive number.");
+    err.code = "INVALID_AMOUNT";
+    throw err;
+  }
+  const newNote = note === undefined ? String(existing.note || "") : String(note || "");
+  const reason = String(editNote || "").trim();
+  const oldAmount = Number(existing.amount) || 0;
+  const oldNote = String(existing.note || "");
+  const delta = Math.round((newAmount - oldAmount) * 100) / 100;
+
+  // Keep the wallet consistent: reducing a funding entry must not drive the
+  // available balance negative when that money was already spent.
+  if (delta !== 0) {
+    await ensureFund();
+    const funds = await getCollection("officeExpenseFund");
+    if (delta > 0) {
+      const updated = await funds.findOneAndUpdate(
+        { _id: FUND_ID },
+        { $inc: { balance: delta, totalFunded: delta }, $set: { updatedAt: new Date() } },
+        { returnDocument: "after" },
+      );
+      if (!updated) {
+        const err = new Error("Wallet fund not found.");
+        err.code = "NOT_FOUND";
+        throw err;
+      }
+    } else {
+      const updated = await funds.findOneAndUpdate(
+        { _id: FUND_ID, balance: { $gte: Math.abs(delta) } },
+        { $inc: { balance: delta, totalFunded: delta }, $set: { updatedAt: new Date() } },
+        { returnDocument: "after" },
+      );
+      const fund = mapFundResult(updated);
+      if (!fund) {
+        const current = await ensureFund();
+        const err = new Error(
+          `Insufficient available balance to reduce this entry. Available: ৳${Number(current.balance || 0).toLocaleString()}, reduction needed: ৳${Math.abs(delta).toLocaleString()}.`,
+        );
+        err.code = "INSUFFICIENT_BALANCE";
+        err.available = Number(current.balance || 0);
+        throw err;
+      }
+    }
+  }
+
+  const editedBy = normalizeEditedBy(actor);
+  const historyEntry = {
+    oldAmount,
+    newAmount,
+    oldNote,
+    newNote,
+    editNote: reason,
+    editedBy,
+    editedAt: new Date(),
+  };
+
+  await txns.updateOne(filter, {
+    $set: { amount: newAmount, note: newNote, updatedAt: new Date(), lastEditedBy: editedBy, lastEditNote: reason },
+    $push: { editHistory: historyEntry },
+  });
+  const saved = await txns.findOne(filter);
+  logger.info(`updateFundTransaction: edited ${existing.type} txn ${id} (${oldAmount} -> ${newAmount}).`);
+  return { fund: await getFund(), transaction: mapTxn(saved) };
+}
+
+/**
+ * Delete an "Ad Money History" funding transaction and roll its amount back
+ * out of the wallet balance/totalFunded.
+ */
+export async function deleteFundTransaction(id) {
+  const filter = await resolveTxnFilter(id);
+  if (!filter) {
+    const err = new Error("Transaction id is required.");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+  const txns = await getCollection("officeExpenseFundTransactions");
+  const existing = await txns.findOne(filter);
+  if (!existing) {
+    const err = new Error("Ad money entry not found.");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+  if (!ADD_TYPES_SAFE.includes(existing.type)) {
+    const err = new Error("Only Ad Money entries can be deleted from the wallet.");
+    err.code = "NOT_EDITABLE";
+    throw err;
+  }
+  const amt = Number(existing.amount) || 0;
+  if (amt > 0) {
+    await ensureFund();
+    const funds = await getCollection("officeExpenseFund");
+    const updated = await funds.findOneAndUpdate(
+      { _id: FUND_ID, balance: { $gte: amt } },
+      { $inc: { balance: -amt, totalFunded: -amt }, $set: { updatedAt: new Date() } },
+      { returnDocument: "after" },
+    );
+    const fund = mapFundResult(updated);
+    if (!fund) {
+      const current = await ensureFund();
+      const err = new Error(
+        `Insufficient available balance to delete this entry. Available: ৳${Number(current.balance || 0).toLocaleString()}, entry amount: ৳${amt.toLocaleString()}.`,
+      );
+      err.code = "INSUFFICIENT_BALANCE";
+      err.available = Number(current.balance || 0);
+      throw err;
+    }
+  }
+  await txns.deleteOne(filter);
+  logger.info(`deleteFundTransaction: removed ${existing.type} txn ${id} (amount ${amt}).`);
+  return { fund: await getFund(), transaction: mapTxn(existing) };
 }

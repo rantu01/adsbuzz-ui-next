@@ -12,6 +12,8 @@ export default function OfficeWalletPage() {
       officeExpenseFundError={app.officeExpenseFundError}
       onRetryFund={app.refetchOfficeExpenseFund}
       onAddFunds={app.handleAddOfficeExpenseFunds}
+      onUpdateFunds={app.handleUpdateOfficeExpenseFunds}
+      onDeleteFunds={app.handleDeleteOfficeExpenseFunds}
     />
   );
 }

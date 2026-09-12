@@ -211,6 +211,8 @@ export function AppProvider({ children }) {
     loading: officeExpenseFundLoading,
     error: officeExpenseFundError,
     addFunds: rawAddOfficeExpenseFunds,
+    updateFunds: rawUpdateOfficeExpenseFunds,
+    deleteFunds: rawDeleteOfficeExpenseFunds,
     refetch: refetchOfficeExpenseFund,
   } = useOfficeExpenseFund(triggerToast);
   const {
@@ -567,6 +569,18 @@ export function AppProvider({ children }) {
   const handleAddOfficeExpenseFunds = async ({ amount, note, month, actor }) => {
     const result = await rawAddOfficeExpenseFunds({ amount, note, month, actor });
     if (result) logActivityFx("Rakibul R.", "Funded Office Expense Balance", `৳${Number(amount).toLocaleString()} added to the office expense balance.`, "payment");
+    return result;
+  };
+
+  const handleUpdateOfficeExpenseFunds = async (id, { amount, note, editNote, actor }) => {
+    const result = await rawUpdateOfficeExpenseFunds(id, { amount, note, editNote, actor });
+    if (result) logActivityFx("Rakibul R.", "Updated Office Wallet Funding", `Ad money entry ${id} updated to ৳${Number(amount).toLocaleString()}.`, "payment");
+    return result;
+  };
+
+  const handleDeleteOfficeExpenseFunds = async (id) => {
+    const result = await rawDeleteOfficeExpenseFunds(id);
+    if (result) logActivityFx("Rakibul R.", "Deleted Office Wallet Funding", `Ad money entry ${id} deleted.`, "payment");
     return result;
   };
 
@@ -1122,6 +1136,8 @@ export function AppProvider({ children }) {
     handleAddOfficeExpenseMonth,
     handleUpdateOfficeExpenseMonth,
     handleAddOfficeExpenseFunds,
+    handleUpdateOfficeExpenseFunds,
+    handleDeleteOfficeExpenseFunds,
     handleAddRefund,
     handleUpdateRefund,
     handleDeleteRefund,
