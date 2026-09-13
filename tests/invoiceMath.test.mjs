@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   round2,
   dateOnly,
+  parseStrictDateOnly,
   detectPlatform,
   computePaymentStatus,
   invoiceNoFromLegacyId,
@@ -23,6 +24,22 @@ test('dateOnly normalizes dates to YYYY-MM-DD', () => {
   assert.equal(dateOnly('not-a-date'), 'not-a-date');
 });
 
+test('parseStrictDateOnly accepts valid YYYY-MM-DD dates', () => {
+  assert.equal(parseStrictDateOnly('2026-02-20'), '2026-02-20');
+  assert.equal(parseStrictDateOnly('2024-02-29'), '2024-02-29');
+});
+
+test('parseStrictDateOnly rejects short-year typos and impossible dates', () => {
+  assert.equal(parseStrictDateOnly('0026-02-20'), '');
+  assert.equal(parseStrictDateOnly('0226-02-19'), '');
+  assert.equal(parseStrictDateOnly('0202-03-03'), '');
+  assert.equal(parseStrictDateOnly('26-02-20'), '');
+  assert.equal(parseStrictDateOnly('2026-13-01'), '');
+  assert.equal(parseStrictDateOnly('2025-02-29'), '');
+  assert.equal(parseStrictDateOnly('not-a-date'), '');
+  assert.equal(parseStrictDateOnly(''), '');
+  assert.equal(parseStrictDateOnly(null), '');
+});
 test('detectPlatform classifies by name prefix', () => {
   assert.equal(detectPlatform('ATA_Hasan_Mobile_112'), 'TikTok');
   assert.equal(detectPlatform('ADG_Media_Agency_7'), 'Google');

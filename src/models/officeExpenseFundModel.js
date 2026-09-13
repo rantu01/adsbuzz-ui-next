@@ -1,5 +1,6 @@
 import { getCollection } from "@/lib/db";
 import logger from "@/utils/logger";
+import { parseStrictDateOnly } from "@/utils/invoiceMath";
 
 const FUND_ID = "main";
 const TXN_TYPES = ["opening", "fund", "expense", "expense_adjust", "expense_reversal"];
@@ -135,6 +136,19 @@ function mapTxn(doc) {
 async function recordTransaction(txn) {
   const collection = await getCollection("officeExpenseFundTransactions");
   const type = TXN_TYPES.includes(txn.type) ? txn.type : "fund";
+  // A caller-supplied funding date is stored as the entry's date (start of
+  // day, UTC — same convention as historical invoices). When omitted, the
+  // entry is stamped with the current time (unchanged behavior).
+  let createdAt = new Date();
+  if (txn.date !== undefined && txn.date !== null && String(txn.date).trim() !== "") {
+    const parsed = parseStrictDateOnly(txn.date);
+    if (!parsed) {
+      const err = new Error("Invalid date (expected valid YYYY-MM-DD, year 2000 or later).");
+      err.code = "INVALID_DATE";
+      throw err;
+    }
+    createdAt = new Date(`${parsed}T00:00:00Z`);
+  }
   const doc = {
     type,
     amount: toNumber(txn.amount),
@@ -143,7 +157,7 @@ async function recordTransaction(txn) {
     entryId: String(txn.entryId || ""),
     note: String(txn.note || ""),
     addedBy: normalizeAddedBy(txn.addedBy || txn.actor || null),
-    createdAt: new Date(),
+    createdAt,
   };
   await collection.insertOne(doc);
   const { _id, ...rest } = doc;
@@ -161,7 +175,7 @@ function mapFundResult(result) {
   return mapFund(result.value || result);
 }
 
-export async function addFunds({ amount, note = "", month = "", actor = null, addedBy = null } = {}) {
+export async function addFunds({ amount, note = "", month = "", date = "", actor = null, addedBy = null } = {}) {
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) {
     const err = new Error("Amount must be a positive number.");
@@ -179,7 +193,7 @@ export async function addFunds({ amount, note = "", month = "", actor = null, ad
     { returnDocument: "after" },
   );
   const fund = mapFundResult(updated);
-  await recordTransaction({ type: "fund", amount: amt, month, note, addedBy: addedBy || actor || null });
+  await recordTransaction({ type: "fund", amount: amt, month, date, note, addedBy: addedBy || actor || null });
   logger.info(`addFunds: +${amt} office-expense fund (balance ${fund?.balance}).`);
   return fund;
 }

@@ -22,6 +22,7 @@ export const POST = asyncHandler(async (request) => {
   const amount = Number(body.amount);
   const note = optionalString(body.note, 500);
   const month = optionalString(body.month, 20);
+  const date = optionalString(body.date, 20);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new ApiError(HttpStatus.BAD_REQUEST, "Amount must be a positive number.");
@@ -29,10 +30,13 @@ export const POST = asyncHandler(async (request) => {
 
   try {
     const actor = (await getRequestActor(request)) || body.actor || body.addedBy || null;
-    const fund = await addFunds({ amount, note, month, actor });
+    const fund = await addFunds({ amount, note, month, date, actor });
     return ok({ message: "Office expense balance funded.", fund }, HttpStatus.CREATED);
   } catch (err) {
     if (err.code === "INVALID_AMOUNT") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, err.message);
+    }
+    if (err.code === "INVALID_DATE") {
       throw new ApiError(HttpStatus.BAD_REQUEST, err.message);
     }
     throw err;

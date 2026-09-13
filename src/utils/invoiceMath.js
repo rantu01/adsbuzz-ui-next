@@ -12,6 +12,31 @@ export function dateOnly(value) {
   return date.toISOString().split("T")[0];
 }
 
+/**
+ * Strictly parses a `YYYY-MM-DD` invoice date. Unlike `dateOnly` (which is
+ * lenient and passes garbage through), this rejects anything that is not a
+ * real calendar date with a 4-digit year inside [minYear, maxYear].
+ *
+ * This is the guard against short-year typos from date-picker inputs: typing
+ * year "26" produces the valid-but-absurd string "0026-02-20", which the old
+ * lenient parsing stored verbatim (and which then sorted before every real
+ * invoice). Returns the normalized `YYYY-MM-DD` string, or `""` when invalid.
+ */
+export function parseStrictDateOnly(value, { minYear = 2000, maxYear = 2100 } = {}) {
+  const s = String(value ?? "").trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return "";
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isInteger(y) || y < minYear || y > maxYear) return "";
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return "";
+  const dt = new Date(`${s}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime())) return "";
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== mo || dt.getUTCDate() !== d) return "";
+  return s;
+}
+
 export function detectPlatform(accountName = "") {
   const name = String(accountName).toUpperCase();
   if (name.includes("ATA")) return "TikTok";

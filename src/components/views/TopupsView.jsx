@@ -61,23 +61,43 @@ function formatActor(actor) {
   return actor.name || actor.email || actor.uid || 'System';
 }
 
+function createdActorOf(inv) {
+  const log = Array.isArray(inv?.auditLog) ? inv.auditLog : [];
+  const created = log.find((e) => e && e.action === 'created');
+  return (created && created.actor) || null;
+}
+
 function collectScreenshots(inv) {
   const list = [];
+  const seen = new Set();
+  const norm = (u) => String(u || '').trim();
+  // The sale checkout stores the first screenshot in BOTH `paymentScreenshot`
+  // and `screenshots[]` — the repeat is skipped so each proof renders once.
+  const creator = createdActorOf(inv);
   if (inv?.paymentScreenshot) {
-    list.push({ url: inv.paymentScreenshot, source: 'payment', label: 'Payment Proof', at: inv.createdAtRaw || null });
+    const url = norm(inv.paymentScreenshot);
+    if (url) {
+      seen.add(url);
+      list.push({ url, source: 'payment', label: 'Payment Proof', at: inv.createdAtRaw || null, actor: creator });
+    }
   }
-  if (Array.isArray(inv?.screenshots)) {
-    inv.screenshots.forEach((s) => {
-      if (s && s.url) {
-        list.push({
-          url: s.url,
-          source: s.source || 'attached',
-          label: s.source === 'feedback' ? 'Feedback Attachment' : 'Attached Screenshot',
-          at: s.at || null,
-        });
-      }
-    });
-  }
+  // if (Array.isArray(inv?.screenshots)) {
+  //   inv.screenshots.forEach((s) => {
+  //     const url = norm(s && s.url);
+  //     if (!url || seen.has(url)) return;
+  //     seen.add(url);
+  //     const source = s.source || 'attached';
+  //     list.push({
+  //       url,
+  //       source,
+  //       label: source === 'feedback' ? 'Feedback Attachment' : 'Attached Screenshot',
+  //       at: s.at || null,
+  //       // Feedback uploads carry their own actor; sale-checkout proofs were
+  //       // uploaded at creation by the sale creator.
+  //       actor: s.actor || (source === 'feedback' ? null : creator),
+  //     });
+  //   });
+  // }
   return list;
 }
 
@@ -696,6 +716,9 @@ function TopupsView({
                     <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(shot.at).toLocaleString()}</span>
                   )}
                 </div>
+                <p className="text-[10px] text-slate-400">
+                  Uploaded by <span className="font-semibold text-slate-500 dark:text-slate-300">{formatActor(shot.actor)}</span>
+                </p>
                 <img
                   src={shot.url}
                   alt={`${shot.label} for ${screenshotTarget.invoiceNo}`}

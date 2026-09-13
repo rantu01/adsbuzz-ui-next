@@ -27,10 +27,17 @@ export const PUT = asyncHandler(async (request, { params }) => {
   }
 
   const actor = await getRequestActor(request);
-  const invoice = await updateInvoice(invoiceNo, { ...body, auditActor: actor });
-  cacheInvalidate("GET:/api/invoices");
-  cacheInvalidate("GET:/api/customers");
-  return ok({ message: "Invoice updated.", invoice });
+  try {
+    const invoice = await updateInvoice(invoiceNo, { ...body, auditActor: actor });
+    cacheInvalidate("GET:/api/invoices");
+    cacheInvalidate("GET:/api/customers");
+    return ok({ message: "Invoice updated.", invoice });
+  } catch (err) {
+    if (err.code === "INVALID_DATE") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, err.message);
+    }
+    throw err;
+  }
 });
 
 export const DELETE = asyncHandler(async (request, { params }) => {

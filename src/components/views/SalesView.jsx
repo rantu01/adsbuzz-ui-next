@@ -975,6 +975,13 @@ function SalesView({
       setHistError('Historical sales must be for a past date (before today).');
       return;
     }
+    // Guard against short-year typos (e.g. year "26" zero-padded by the date
+    // input to "0026-02-20"), which previously passed the past-date check and
+    // were stored verbatim with an absurd year.
+    if (chosen.getFullYear() < 2000) {
+      setHistError('Please enter a valid 4-digit year (2000 or later).');
+      return;
+    }
 
     if (!histServiceType) {
       setHistError('Please select a service type.');

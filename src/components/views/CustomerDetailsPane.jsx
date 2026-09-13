@@ -603,10 +603,11 @@ function CustomerDetailsPane({
                     className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all bg-white dark:bg-slate-900 shadow-sm hover:shadow-md flex flex-col justify-between"
                   >
                     <div>
-                      <div className="flex justify-between items-start gap-2">
-                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate pr-2">
-                          {acc.adAccountName}
-                        </h4>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate w-full">
+                        {acc.adAccountName}
+                      </h4>
+                      <div className="mt-1 grid grid-cols-2 gap-2 items-start">
+                        <div className="text-[10px] text-slate-400 font-mono">ID: {acc.adAccountId}</div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
                             setup
@@ -619,7 +620,6 @@ function CustomerDetailsPane({
                           <span className="text-[10px] text-slate-400">Platform: <PlatformText platform={acc.platform} className="font-semibold text-[10px]" /></span>
                         </div>
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-1">ID: {acc.adAccountId}</div>
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">

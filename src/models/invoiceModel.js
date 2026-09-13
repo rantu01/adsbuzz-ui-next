@@ -6,7 +6,7 @@ import { markAccountSold } from "@/models/adAccountModel";
 import { applyCardLoad, getCardByName } from "@/models/cardModel";
 import { applyCustomerCredit } from "@/models/customerModel";
 import { normalizeCustomerId } from "@/utils/customerIds";
-import { round2, dateOnly, detectPlatform, invoiceNoFromLegacyId, computePaymentStatus, applyPayment } from "@/utils/invoiceMath";
+import { round2, dateOnly, parseStrictDateOnly, detectPlatform, invoiceNoFromLegacyId, computePaymentStatus, applyPayment } from "@/utils/invoiceMath";
 import { persistDataUrl } from "@/utils/upload";
 
 export const DEFAULT_DOLLAR_RATE = 132;
@@ -36,6 +36,25 @@ function auditEntry(action, status, { reason = "", actor = null } = {}) {
     actor: actor || null,
     at: new Date().toISOString(),
   };
+}
+
+/**
+ * Normalizes sale-checkout screenshots so the View Screenshot modal can show
+ * who uploaded each proof. Existing fields (url/name/source) are preserved;
+ * only a missing uploader/timestamp is filled from the sale creator. The
+ * `paymentScreenshot` field keeps no actor of its own — its uploader is the
+ * invoice's `created` audit-log actor, resolved read-side.
+ */
+function withScreenshotMeta(items, actor) {
+  if (!Array.isArray(items)) return [];
+  const at = new Date().toISOString();
+  return items.map((s) => {
+    if (typeof s === "string") return { url: s, actor: actor || null, at };
+    if (s && typeof s === "object") {
+      return { ...s, actor: s.actor || actor || null, at: s.at || at };
+    }
+    return s;
+  });
 }
 
 // The legacy migration below is expensive (per-customer x per-log scan + per-invoice
@@ -107,9 +126,17 @@ export async function migrateEmbeddedPaymentScreenshots() {
       name: `${doc.invoiceNo || "screenshot"}.png`,
     });
     if (!url) continue;
+    // The checkout stores the first screenshot in BOTH `paymentScreenshot`
+    // and `screenshots[]` — rewrite the matching embedded copy too, otherwise
+    // the same proof keeps rendering twice (migrated file + embedded copy).
+    const shots = Array.isArray(doc.screenshots) ? doc.screenshots : [];
+    const set = { paymentScreenshot: url, updatedAt: new Date() };
+    if (shots.some((s) => s && s.url === doc.paymentScreenshot)) {
+      set.screenshots = shots.map((s) => (s && s.url === doc.paymentScreenshot ? { ...s, url } : s));
+    }
     await invoicesCollection.updateOne(
       { _id: doc._id },
-      { $set: { paymentScreenshot: url, updatedAt: new Date() } }
+      { $set: set }
     );
     migrated += 1;
   }
@@ -390,6 +417,12 @@ export async function queryInvoices({ filter = {}, page = 1, limit = 20 } = {}) 
     data = await invoicesCollection
       .find(filter)
       .project(INVOICE_LIST_PROJECTION)
+      // Date-wise ascending. Kept as a single-key sort on purpose: it is
+      // served by the `invoices_date_asc` index. A multi-key sort here has no
+      // supporting index and forces an in-memory sort of the whole ledger,
+      // which exceeds MongoDB's 32MB sort limit and fails the query (the
+      // table then shows "No invoices match..." — notably on uncached pages
+      // like the last one).
       .sort({ date: 1 })
       .toArray();
   } else {
@@ -1052,7 +1085,18 @@ export async function createInvoice(data = {}) {
   const paidAmountBDT = Math.round(Number(data.paidAmountBDT || 0) * 100) / 100;
   const dueAmountBDT = Math.round((Number(data.dueAmountBDT ?? (totalAmountBDT - paidAmountBDT)) || 0) * 100) / 100;
   const paymentStatus = data.paymentStatus || computePaymentStatus({ totalAmountBDT, paidAmountBDT, dueAmountBDT });
-  const date = data.date || new Date().toISOString().split("T")[0];
+  // Reject malformed/short-year dates instead of storing them verbatim.
+  // An omitted date still defaults to today (unchanged behavior).
+  let date = new Date().toISOString().split("T")[0];
+  if (data.date !== undefined && data.date !== null && String(data.date).trim() !== "") {
+    const parsed = parseStrictDateOnly(data.date);
+    if (!parsed) {
+      const err = new Error("Invalid invoice date (expected valid YYYY-MM-DD, year 2000 or later).");
+      err.code = "INVALID_DATE";
+      throw err;
+    }
+    date = parsed;
+  }
   const approvalStatus = String(data.approvalStatus || "Pending");
 
   const invoice = {
@@ -1074,7 +1118,7 @@ export async function createInvoice(data = {}) {
     groupId: String(data.groupId || "").trim(),
     note: String(data.note || "").trim(),
     paymentScreenshot: data.paymentScreenshot || "",
-    screenshots: Array.isArray(data.screenshots) ? data.screenshots : [],
+    screenshots: withScreenshotMeta(data.screenshots, data.auditActor || null),
     source: "manual",
     auditLog: [
       auditEntry("created", approvalStatus, { actor: data.auditActor || null, reason: String(data.note || "") }),
@@ -1131,10 +1175,12 @@ export async function createHistoricalInvoice(data = {}) {
   const settings = await getSettings();
   const defaultRate = Number(settings.defaultDollarRate) > 0 ? Number(settings.defaultDollarRate) : DEFAULT_DOLLAR_RATE;
 
-  // Historical sales must be dated strictly in the past.
-  const date = dateOnly(data.date || "");
+  // Historical sales must be dated strictly in the past. The strict parser
+  // also rejects short-year typos (e.g. year "26" zero-padded by the date
+  // input to "0026-02-20"), which the old lenient parsing stored verbatim.
+  const date = parseStrictDateOnly(data.date || "");
   if (!date) {
-    const err = new Error("Historical sale date is required.");
+    const err = new Error("Historical sale date is required (valid YYYY-MM-DD, year 2000 or later).");
     err.code = "INVALID_HISTORICAL_DATE";
     throw err;
   }
@@ -1177,7 +1223,7 @@ export async function createHistoricalInvoice(data = {}) {
     groupId: String(data.groupId || "").trim(),
     note: String(data.note || "").trim(),
     paymentScreenshot: data.paymentScreenshot || "",
-    screenshots: Array.isArray(data.screenshots) ? data.screenshots : [],
+    screenshots: withScreenshotMeta(data.screenshots, data.auditActor || null),
     source: "historical",
     auditLog: [
       auditEntry("created", approvalStatus, { actor: data.auditActor || null, reason: String(data.note || "") }),
@@ -1571,7 +1617,16 @@ export async function updateInvoice(invoiceNo, data = {}) {
   for (const key of allowed) {
     if (data[key] === undefined) continue;
     const value = data[key];
-    if (key === "dollarRate") patch.dollarRate = Number(value) > 0 ? Number(value) : existing.dollarRate;
+    if (key === "date") {
+      // Never persist a malformed/short-year date via edits (e.g. "0026-02-20").
+      const parsed = parseStrictDateOnly(value);
+      if (!parsed) {
+        const err = new Error("Invalid invoice date (expected valid YYYY-MM-DD, year 2000 or later).");
+        err.code = "INVALID_DATE";
+        throw err;
+      }
+      patch.date = parsed;
+    } else if (key === "dollarRate") patch.dollarRate = Number(value) > 0 ? Number(value) : existing.dollarRate;
     else if (key === "topupAmountUSD") patch.topupAmountUSD = Math.round(Number(value || 0) * 100) / 100;
     else if (key === "totalAmountBDT") patch.totalAmountBDT = Math.round(Number(value || 0) * 100) / 100;
     else if (key === "paidAmountBDT") patch.paidAmountBDT = Math.round(Number(value || 0) * 100) / 100;

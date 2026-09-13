@@ -149,6 +149,9 @@ export const POST = asyncHandler(async (request) => {
     if (err.message === "INVALID_RATE") {
       throw new ApiError(HttpStatus.BAD_REQUEST, "Invalid dollar rate.");
     }
+    if (err.code === "INVALID_DATE") {
+      throw new ApiError(HttpStatus.BAD_REQUEST, err.message);
+    }
     throw err;
   }
 });

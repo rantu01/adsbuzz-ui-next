@@ -56,6 +56,10 @@ function formatDateTime(value) {
   return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
 const ADD_TYPES = ['fund', 'opening'];
 const USAGE_TYPES = ['expense', 'expense_adjust', 'expense_reversal'];
 
@@ -87,6 +91,7 @@ function OfficeWalletView({
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
   const [fundAmount, setFundAmount] = useState('');
   const [fundNote, setFundNote] = useState('');
+  const [fundDate, setFundDate] = useState(todayStr());
   const [fundFormError, setFundFormError] = useState('');
   const [fundSaving, setFundSaving] = useState(false);
 
@@ -137,6 +142,7 @@ function OfficeWalletView({
   const openFundModal = () => {
     setFundAmount('');
     setFundNote('');
+    setFundDate(todayStr());
     setFundFormError('');
     setIsFundModalOpen(true);
   };
@@ -145,6 +151,10 @@ function OfficeWalletView({
     const amt = Number(fundAmount);
     if (!Number.isFinite(amt) || amt <= 0) {
       setFundFormError('Enter a valid amount greater than 0.');
+      return;
+    }
+    if (!fundDate) {
+      setFundFormError('Please select a date.');
       return;
     }
     if (!onAddFunds) {
@@ -157,11 +167,13 @@ function OfficeWalletView({
         amount: amt,
         note: fundNote.trim(),
         month: '',
+        date: fundDate,
         actor: user ? { uid: user.uid || '', name: user.displayName || user.name || '', email: user.email || '' } : null,
       });
       setIsFundModalOpen(false);
       setFundAmount('');
       setFundNote('');
+      setFundDate(todayStr());
       setFundFormError('');
     } catch {
       // toast already shown by the hook
@@ -465,6 +477,15 @@ function OfficeWalletView({
               value={fundAmount}
               onChange={(e) => setFundAmount(e.target.value)}
               placeholder="e.g. 50000"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-orange outline-none dark:bg-slate-800 dark:border-slate-700"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-200">Date *</label>
+            <input
+              type="date"
+              value={fundDate}
+              onChange={(e) => setFundDate(e.target.value)}
               className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-orange outline-none dark:bg-slate-800 dark:border-slate-700"
             />
           </div>
