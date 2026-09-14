@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 
 const MENU_ITEMS = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
@@ -65,7 +66,26 @@ const MENU_ITEMS = [
   { id: 'settings', name: 'Settings', icon: Settings },
 ];
 
+function menuPath(id) {
+  return id === 'dashboard' ? '/' : `/${id}`;
+}
+
 export default function Sidebar({ activeView, onNavigate, mobileOpen = false, onMobileClose }) {
+  const { canAccess } = useAuth();
+  // Hide pages the current role cannot access (managed from Level 1
+  // /admin/roles → "Level 2 Pages"). Parents with no visible children
+  // are hidden too. While access loads, canAccess() returns true.
+  const visibleItems = MENU_ITEMS.map((item) => {
+    const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+    if (!hasChildren) return item;
+    const children = item.children.filter((c) => canAccess(menuPath(c.id)));
+    if (children.length === 0 && !canAccess(menuPath(item.id))) return null;
+    return { ...item, children };
+  }).filter((item) => {
+    if (!item) return false;
+    if (Array.isArray(item.children) && item.children.length > 0) return true;
+    return canAccess(menuPath(item.id));
+  });
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('adsbuzz_sidebar_collapsed');
@@ -190,7 +210,7 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
 
           {/* Menu Navigation Items */}
           <nav className="p-3 space-y-1 mt-3 overflow-y-auto max-h-[calc(100vh-120px)]" id="sidebar-nav">
-            {MENU_ITEMS.map((item) => {
+            {visibleItems.map((item) => {
               const hasChildren = Array.isArray(item.children) && item.children.length > 0;
               const isChildActive = hasChildren && item.children.some((c) => c.id === activeView);
               const isActive = activeView === item.id || isChildActive;
@@ -346,7 +366,7 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
 
                 {/* Navigation Items (Scrollable if overflow) */}
                 <nav className="p-3 space-y-1 mt-2 overflow-y-auto max-h-[calc(100vh-100px)]" id="mobile-sidebar-nav">
-                  {MENU_ITEMS.map((item) => {
+                  {visibleItems.map((item) => {
                     const hasChildren = Array.isArray(item.children) && item.children.length > 0;
                     const isChildActive = hasChildren && item.children.some((c) => c.id === activeView);
                     const isActive = activeView === item.id || isChildActive;

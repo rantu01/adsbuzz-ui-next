@@ -1,213 +1,164 @@
-export const ROLES = {
-  ADMIN: "admin",
-  TECHNICAL_MANAGER: "technical_manager",
-  KEY_MANAGER: "key_manager",
-  ACCOUNTS_MANAGER: "accounts_manager",
-  SUPPORT_EXECUTIVE: "support_executive",
-  CUSTOMER: "customer",
-};
+// Role/permission helpers. Static matrices below are FALLBACK defaults — the
+// live source of truth is the shared MongoDB `roles` collection managed from
+// Level 1 (ad-buzz) at /admin/roles (see lib/rbacCatalog.js + lib/roleModel.js).
+//
+// Server code should load the live map via getAccessMap() and pass it in:
+//   hasPermission(role, perm, access?.permissions)
+//   canAccessLevel2Route(pathname, role, access?.routes)
 
-export const ROLE_LABELS = {
-  admin: "Admin",
-  technical_manager: "Technical Manager",
-  key_manager: "Key Manager",
-  accounts_manager: "Accounts Manager",
-  support_executive: "Support Executive",
-  customer: "Customer",
-};
+import {
+  ROLES,
+  ROLE_LABELS,
+  STAFF_ROLES,
+  PERMISSIONS,
+  SYSTEM_ROLE_DEFAULTS,
+  LEVEL2_ROUTES,
+} from "@/lib/rbacCatalog";
 
-export const PERMISSIONS = {
-  VIEW_AD_ACCOUNTS: "view_ad_accounts",
-  MANAGE_AD_ACCOUNTS: "manage_ad_accounts",
-  ASSIGN_AD_ACCOUNTS: "assign_ad_accounts",
-  VIEW_AD_INSIGHTS: "view_ad_insights",
-  VIEW_TOPUP_INSIGHTS: "view_topup_insights",
-  VIEW_TOPUP_RECORDS: "view_topup_records",
-  VIEW_USERS: "view_users",
-  CREATE_USERS: "create_users",
-  MANAGE_USER_ROLES: "manage_user_roles",
-  MANAGE_USER_BALANCE: "manage_user_balance",
-  VIEW_DEPOSITS: "view_deposits",
-  APPROVE_DEPOSITS: "approve_deposits",
-  REJECT_DEPOSITS: "reject_deposits",
-  VIEW_WITHDRAWALS: "view_withdrawals",
-  APPROVE_WITHDRAWALS: "approve_withdrawals",
-  REJECT_WITHDRAWALS: "reject_withdrawals",
-  VIEW_TICKETS: "view_tickets",
-  MANAGE_TICKETS: "manage_tickets",
-  VIEW_BALANCE_LOGS: "view_balance_logs",
-  VIEW_REPORTS: "view_reports",
-  VIEW_PAYMENT_METHODS: "view_payment_methods",
-  MANAGE_PAYMENT_METHODS: "manage_payment_methods",
-  VIEW_SETTINGS: "view_settings",
-  MANAGE_SETTINGS: "manage_settings",
-  VIEW_META_API: "view_meta_api",
-  MANAGE_META_API: "manage_meta_api",
-  VIEW_WHATSAPP: "view_whatsapp",
-  MANAGE_WHATSAPP: "manage_whatsapp",
-  UNLIMITED_BALANCE: "unlimited_balance",
-  VIEW_AD_ACCOUNTS_TOPUP: "view_ad_accounts_topup",
-};
+export { ROLES, ROLE_LABELS, PERMISSIONS };
 
-const ROLE_PERMISSIONS = {
-  [ROLES.ADMIN]: Object.values(PERMISSIONS),
+const MANAGED_L2_PATHS = new Set(LEVEL2_ROUTES.map((r) => r.path));
 
-  [ROLES.TECHNICAL_MANAGER]: [
-    PERMISSIONS.VIEW_AD_ACCOUNTS,
-    PERMISSIONS.VIEW_AD_INSIGHTS,
-    PERMISSIONS.VIEW_TOPUP_RECORDS,
-    PERMISSIONS.VIEW_TICKETS,
-    PERMISSIONS.MANAGE_TICKETS,
-  ],
+const ROLE_PERMISSIONS = Object.fromEntries(
+  SYSTEM_ROLE_DEFAULTS.map((r) => [r.key, r.permissions])
+);
 
-  [ROLES.KEY_MANAGER]: [
-    PERMISSIONS.VIEW_AD_ACCOUNTS,
-    PERMISSIONS.MANAGE_AD_ACCOUNTS,
-    PERMISSIONS.ASSIGN_AD_ACCOUNTS,
-    PERMISSIONS.VIEW_AD_INSIGHTS,
-    PERMISSIONS.VIEW_TOPUP_INSIGHTS,
-    PERMISSIONS.VIEW_TOPUP_RECORDS,
-    PERMISSIONS.VIEW_USERS,
-    PERMISSIONS.CREATE_USERS,
-    PERMISSIONS.MANAGE_USER_BALANCE,
-    PERMISSIONS.VIEW_DEPOSITS,
-    PERMISSIONS.APPROVE_DEPOSITS,
-    PERMISSIONS.REJECT_DEPOSITS,
-    PERMISSIONS.VIEW_WITHDRAWALS,
-    PERMISSIONS.APPROVE_WITHDRAWALS,
-    PERMISSIONS.REJECT_WITHDRAWALS,
-    PERMISSIONS.VIEW_PAYMENT_METHODS,
-    PERMISSIONS.MANAGE_PAYMENT_METHODS,
-    PERMISSIONS.VIEW_BALANCE_LOGS,
-    PERMISSIONS.VIEW_TICKETS,
-    PERMISSIONS.MANAGE_TICKETS,
-    PERMISSIONS.UNLIMITED_BALANCE,
-    PERMISSIONS.VIEW_AD_ACCOUNTS_TOPUP,
-  ],
+const ROLE_LEVEL2_ROUTES = Object.fromEntries(
+  SYSTEM_ROLE_DEFAULTS.map((r) => [r.key, r.level2Routes])
+);
 
-  [ROLES.ACCOUNTS_MANAGER]: [
-    PERMISSIONS.VIEW_AD_ACCOUNTS,
-    PERMISSIONS.MANAGE_AD_ACCOUNTS,
-    PERMISSIONS.ASSIGN_AD_ACCOUNTS,
-    PERMISSIONS.VIEW_AD_INSIGHTS,
-    PERMISSIONS.VIEW_TOPUP_INSIGHTS,
-    PERMISSIONS.VIEW_TOPUP_RECORDS,
-    PERMISSIONS.VIEW_USERS,
-    PERMISSIONS.CREATE_USERS,
-    PERMISSIONS.MANAGE_USER_BALANCE,
-    PERMISSIONS.VIEW_DEPOSITS,
-    PERMISSIONS.APPROVE_DEPOSITS,
-    PERMISSIONS.REJECT_DEPOSITS,
-    PERMISSIONS.VIEW_WITHDRAWALS,
-    PERMISSIONS.APPROVE_WITHDRAWALS,
-    PERMISSIONS.REJECT_WITHDRAWALS,
-    PERMISSIONS.VIEW_PAYMENT_METHODS,
-    PERMISSIONS.MANAGE_PAYMENT_METHODS,
-    PERMISSIONS.VIEW_BALANCE_LOGS,
-    PERMISSIONS.VIEW_TICKETS,
-    PERMISSIONS.MANAGE_TICKETS,
-    PERMISSIONS.UNLIMITED_BALANCE,
-    PERMISSIONS.VIEW_AD_ACCOUNTS_TOPUP,
-  ],
+let permissionOverrides = null;
+let level2RouteOverrides = null;
 
-  [ROLES.SUPPORT_EXECUTIVE]: [
-    PERMISSIONS.VIEW_AD_ACCOUNTS,
-    PERMISSIONS.VIEW_AD_INSIGHTS,
-    PERMISSIONS.VIEW_TICKETS,
-    PERMISSIONS.MANAGE_TICKETS,
-  ],
-
-  [ROLES.CUSTOMER]: [],
-};
-
-export function hasPermission(role, permission) {
-  const perms = ROLE_PERMISSIONS[role] || [];
-  return perms.includes(permission);
+export function setPermissionOverrides(map) {
+  permissionOverrides = map || null;
 }
 
-export function getAllowedRoutes(role) {
+export function setLevel2RouteOverrides(map) {
+  level2RouteOverrides = map || null;
+}
+
+function permsFor(role, overrides) {
+  const map = overrides || permissionOverrides;
+  if (map && Array.isArray(map[role])) return map[role];
+  return ROLE_PERMISSIONS[role] || [];
+}
+
+function routesFor(role, overrides) {
+  const map = overrides || level2RouteOverrides;
+  if (map && (Array.isArray(map[role]) || map[role] === null)) return map[role];
+  if (!(role in ROLE_LEVEL2_ROUTES)) return null; // unknown role → unrestricted (legacy)
+  return ROLE_LEVEL2_ROUTES[role];
+}
+
+export function hasPermission(role, permission, overrides) {
+  return permsFor(role, overrides).includes(permission);
+}
+
+export function getAllowedRoutes(role, overrides) {
   const routes = [];
 
   if (
-    hasPermission(role, PERMISSIONS.VIEW_DEPOSITS) ||
-    hasPermission(role, PERMISSIONS.APPROVE_DEPOSITS)
+    hasPermission(role, PERMISSIONS.VIEW_DEPOSITS, overrides) ||
+    hasPermission(role, PERMISSIONS.APPROVE_DEPOSITS, overrides)
   ) {
     routes.push("deposits");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_WITHDRAWALS) ||
-    hasPermission(role, PERMISSIONS.APPROVE_WITHDRAWALS)
+    hasPermission(role, PERMISSIONS.VIEW_WITHDRAWALS, overrides) ||
+    hasPermission(role, PERMISSIONS.APPROVE_WITHDRAWALS, overrides)
   ) {
     routes.push("withdrawals");
   }
-  if (hasPermission(role, PERMISSIONS.VIEW_AD_ACCOUNTS)) {
+  if (hasPermission(role, PERMISSIONS.VIEW_AD_ACCOUNTS, overrides)) {
     routes.push("ad-accounts");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_USERS) ||
-    hasPermission(role, PERMISSIONS.CREATE_USERS)
+    hasPermission(role, PERMISSIONS.VIEW_USERS, overrides) ||
+    hasPermission(role, PERMISSIONS.CREATE_USERS, overrides)
   ) {
     routes.push("user-management");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_TICKETS) ||
-    hasPermission(role, PERMISSIONS.MANAGE_TICKETS)
+    hasPermission(role, PERMISSIONS.VIEW_ROLES, overrides) ||
+    hasPermission(role, PERMISSIONS.MANAGE_ROLES, overrides)
+  ) {
+    routes.push("roles");
+  }
+  if (
+    hasPermission(role, PERMISSIONS.VIEW_TICKETS, overrides) ||
+    hasPermission(role, PERMISSIONS.MANAGE_TICKETS, overrides)
   ) {
     routes.push("support-tickets");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_PAYMENT_METHODS) ||
-    hasPermission(role, PERMISSIONS.MANAGE_PAYMENT_METHODS)
+    hasPermission(role, PERMISSIONS.VIEW_PAYMENT_METHODS, overrides) ||
+    hasPermission(role, PERMISSIONS.MANAGE_PAYMENT_METHODS, overrides)
   ) {
     routes.push("payment-methods");
   }
-  if (hasPermission(role, PERMISSIONS.VIEW_BALANCE_LOGS)) {
+  if (hasPermission(role, PERMISSIONS.VIEW_BALANCE_LOGS, overrides)) {
     routes.push("balance-logs");
   }
-  if (hasPermission(role, PERMISSIONS.VIEW_REPORTS)) {
+  if (hasPermission(role, PERMISSIONS.VIEW_REPORTS, overrides)) {
     routes.push("reports");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_META_API) ||
-    hasPermission(role, PERMISSIONS.MANAGE_META_API)
+    hasPermission(role, PERMISSIONS.VIEW_META_API, overrides) ||
+    hasPermission(role, PERMISSIONS.MANAGE_META_API, overrides)
   ) {
     routes.push("meta-api");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_WHATSAPP) ||
-    hasPermission(role, PERMISSIONS.MANAGE_WHATSAPP)
+    hasPermission(role, PERMISSIONS.VIEW_WHATSAPP, overrides) ||
+    hasPermission(role, PERMISSIONS.MANAGE_WHATSAPP, overrides)
   ) {
     routes.push("whatsapp");
   }
   if (
-    hasPermission(role, PERMISSIONS.VIEW_SETTINGS) ||
-    hasPermission(role, PERMISSIONS.MANAGE_SETTINGS)
+    hasPermission(role, PERMISSIONS.VIEW_SETTINGS, overrides) ||
+    hasPermission(role, PERMISSIONS.MANAGE_SETTINGS, overrides)
   ) {
     routes.push("settings");
   }
-  if (hasPermission(role, PERMISSIONS.VIEW_TOPUP_INSIGHTS)) {
+  if (hasPermission(role, PERMISSIONS.VIEW_TOPUP_INSIGHTS, overrides)) {
     routes.push("top-up-insights");
   }
-  if (hasPermission(role, PERMISSIONS.VIEW_AD_ACCOUNTS_TOPUP)) {
+  if (hasPermission(role, PERMISSIONS.VIEW_AD_ACCOUNTS_TOPUP, overrides)) {
     routes.push("ad-accounts-topup");
   }
 
   return routes;
 }
 
-export function canAccessRoute(role, route) {
+export function canAccessRoute(role, route, overrides) {
   if (role === ROLES.ADMIN) return true;
-  return getAllowedRoutes(role).includes(route);
+  return getAllowedRoutes(role, overrides).includes(route);
 }
 
 export function isStaffRole(role) {
-  return [
-    ROLES.ADMIN,
-    ROLES.TECHNICAL_MANAGER,
-    ROLES.KEY_MANAGER,
-    ROLES.ACCOUNTS_MANAGER,
-    ROLES.SUPPORT_EXECUTIVE,
-  ].includes(role);
+  return STAFF_ROLES.includes(role);
+}
+
+// Level 2 page access. `allowed` is the role's level2Routes:
+// null/undefined → unrestricted (legacy behaviour, never blocks existing users).
+// Managed pages (every entry ticked in Level 1) require an EXACT match, so
+// unticking e.g. /office-expense/settings blocks it even when the parent
+// /office-expense is allowed. Unmanaged sub-paths inherit the nearest parent.
+export function canAccessLevel2Route(pathname, role, overrides) {
+  if (!pathname || pathname === "/login") return true;
+  if (role === ROLES.ADMIN) return true;
+  const allowed = routesFor(role, overrides);
+  if (allowed === null || allowed === undefined) return true;
+  if (pathname === "/") return allowed.includes("/");
+  if (MANAGED_L2_PATHS.has(pathname)) return allowed.includes(pathname);
+  return allowed.some((p) => p !== "/" && (pathname === p || pathname.startsWith(p + "/")));
+}
+
+export function getLevel2RoutesForRole(role, overrides) {
+  const allowed = routesFor(role, overrides);
+  if (allowed === null || allowed === undefined) return null;
+  return allowed;
 }
 
 const ICONS = {
@@ -216,6 +167,7 @@ const ICONS = {
   withdrawals: "DollarSign",
   "ad-accounts": "Megaphone",
   "user-management": "Users",
+  roles: "ShieldCheck",
   "support-tickets": "LifeBuoy",
   "balance-logs": "History",
   reports: "BarChart3",
@@ -226,8 +178,8 @@ const ICONS = {
   "ad-accounts-topup": "ArrowUpCircle",
 };
 
-export function getNavItemsForRole(role) {
-  const routes = getAllowedRoutes(role);
+export function getNavItemsForRole(role, overrides) {
+  const routes = getAllowedRoutes(role, overrides);
   const allItems = [
     { label: "Overview", href: "/admin", key: "overview" },
     { label: "Deposit Verification", href: "/admin/deposits", key: "deposits" },
@@ -243,6 +195,7 @@ export function getNavItemsForRole(role) {
       href: "/admin/user-management",
       key: "user-management",
     },
+    { label: "Roles & Permissions", href: "/admin/roles", key: "roles" },
     {
       label: "Support Tickets",
       href: "/admin/support-tickets",

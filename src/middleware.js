@@ -32,7 +32,11 @@ export function middleware(request) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // Forward the pathname to the server layout so it can enforce
+  // Level 1-managed page permissions before rendering anything.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
@@ -43,6 +47,8 @@ export const config = {
     "/customers/:path*",
     "/insights/:path*",
     "/invoices/:path*",
+    "/platforms/:path*",
+    "/refund/:path*",
     "/reports/:path*",
     "/sale-setup/:path*",
     "/sales/:path*",
@@ -51,5 +57,6 @@ export const config = {
     "/settings/:path*",
     "/topups/:path*",
     "/vendors/:path*",
+    "/wallets/:path*",
   ],
 };
