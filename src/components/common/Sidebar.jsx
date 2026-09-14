@@ -193,6 +193,33 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
               </div>
             )}
           </div>
+          {/* Level Switcher */}
+          <div className={`${isCollapsed ? "px-2 pt-3" : "px-3 pt-3"}`}>
+            <div
+              className={`flex items-center ${isCollapsed ? "flex-col gap-1 p-1" : "gap-1 p-1"
+                } rounded-xl bg-slate-800/60 border border-slate-700/50`}
+            >
+              <button
+                onClick={() => {
+                  window.location.href = "https://apps.adsbuzzbd.com/";
+                }}
+                className={`${isCollapsed ? "w-full px-2" : "flex-1"
+                  } py-2 rounded-lg text-[11px] font-bold text-slate-400 hover:text-white hover:bg-slate-700/60 transition-all duration-200 cursor-pointer`}
+                title="Go to Level 1"
+              >
+                {isCollapsed ? "L1" : "Level 1"}
+              </button>
+
+              <button
+                className={`${isCollapsed ? "w-full px-2" : "flex-1"
+                  } py-2 rounded-lg text-[11px] font-bold bg-brand-orange text-white shadow-sm cursor-default`}
+                title="Current Level 2"
+                aria-current="page"
+              >
+                {isCollapsed ? "L2" : "Level 2"}
+              </button>
+            </div>
+          </div>
 
           {/* Collapsed expand button in header */}
           {isCollapsed && (
@@ -233,11 +260,10 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
                     aria-label={item.name}
                     aria-expanded={hasChildren ? isOpen : undefined}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`w-full flex items-center ${isCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'} rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer ${
-                      isActive
+                    className={`w-full flex items-center ${isCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'} rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer ${isActive
                         ? 'bg-brand-orange text-white shadow-md font-bold'
                         : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-                    }`}
+                      }`}
                   >
                     <Icon size={18} className={`flex-shrink-0 transition-transform duration-200 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
 
@@ -270,11 +296,10 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
                               <button
                                 key={child.id}
                                 onClick={() => onNavigate(child.id)}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-left cursor-pointer transition-colors ${
-                                  childActive
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-left cursor-pointer transition-colors ${childActive
                                     ? 'bg-brand-orange text-white'
                                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                }`}
+                                  }`}
                               >
                                 <ChildIcon size={13} />
                                 <span>{child.name}</span>
@@ -303,11 +328,10 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
                             id={`nav-${child.id}`}
                             onClick={() => onNavigate(child.id)}
                             aria-current={childActive ? 'page' : undefined}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer ${
-                              childActive
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer ${childActive
                                 ? 'bg-brand-orange text-white shadow-md font-bold'
                                 : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
-                            }`}
+                              }`}
                           >
                             <ChildIcon size={16} className={`flex-shrink-0 ${childActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
                             <span className="truncate">{child.name}</span>
@@ -386,11 +410,10 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
                             }
                           }}
                           aria-expanded={hasChildren ? isOpen : undefined}
-                          className={`w-full flex items-center gap-3 p-3 rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 group cursor-pointer hover:bg-slate-800/50 ${
-                            isActive
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 group cursor-pointer hover:bg-slate-800/50 ${isActive
                               ? 'bg-brand-orange text-white shadow-md font-bold'
                               : 'text-slate-400 hover:text-white'
-                          }`}
+                            }`}
                         >
                           <Icon size={16} className={`flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
                           <span className="truncate flex-1 text-left">{item.name}</span>
@@ -412,11 +435,10 @@ export default function Sidebar({ activeView, onNavigate, mobileOpen = false, on
                                     onNavigate(child.id);
                                     if (onMobileClose) onMobileClose();
                                   }}
-                                  className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 cursor-pointer hover:bg-slate-800/50 ${
-                                    childActive
+                                  className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 cursor-pointer hover:bg-slate-800/50 ${childActive
                                       ? 'bg-brand-orange text-white shadow-md font-bold'
                                       : 'text-slate-400 hover:text-white'
-                                  }`}
+                                    }`}
                                 >
                                   <ChildIcon size={14} className={`flex-shrink-0 ${childActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
                                   <span className="truncate">{child.name}</span>
